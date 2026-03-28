@@ -1,0 +1,41 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read, create, update: if isOwner(uid);
+      allow delete: if false;
+    }
+
+    match /posts/{postId} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.autor_id == request.auth.uid
+        && request.resource.data.keys().hasAll([
+          'autor_id',
+          'autor_username',
+          'autor_avatar',
+          'contenido',
+          'imagen_url',
+          'likes',
+          'comentarios',
+          'created_at'
+        ]);
+
+      // La app actualiza posts para likes/comentarios con arrayUnion/arrayRemove.
+      allow update: if isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comentarios']);
+
+      allow delete: if isSignedIn() && resource.data.autor_id == request.auth.uid;
+    }
+  }
+}
