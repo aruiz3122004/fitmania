@@ -319,7 +319,6 @@ import { ShieldCheck, CreditCard, Loader2 } from 'lucide-react'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!)
 
-// Estilos del campo de tarjeta de Stripe
 const CARD_ELEMENT_OPTIONS = {
   style: {
     base: {
@@ -350,7 +349,6 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
     setLoading(true)
 
     try {
-      // 1. Crear PaymentIntent en el backend
       const res = await fetch('/api/stripe/create-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -365,7 +363,6 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
       const { clientSecret, error: backendError } = await res.json()
       if (backendError) throw new Error(backendError)
 
-      // 2. Confirmar pago con los datos de la tarjeta
       const cardElement = elements.getElement(CardElement)!
       const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
         payment_method: {
@@ -380,20 +377,18 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
       if (stripeError) throw new Error(stripeError.message)
 
       if (paymentIntent?.status === 'succeeded') {
-          // Enviar correo directamente
-  await fetch('/api/send-email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'success',
-      to: user?.email || '',
-      customerName: user?.username || '',
-      amount: amount,
-      concept: concept,
-      transactionId: paymentIntent.id,
-    }),
-  })
-  if (!res.ok) throw new Error('Error al enviar el correo')
+        await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'success',
+            to: user?.email || '',
+            customerName: user?.username || '',
+            amount,
+            concept,
+            transactionId: paymentIntent.id,
+          }),
+        })
         setSuccess(true)
       }
     } catch (err: any) {
@@ -418,7 +413,6 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
 
   return (
     <div>
-      {/* Resumen */}
       <div className="bg-secondary text-white border-3 border-secondary p-5 mb-6">
         <div className="flex items-center justify-between">
           <div>
@@ -432,7 +426,6 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
         </div>
       </div>
 
-      {/* Campo de tarjeta */}
       <div className="mb-6">
         <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider mb-2 block">
           Datos de la tarjeta
@@ -456,7 +449,10 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
         disabled={loading || !stripe}
         className="w-full flex items-center justify-center gap-3 font-label font-bold text-base text-white bg-primary py-4 border-3 border-secondary shadow-comic transition-all hover:bg-red-dark disabled:opacity-60"
       >
-        {loading ? <><Loader2 className="w-5 h-5 animate-spin" />PROCESANDO...</> : <><CreditCard className="w-5 h-5" />PAGAR {montoFormateado}</>}
+        {loading
+          ? <><Loader2 className="w-5 h-5 animate-spin" />PROCESANDO...</>
+          : <><CreditCard className="w-5 h-5" />PAGAR {montoFormateado}</>
+        }
       </button>
 
       <div className="flex items-center justify-center gap-2 mt-4">
@@ -467,19 +463,10 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
   )
 }
 
-export default function PagoContent() {
-
-  
+// ↓ Renombrada a PagoContent (sin export default)
+function PagoContent() {
   const searchParams = useSearchParams()
   const { isAuthenticated } = useAuthStore()
-
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-muted flex items-center justify-center">
-      <p className="font-label text-gray-500">Cargando...</p>
-    </div>}>
-      <PagoContent />
-    </Suspense>
-  )
 
   const conceptoParam = searchParams.get('concepto') || 'Servicio Fitmania'
   const montoParam = Number(searchParams.get('monto')) || 0
@@ -494,7 +481,9 @@ export default function PagoContent() {
         <section className="mt-[72px] min-h-screen bg-muted flex items-center justify-center py-16">
           <div className="bg-white border-3 border-secondary shadow-comic p-8 text-center max-w-sm">
             <p className="font-body text-gray-600 mb-4">Debes iniciar sesión para realizar un pago.</p>
-            <a href="/login" className="inline-block font-label font-bold text-sm text-white bg-primary px-6 py-3 border-2 border-secondary">INICIAR SESIÓN</a>
+            <a href="/login" className="inline-block font-label font-bold text-sm text-white bg-primary px-6 py-3 border-2 border-secondary">
+              INICIAR SESIÓN
+            </a>
           </div>
         </section>
         <Footer />
@@ -508,12 +497,13 @@ export default function PagoContent() {
       <section className="mt-[72px] min-h-screen bg-muted py-16">
         <div className="max-w-[520px] mx-auto px-6">
           <div className="text-center mb-8">
-            <span className="inline-block font-label font-bold text-xs text-navy bg-accent px-3 py-1 tracking-wider uppercase border-2 border-navy mb-3">PAGO SEGURO</span>
+            <span className="inline-block font-label font-bold text-xs text-navy bg-accent px-3 py-1 tracking-wider uppercase border-2 border-navy mb-3">
+              PAGO SEGURO
+            </span>
             <h1 className="font-display text-3xl text-secondary tracking-wider">
               PAGAR CON <span className="text-primary">TARJETA</span>
             </h1>
           </div>
-
           <div className="bg-white border-3 border-secondary shadow-comic p-6">
             <Elements stripe={stripePromise}>
               <CheckoutForm amount={montoParam} concept={conceptoParam} montoFormateado={montoFormateado} />
@@ -523,6 +513,19 @@ export default function PagoContent() {
       </section>
       <Footer />
     </main>
+  )
+}
+
+// ↓ Export default: solo envuelve PagoContent en Suspense
+export default function PagoPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-muted flex items-center justify-center">
+        <p className="font-label text-gray-500">Cargando...</p>
+      </div>
+    }>
+      <PagoContent />
+    </Suspense>
   )
 }
 
