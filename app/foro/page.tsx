@@ -6,7 +6,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
 import { useAuthStore } from '@/lib/store'
-import { db, storage } from '@/lib/firebase'
+import { db } from '@/lib/firebase'
 import {
   addDoc,
   arrayRemove,
@@ -19,7 +19,7 @@ import {
   updateDoc,
   doc,
 } from 'firebase/firestore'
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
+import { uploadToCloudinary } from '@/services/cloudinary'
 import {
   Heart,
   MessageCircle,
@@ -375,15 +375,13 @@ export default function ForoPage() {
 
   const handlePublish = async (content: string, file: File | null) => {
     if (!user?.uid) return
-
+  
     let imageUrl: string | null = null
     if (file) {
-      const extension = file.name.split('.').pop() || 'jpg'
-      const fileRef = ref(storage, `posts/${user.uid}/${Date.now()}.${extension}`)
-      await uploadBytes(fileRef, file)
-      imageUrl = await getDownloadURL(fileRef)
+      const resultado = await uploadToCloudinary(file)
+      imageUrl = resultado.url  // URL pública de Cloudinary
     }
-
+  
     await addDoc(collection(db, 'posts'), {
       autor_id: user.uid,
       autor_username: user.username,
