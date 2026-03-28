@@ -308,7 +308,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
@@ -467,9 +467,19 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
   )
 }
 
-export default function PagoPage() {
+export default function PagoContent() {
+
+  
   const searchParams = useSearchParams()
   const { isAuthenticated } = useAuthStore()
+
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-muted flex items-center justify-center">
+      <p className="font-label text-gray-500">Cargando...</p>
+    </div>}>
+      <PagoContent />
+    </Suspense>
+  )
 
   const conceptoParam = searchParams.get('concepto') || 'Servicio Fitmania'
   const montoParam = Number(searchParams.get('monto')) || 0
@@ -515,6 +525,8 @@ export default function PagoPage() {
     </main>
   )
 }
+
+
 
 
 // ## Para probar con Daviplata:
