@@ -8,6 +8,7 @@ import { SectionHeader } from '@/components/ui/section-header'
 import { useCartStore } from '@/lib/store'
 import { Trash2, Plus, Minus, ShoppingBag, ArrowLeft, CreditCard } from 'lucide-react'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 function formatPrice(price: number) {
   return '$ ' + price.toLocaleString('es-CO')
@@ -17,9 +18,11 @@ export default function CarritoPage() {
   const { items, removeItem, updateQuantity, clearCart, getTotal } = useCartStore()
   const [showModal, setShowModal] = useState(false)
   const total = getTotal()
+  const router = useRouter()
 
   const handleCheckout = () => {
-    setShowModal(true)
+    //setShowModal(true) //modal anterior de pago
+    router.push(`/pago?concepto=Compra+Fitmania&monto=${total}`)
   }
 
   return (
@@ -192,7 +195,7 @@ export default function CarritoPage() {
                   </button>
 
                   <p className="font-body text-xs text-gray-500 text-center mt-4">
-                    Pago seguro con Wompi
+                    Pago seguro con PSE
                   </p>
                 </div>
               </div>
@@ -220,7 +223,7 @@ export default function CarritoPage() {
               Total: {formatPrice(total)}
             </div>
             <p className="font-body text-[0.9rem] text-gray-500 mb-6">
-              Proximamente integracion con Wompi para pagos seguros. Tu pedido heroico esta casi listo!
+              Proximamente integracion con PSE para pagos seguros. Tu pedido heroico esta casi listo!
             </p>
             <button
               onClick={() => setShowModal(false)}

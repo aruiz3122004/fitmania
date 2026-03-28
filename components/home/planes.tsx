@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { SectionHeader } from '@/components/ui/section-header'
 import { Clock, Users, Star, Coffee, ArrowRight } from 'lucide-react'
 
@@ -67,10 +68,12 @@ function formatPrice(price: number) {
 export function Planes() {
   const [showModal, setShowModal] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<typeof planes[0] | null>(null)
-
+  const router = useRouter()
   const handlePay = (plan: typeof planes[0]) => {
-    setSelectedPlan(plan)
-    setShowModal(true)
+    //setSelectedPlan(plan) //modal anterior
+    //setShowModal(true) //modal anterior
+    const concepto = encodeURIComponent(plan.name)
+    router.push(`/pago?concepto=${concepto}&monto=${plan.price}`)
   }
 
   return (

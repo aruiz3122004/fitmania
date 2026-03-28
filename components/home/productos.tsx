@@ -34,7 +34,7 @@ const productos: Record<string, { icon: typeof Pill; title: string; items: Produ
     items: [
       { id: 'granola', nombre: 'Barra Granola', precio: 5000, categoria: 'snacks', imagen_url: '/Imagenes/Snacks/granola.jpeg' },
       { id: 'yogurt', nombre: 'Yogurt Griego', precio: 10000, categoria: 'snacks', imagen_url: '/Imagenes/Snacks/yogurt griego.jpeg' },
-      { id: 'tostadas', nombre: 'Tostadas Integrales', precio: 3000, categoria: 'snacks', imagen_url: '/Imagenes/Snacks/Tostadas Integrales.jpeg' },
+      { id: 'tostadas', nombre: 'Tostadas Integrales', precio: 2100, categoria: 'snacks', imagen_url: '/Imagenes/Snacks/Tostadas Integrales.jpeg' },
       { id: 'maranones', nombre: 'Marañones', precio: 4000, categoria: 'snacks', imagen_url: '/Imagenes/Snacks/Marañones.jpeg' },
     ],
   },
