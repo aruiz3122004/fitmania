@@ -165,10 +165,26 @@ function PostCard({
     }
   }
 
-  const handleReport = () => {
+  const handleReport = async () => {
     if (!reportReason) return
-    console.log(`Email a: administrador@fitmania.com\nAsunto: Reporte de publicacion\nMensaje: El usuario ${user?.username} ha reportado la publicacion de ${post.autor_username} subida el ${post.created_at}. Motivo: ${reportReason}`)
-    setReportStatus('success')
+    
+    try {
+      await addDoc(collection(db, 'reportes'), {
+        reportante: user?.username || 'Usuario',
+        reportante_id: user?.uid || '',
+        publicacion_id: post.id,
+        autor_publicacion: post.autor_username,
+        motivo: reportReason,
+        fecha_publicacion: post.created_at,
+        fecha_reporte: new Date()
+      })
+      
+      console.log(`Email mock a: administrador@fitmania.com\nAsunto: Reporte de publicacion\nMensaje: El usuario ${user?.username} ha reportado la publicacion de ${post.autor_username} subida el ${post.created_at}. Motivo: ${reportReason}`)
+      setReportStatus('success')
+    } catch (err) {
+      console.error('Error al guardar reporte:', err)
+    }
+
     setTimeout(() => {
       setShowReport(false)
       setReportStatus('idle')
@@ -191,7 +207,7 @@ function PostCard({
   return (
     <div className="bg-white border-3 border-secondary shadow-comic-sm mb-6">
       <div className="flex items-center gap-3 p-4 border-b-2 border-gray-200">
-        <div className="w-12 h-12 rounded-full border-3 border-secondary overflow-hidden bg-gray-100 flex-shrink-0">
+        <div className="w-12 h-12 rounded-full border-3 border-secondary overflow-hidden bg-primary flex-shrink-0">
           {post.autor_avatar ? (
             <img src={post.autor_avatar} alt={post.autor_username} className="w-full h-full object-cover" />
           ) : (
@@ -244,7 +260,7 @@ function PostCard({
             {reportStatus === 'success' ? (
               <div className="text-center py-4">
                 <h3 className="font-display text-xl text-green-600 mb-2">¡Reporte Enviado!</h3>
-                <p className="font-body text-gray-600">Gracias por denunciar, estaremos revisando su inquietud.</p>
+                <p className="font-body text-gray-600">Gracias por denunciar, estaremos revisando su solicitud.</p>
               </div>
             ) : (
               <>
@@ -407,11 +423,11 @@ export default function ForoPage() {
           likes: Array.isArray(raw.likes) ? raw.likes : [],
           comentarios: Array.isArray(raw.comentarios)
             ? raw.comentarios.map((c: any) => ({
-                id: c.id,
-                autor_username: c.autor_username,
-                contenido: c.contenido,
-                created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
-              }))
+              id: c.id,
+              autor_username: c.autor_username,
+              contenido: c.contenido,
+              created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
+            }))
             : [],
           created_at: raw.created_at?.toDate ? raw.created_at.toDate() : new Date(),
         }
@@ -436,13 +452,13 @@ export default function ForoPage() {
 
   const handlePublish = async (content: string, file: File | null) => {
     if (!user?.uid) return
-  
+
     let imageUrl: string | null = null
     if (file) {
       const resultado = await uploadToCloudinary(file)
       imageUrl = resultado.url  // URL pública de Cloudinary
     }
-  
+
     await addDoc(collection(db, 'posts'), {
       autor_id: user.uid,
       autor_username: user.username,

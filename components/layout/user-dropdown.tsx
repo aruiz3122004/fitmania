@@ -8,7 +8,7 @@ import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
 import { auth, db, storage } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
 import { doc, updateDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore'
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
+import { uploadToCloudinary } from '@/services/cloudinary'
 
 export function UserDropdown() {
   const { user, isAuthenticated, logout, updateUser } = useAuthStore()
@@ -55,11 +55,10 @@ export function UserDropdown() {
     if (!file || !user?.uid || isSavingAvatar) return
     setIsSavingAvatar(true)
     try {
-      const extension = file.name.split('.').pop() || 'jpg'
-      const fileRef = ref(storage, `users/${user.uid}/profile.${extension}`)
-      await uploadBytes(fileRef, file)
-      const downloadUrl = await getDownloadURL(fileRef)
-      await updateUserProfile({ photoURL: downloadUrl })
+      const resultado = await uploadToCloudinary(file)
+      await updateUserProfile({ photoURL: resultado.url })
+    } catch(err) {
+      console.error("Error al subir imagen:", err)
     } finally {
       setIsSavingAvatar(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -111,7 +110,7 @@ export function UserDropdown() {
     <div className="absolute top-full right-0 mt-2 w-80 bg-white border-3 border-secondary shadow-comic z-50">
       <div className="p-4 border-b-2 border-gray-200">
         <div className="flex items-start gap-3">
-          <div className="w-14 h-14 rounded-full border-3 border-secondary overflow-hidden bg-gray-100 flex-shrink-0">
+          <div className="w-14 h-14 rounded-full border-3 border-secondary bg-primary overflow-hidden flex-shrink-0">
             {user?.photoURL ? (
               <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
@@ -149,7 +148,7 @@ export function UserDropdown() {
               key={avatar.id}
               onClick={() => handleAvatarSelect(avatar.id)}
               disabled={isSavingAvatar}
-              className={`w-10 h-10 rounded-full border-2 overflow-hidden transition-all hover:scale-110 hover:border-primary ${
+              className={`w-10 h-10 rounded-full border-2 overflow-hidden bg-primary transition-all hover:scale-110 hover:border-primary ${
                 user?.avatar === avatar.id ? 'border-primary ring-2 ring-primary/30' : 'border-gray-300'
               }`}
               title={avatar.name}

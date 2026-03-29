@@ -131,7 +131,7 @@ export function Topbar() {
                 <img 
                   src={user.photoURL} 
                   alt="Avatar" 
-                  className="w-7 h-7 rounded-full border-2 border-white object-cover"
+                  className="w-7 h-7 rounded-full border-2 border-white object-cover bg-primary"
                 />
               ) : (
                 <User className="w-7 h-7" strokeWidth={2.5} />
@@ -158,7 +158,7 @@ export function Topbar() {
       {/* Mobile Menu */}
       <div 
         className={`lg:hidden flex flex-col bg-red-dark border-t-3 border-secondary overflow-hidden transition-[max-height] duration-400 ${
-          isMobileMenuOpen ? 'max-h-[400px]' : 'max-h-0'
+          isMobileMenuOpen ? 'max-h-[800px]' : 'max-h-0'
         }`}
       >
         {navLinks.map((link) => (
@@ -184,7 +184,7 @@ export function Topbar() {
           <div className="flex flex-col border-b-2 border-white/10">
             <div className="px-8 py-4 flex items-center gap-3">
               {user?.photoURL ? (
-                <img src={user.photoURL} alt="Avatar" className="w-8 h-8 rounded-full border-2 border-white object-cover" />
+                <img src={user.photoURL} alt="Avatar" className="w-8 h-8 rounded-full border-2 border-white object-cover bg-primary" />
               ) : (
                 <User className="w-8 h-8 text-white" />
               )}
