@@ -59,21 +59,27 @@ export function Footer() {
           </h4>
           <div className="flex gap-4">
             <Link
-              href="#"
+              href="https://instagram.com/"
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-11 h-11 flex items-center justify-center bg-black/20 border-2 border-white/30 text-white transition-all hover:bg-accent hover:text-secondary hover:border-secondary hover:-translate-y-[3px] hover:-rotate-5 hover:shadow-[3px_3px_0_var(--navy)]"
               aria-label="Instagram"
             >
               <Instagram className="w-5 h-5" />
             </Link>
             <Link
-              href="#"
+              href="https://facebook.com/"
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-11 h-11 flex items-center justify-center bg-black/20 border-2 border-white/30 text-white transition-all hover:bg-accent hover:text-secondary hover:border-secondary hover:-translate-y-[3px] hover:-rotate-5 hover:shadow-[3px_3px_0_var(--navy)]"
               aria-label="Facebook"
             >
               <Facebook className="w-5 h-5" />
             </Link>
             <Link
-              href="#"
+              href="https://api.whatsapp.com/send?phone=573001234567"
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-11 h-11 flex items-center justify-center bg-black/20 border-2 border-white/30 text-white transition-all hover:bg-accent hover:text-secondary hover:border-secondary hover:-translate-y-[3px] hover:-rotate-5 hover:shadow-[3px_3px_0_var(--navy)]"
               aria-label="WhatsApp"
             >

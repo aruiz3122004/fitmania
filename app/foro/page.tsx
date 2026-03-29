@@ -143,7 +143,38 @@ function PostCard({
   const [showComments, setShowComments] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [isCommenting, setIsCommenting] = useState(false)
+  const [showReport, setShowReport] = useState(false)
+  const [reportReason, setReportReason] = useState('')
+  const [reportStatus, setReportStatus] = useState<'idle' | 'success'>('idle')
+  const reportOptions = ['Terrorismo', 'Discurso de odio', 'Racismo', 'Desnudos', 'Otro']
   const isLiked = user ? post.likes.includes(user.uid) : false
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Fitmania Foro',
+          text: `Mira esta publicacion de ${post.autor_username}: ${post.contenido}`,
+          url: window.location.href,
+        })
+      } catch (err) {
+        console.log('Error compartiendo', err)
+      }
+    } else {
+      alert('Tu navegador no soporta la funcion nativa de compartir.')
+    }
+  }
+
+  const handleReport = () => {
+    if (!reportReason) return
+    console.log(`Email a: administrador@fitmania.com\nAsunto: Reporte de publicacion\nMensaje: El usuario ${user?.username} ha reportado la publicacion de ${post.autor_username} subida el ${post.created_at}. Motivo: ${reportReason}`)
+    setReportStatus('success')
+    setTimeout(() => {
+      setShowReport(false)
+      setReportStatus('idle')
+      setReportReason('')
+    }, 3000)
+  }
 
   const handleComment = async () => {
     const content = newComment.trim()
@@ -160,9 +191,9 @@ function PostCard({
   return (
     <div className="bg-white border-3 border-secondary shadow-comic-sm mb-6">
       <div className="flex items-center gap-3 p-4 border-b-2 border-gray-200">
-        <div className="w-12 h-12 rounded-full border-3 border-secondary overflow-hidden bg-gray-100">
+        <div className="w-12 h-12 rounded-full border-3 border-secondary overflow-hidden bg-gray-100 flex-shrink-0">
           {post.autor_avatar ? (
-            <Image src={post.autor_avatar} alt={post.autor_username} width={48} height={48} className="object-cover" />
+            <img src={post.autor_avatar} alt={post.autor_username} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <UserCircle className="w-8 h-8 text-gray-400" />
@@ -199,13 +230,43 @@ function PostCard({
           <MessageCircle className="w-5 h-5" />
           <span>{post.comentarios.length}</span>
         </button>
-        <button className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-secondary transition-colors">
+        <button onClick={handleShare} className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-secondary transition-colors">
           <Share2 className="w-5 h-5" />
         </button>
-        <button className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-red-dark transition-colors ml-auto">
+        <button onClick={() => setShowReport(true)} className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-red-dark transition-colors ml-auto">
           <Flag className="w-5 h-5" />
         </button>
       </div>
+
+      {showReport && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white border-3 border-secondary p-6 w-full max-w-md shadow-comic">
+            {reportStatus === 'success' ? (
+              <div className="text-center py-4">
+                <h3 className="font-display text-xl text-green-600 mb-2">¡Reporte Enviado!</h3>
+                <p className="font-body text-gray-600">Gracias por denunciar, estaremos revisando su inquietud.</p>
+              </div>
+            ) : (
+              <>
+                <h3 className="font-display text-xl text-secondary mb-4 tracking-wider">REPORTAR PUBLICACION</h3>
+                <p className="font-body text-sm text-gray-600 mb-4">Selecciona el motivo de tu denuncia:</p>
+                <div className="flex flex-col gap-2 mb-6">
+                  {reportOptions.map(opt => (
+                    <label key={opt} className="flex items-center gap-2 font-label text-sm cursor-pointer hover:bg-gray-50 p-2 border-2 border-transparent hover:border-gray-200 transition-colors">
+                      <input type="radio" name="report_reason" value={opt} checked={reportReason === opt} onChange={(e) => setReportReason(e.target.value)} className="accent-primary w-4 h-4" />
+                      {opt}
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowReport(false)} className="flex-1 py-2 border-2 border-secondary font-label font-bold text-sm hover:bg-gray-100 transition-all hover:-translate-y-1 hover:shadow-comic-sm">CANCELAR</button>
+                  <button onClick={handleReport} disabled={!reportReason} className="flex-1 py-2 bg-primary text-white border-2 border-secondary font-label font-bold text-sm hover:bg-red-dark transition-all hover:-translate-y-1 hover:shadow-comic-sm disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none">ENVIAR</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {showComments && (
         <div className="border-t-2 border-gray-200 bg-gray-50 p-4">

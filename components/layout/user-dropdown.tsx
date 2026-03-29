@@ -7,7 +7,7 @@ import { LogOut, Settings, UserCircle } from 'lucide-react'
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
 import { auth, db, storage } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
-import { doc, updateDoc } from 'firebase/firestore'
+import { doc, updateDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 
 export function UserDropdown() {
@@ -21,6 +21,20 @@ export function UserDropdown() {
   const updateUserProfile = async (updates: { avatar?: string; photoURL?: string }) => {
     if (!user?.uid) return
     await updateDoc(doc(db, 'users', user.uid), updates)
+    
+    if (updates.photoURL) {
+      const postsRef = collection(db, 'posts')
+      const q = query(postsRef, where('autor_id', '==', user.uid))
+      const querySnapshot = await getDocs(q)
+      if (!querySnapshot.empty) {
+        const batch = writeBatch(db)
+        querySnapshot.forEach((docSnap) => {
+          batch.update(docSnap.ref, { autor_avatar: updates.photoURL })
+        })
+        await batch.commit()
+      }
+    }
+    
     updateUser(updates)
   }
 
@@ -160,7 +174,7 @@ export function UserDropdown() {
           disabled={isSavingAvatar}
           className="mt-2 w-full font-label text-xs text-primary hover:underline disabled:opacity-50"
         >
-          Subir foto personalizada
+          {isSavingAvatar ? 'Subiendo...' : 'Subir foto personalizada'}
         </button>
       </div>
 

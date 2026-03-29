@@ -171,6 +171,37 @@ export function Topbar() {
             {link.label}
           </Link>
         ))}
+        {/* Mobile User/Login item */}
+        {!isAuthenticated ? (
+          <Link
+            href="/login"
+            onClick={() => setMobileMenuOpen(false)}
+            className="font-heading font-bold text-base text-accent px-8 py-4 uppercase tracking-[1px] border-b-2 border-white/10 transition-colors hover:bg-black/20 flex items-center gap-2"
+          >
+            <User className="w-5 h-5" /> Iniciar Sesion / Registrarse
+          </Link>
+        ) : (
+          <div className="flex flex-col border-b-2 border-white/10">
+            <div className="px-8 py-4 flex items-center gap-3">
+              {user?.photoURL ? (
+                <img src={user.photoURL} alt="Avatar" className="w-8 h-8 rounded-full border-2 border-white object-cover" />
+              ) : (
+                <User className="w-8 h-8 text-white" />
+              )}
+              <div className="flex flex-col">
+                <span className="font-heading font-bold text-base text-white uppercase">{user?.username}</span>
+                <span className="font-label text-xs text-white/70">{user?.email}</span>
+              </div>
+            </div>
+            <Link
+              href="/perfil"
+              onClick={() => setMobileMenuOpen(false)}
+              className="font-heading font-bold text-[0.9rem] text-accent px-8 py-3 uppercase tracking-[1px] transition-colors hover:bg-black/20"
+            >
+              Configuracion
+            </Link>
+          </div>
+        )}
       </div>
     </header>
   )
