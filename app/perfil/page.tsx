@@ -5,9 +5,9 @@ import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
 import { useAuthStore } from '@/lib/store'
-import { db, storage } from '@/lib/firebase'
+import { db } from '@/lib/firebase'
+import { uploadToCloudinary } from '@/services/cloudinary'
 import { doc, updateDoc } from 'firebase/firestore'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { Save, UserCircle, Camera, Loader2 } from 'lucide-react'
 
 export default function PerfilPage() {
@@ -49,12 +49,11 @@ export default function PerfilPage() {
     setStatus('')
 
     try {
-      // Upload to Firebase Storage
-      const storageRef = ref(storage, `avatars/${user.uid}`)
-      await uploadBytes(storageRef, file)
-      const downloadURL = await getDownloadURL(storageRef)
+      // Upload to Cloudinary
+      const resultado = await uploadToCloudinary(file)
+      const downloadURL = resultado.url
 
-      // Update Firestore
+      // Update cloudinary storage
       await updateDoc(doc(db, 'users', user.uid), { photoURL: downloadURL })
 
       // Update local state
