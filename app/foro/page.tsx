@@ -66,7 +66,7 @@ const noticias = [
   },
   {
     id: 3,
-    imagen: '/Imagenes/Fitmania Animado.jpeg',
+    imagen: '/images/gym3.jpg',
     titulo: 'Clases de Yoga',
     descripcion: 'Nuevas clases de yoga todos los sabados a las 8AM. Relaja cuerpo y mente.',
   },
@@ -167,7 +167,7 @@ function PostCard({
 
   const handleReport = async () => {
     if (!reportReason) return
-    
+
     try {
       await addDoc(collection(db, 'reportes'), {
         reportante: user?.username || 'Usuario',
@@ -178,7 +178,7 @@ function PostCard({
         fecha_publicacion: post.created_at,
         fecha_reporte: new Date()
       })
-      
+
       console.log(`Email mock a: administrador@fitmania.com\nAsunto: Reporte de publicacion\nMensaje: El usuario ${user?.username} ha reportado la publicacion de ${post.autor_username} subida el ${post.created_at}. Motivo: ${reportReason}`)
       setReportStatus('success')
     } catch (err) {
@@ -303,8 +303,14 @@ function PostCard({
 
           {isAuthenticated && (
             <div className="flex gap-3 mt-4 pt-4 border-t border-gray-200">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                <span className="font-label font-bold text-xs text-white">{user?.username?.charAt(0) || 'U'}</span>
+              <div className="w-8 h-8 rounded-full border-2 border-secondary overflow-hidden bg-primary flex-shrink-0 flex items-center justify-center">
+                {user?.photoURL ? (
+                  <img src={user.photoURL} alt={user.username} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="font-label font-bold text-xs text-white">
+                    {user?.username?.charAt(0) || 'U'}
+                  </span>
+                )}
               </div>
               <div className="flex-1 flex gap-2">
                 <input
