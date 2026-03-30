@@ -1,12 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { ShoppingCart, User, Menu, X } from 'lucide-react'
 import { useCartStore, useAuthStore, useUIStore } from '@/lib/store'
 import { UserDropdown } from './user-dropdown'
+import { FitAvatar } from '@/components/ui/fit-avatar'
 import { auth, db } from '@/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
@@ -47,13 +47,18 @@ export function Topbar() {
 
       const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid))
       const raw = userDoc.data()
+      const avatarId = raw?.avatar || 'fitman'
+      // If user has a default avatar, always resolve URL from code (not stale Firestore cache)
+      const resolvedUrl = getAvatarUrlById(avatarId)
+      const photoURL = resolvedUrl || raw?.photoURL || getAvatarUrlById('fitman')
+
       setUser({
         uid: firebaseUser.uid,
         username: raw?.username || firebaseUser.email?.split('@')[0] || 'Usuario',
         email: firebaseUser.email || raw?.email || '',
         gender: raw?.gender,
-        avatar: raw?.avatar || 'fitman',
-        photoURL: raw?.photoURL || getAvatarUrlById(raw?.avatar || 'fitman'),
+        avatar: avatarId,
+        photoURL: photoURL,
         peso: raw?.peso,
         altura: raw?.altura,
         plan: raw?.plan || null,
@@ -72,15 +77,15 @@ export function Topbar() {
       <div className="max-w-[1400px] mx-auto flex items-center justify-between px-8 h-[72px]">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3 transition-transform hover:scale-[1.03]">
-          <div className="w-[50px] h-[50px] rounded-full border-3 border-white bg-secondary overflow-hidden shadow-[0_0_0_2px_var(--navy)]">
-            <Image
-              src="/Imagenes/Fitmania logo .jpeg"
-              alt="Fitmania logo"
-              width={50}
-              height={50}
-              className="w-full h-full object-cover"
-            />
-          </div>
+          <FitAvatar
+            src="/Imagenes/Avatares/FitmanNEW.png"
+            alt="Fitmania logo"
+            size={50}
+            borderWidth="border-3"
+            borderColor="border-white"
+            bgColor="bg-secondary"
+            circleClassName="shadow-[0_0_0_2px_var(--navy)]"
+          />
           <div className="flex flex-col">
             <span className="font-display text-[1.8rem] text-white tracking-[2px] leading-none [text-shadow:2px_2px_0_var(--navy)]">
               FIT<span className="text-accent">MANIA</span>
@@ -128,10 +133,12 @@ export function Topbar() {
               aria-label="Mi cuenta"
             >
               {isAuthenticated && user?.photoURL ? (
-                <img 
-                  src={user.photoURL} 
-                  alt="Avatar" 
-                  className="w-7 h-7 rounded-full border-2 border-white object-cover bg-primary"
+                <FitAvatar
+                  src={user.photoURL}
+                  alt="Avatar"
+                  size={28}
+                  borderColor="border-white"
+                  bgColor="bg-primary"
                 />
               ) : (
                 <User className="w-7 h-7" strokeWidth={2.5} />
@@ -184,7 +191,13 @@ export function Topbar() {
           <div className="flex flex-col border-b-2 border-white/10">
             <div className="px-8 py-4 flex items-center gap-3">
               {user?.photoURL ? (
-                <img src={user.photoURL} alt="Avatar" className="w-8 h-8 rounded-full border-2 border-white object-cover bg-primary" />
+                <FitAvatar
+                   src={user.photoURL}
+                   alt="Avatar"
+                   size={32}
+                   borderColor="border-white"
+                   bgColor="bg-primary"
+                />
               ) : (
                 <User className="w-8 h-8 text-white" />
               )}

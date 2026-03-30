@@ -11,6 +11,7 @@ import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
 import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
 import { Mail, Lock, Eye, EyeOff, User, ArrowRight, Dumbbell, Scale, Ruler } from 'lucide-react'
+import { FitAvatar } from '@/components/ui/fit-avatar'
 
 export default function RegistroPage() {
   const router = useRouter()
@@ -85,7 +86,7 @@ export default function RegistroPage() {
   return (
     <main>
       <Topbar />
-      
+
       <section className="mt-[72px] min-h-screen bg-navy-dark flex items-center justify-center py-16 relative overflow-hidden">
         {/* Background pattern */}
         <div className="absolute inset-0 pointer-events-none" style={{
@@ -272,16 +273,17 @@ export default function RegistroPage() {
                       key={avatar.id}
                       type="button"
                       onClick={() => setFormData({ ...formData, avatar: avatar.id })}
-                      className={`aspect-square rounded-full border-3 flex items-center justify-center transition-all hover:scale-110 ${
-                        formData.avatar === avatar.id 
-                          ? 'border-primary bg-red-light' 
-                          : 'border-gray-200 bg-gray-50'
-                      }`}
+                      className="relative transition-transform hover:scale-110"
                       title={avatar.name}
                     >
-                      <span className="font-display text-lg text-secondary">
-                        {avatar.name.charAt(0)}
-                      </span>
+                      <FitAvatar
+                        src={avatar.url}
+                        alt={avatar.name}
+                        size={56}
+                        borderColor={formData.avatar === avatar.id ? 'border-primary' : 'border-gray-200'}
+                        bgColor={formData.avatar === avatar.id ? 'bg-red-light' : 'bg-gray-50'}
+                        circleClassName={formData.avatar === avatar.id ? 'shadow-comic-sm' : ''}
+                      />
                     </button>
                   ))}
                 </div>

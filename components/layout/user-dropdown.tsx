@@ -5,6 +5,7 @@ import { ChangeEvent, useRef, useState } from 'react'
 import { useAuthStore, useUIStore } from '@/lib/store'
 import { LogOut, Settings, UserCircle } from 'lucide-react'
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
+import { FitAvatar } from '@/components/ui/fit-avatar'
 import { auth, db, storage } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
 import { doc, updateDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore'
@@ -110,15 +111,15 @@ export function UserDropdown() {
     <div className="absolute top-full right-0 mt-2 w-80 bg-white border-3 border-secondary shadow-comic z-50">
       <div className="p-4 border-b-2 border-gray-200">
         <div className="flex items-start gap-3">
-          <div className="w-14 h-14 rounded-full border-3 border-secondary bg-primary overflow-hidden flex-shrink-0">
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <UserCircle className="w-10 h-10 text-gray-400" />
-              </div>
-            )}
-          </div>
+          <FitAvatar
+            src={user?.photoURL}
+            alt="Avatar"
+            size={56}
+            borderWidth="border-3"
+            borderColor="border-secondary"
+            bgColor="bg-primary"
+            fallback={<UserCircle className="w-10 h-10 text-gray-400" />}
+          />
           <div className="flex-1 min-w-0">
             <h3 className="font-label font-bold text-sm text-secondary truncate">
               {user?.username || 'Usuario'}
@@ -148,15 +149,16 @@ export function UserDropdown() {
               key={avatar.id}
               onClick={() => handleAvatarSelect(avatar.id)}
               disabled={isSavingAvatar}
-              className={`w-10 h-10 rounded-full border-2 overflow-hidden bg-primary transition-all hover:scale-110 hover:border-primary ${
-                user?.avatar === avatar.id ? 'border-primary ring-2 ring-primary/30' : 'border-gray-300'
-              }`}
+              className="relative transition-transform hover:scale-110"
               title={avatar.name}
             >
-              <img
+              <FitAvatar
                 src={avatar.url}
                 alt={avatar.name}
-                className="w-full h-full object-cover"
+                size={40}
+                borderColor={user?.avatar === avatar.id ? 'border-primary' : 'border-gray-300'}
+                bgColor="bg-primary"
+                circleClassName={user?.avatar === avatar.id ? 'ring-2 ring-primary/30' : ''}
               />
             </button>
           ))}

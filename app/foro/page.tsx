@@ -6,6 +6,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
 import { useAuthStore } from '@/lib/store'
+import { FitAvatar } from '@/components/ui/fit-avatar'
 import { db } from '@/lib/firebase'
 import {
   addDoc,
@@ -35,6 +36,7 @@ import {
 type ForumComment = {
   id: string
   autor_username: string
+  autor_avatar?: string
   contenido: string
   created_at: Date
 }
@@ -207,15 +209,15 @@ function PostCard({
   return (
     <div className="bg-white border-3 border-secondary shadow-comic-sm mb-6">
       <div className="flex items-center gap-3 p-4 border-b-2 border-gray-200">
-        <div className="w-12 h-12 rounded-full border-3 border-secondary overflow-hidden bg-primary flex-shrink-0">
-          {post.autor_avatar ? (
-            <img src={post.autor_avatar} alt={post.autor_username} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <UserCircle className="w-8 h-8 text-gray-400" />
-            </div>
-          )}
-        </div>
+        <FitAvatar
+          src={post.autor_avatar || null}
+          alt={post.autor_username}
+          size={48}
+          borderWidth="border-3"
+          borderColor="border-secondary"
+          bgColor="bg-primary"
+          fallback={<UserCircle className="w-8 h-8 text-gray-400" />}
+        />
         <div>
           <h4 className="font-label font-bold text-sm text-secondary">{post.autor_username}</h4>
           <span className="font-label text-xs text-gray-400">{formatDate(post.created_at)}</span>
@@ -225,15 +227,20 @@ function PostCard({
       <div className="p-4">
         <p className="font-body text-gray-700 leading-relaxed mb-4">{post.contenido}</p>
         {post.imagen_url && (
-          <div className="relative w-full h-[300px] border-3 border-secondary overflow-hidden mb-4">
-            <Image src={post.imagen_url} alt="Post image" fill className="object-cover" />
+          <div className="relative w-full h-[400px] border-3 border-secondary overflow-hidden mb-4 bg-gray-50/50">
+            <Image
+              src={post.imagen_url}
+              alt="Post image"
+              fill
+              className="object-contain"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
           </div>
         )}
       </div>
 
       <div className="flex items-center gap-6 px-4 py-3 border-t-2 border-gray-200">
-        <button
-          onClick={() => onLike(post.id)}
+        <button onClick={() => onLike(post.id)}
           className={`flex items-center gap-2 font-label text-sm transition-colors ${isLiked ? 'text-primary' : 'text-gray-500 hover:text-primary'}`}
         >
           <Heart className={`w-5 h-5 ${isLiked ? 'fill-primary' : ''}`} />
@@ -286,11 +293,23 @@ function PostCard({
 
       {showComments && (
         <div className="border-t-2 border-gray-200 bg-gray-50 p-4">
-          {post.comentarios.map((comment) => (
+          {post.comentarios.map((comment) => {
+            // If the comment doesn't have a stored avatar, fall back to the current user's photo (for old comments)
+            const commentAvatar = comment.autor_avatar || (user?.username === comment.autor_username ? user?.photoURL : null) || null
+            return (
             <div key={comment.id} className="flex gap-3 mb-4 last:mb-0">
-              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                <UserCircle className="w-5 h-5 text-gray-400" />
-              </div>
+              <FitAvatar
+                src={commentAvatar}
+                alt={comment.autor_username}
+                size={34}
+                borderColor="border-secondary"
+                bgColor="bg-primary"
+                fallback={
+                  <span className="font-label font-bold text-xs text-white">
+                    {comment.autor_username?.charAt(0) || 'U'}
+                  </span>
+                }
+              />
               <div className="flex-1">
                 <div className="bg-white p-3 border-2 border-gray-200">
                   <span className="font-label font-bold text-xs text-secondary">{comment.autor_username}</span>
@@ -299,19 +318,23 @@ function PostCard({
                 <span className="font-label text-xs text-gray-400 mt-1 block">{formatDate(comment.created_at)}</span>
               </div>
             </div>
-          ))}
+            )
+          })}
 
           {isAuthenticated && (
             <div className="flex gap-3 mt-4 pt-4 border-t border-gray-200">
-              <div className="w-8 h-8 rounded-full border-2 border-secondary overflow-hidden bg-primary flex-shrink-0 flex items-center justify-center">
-                {user?.photoURL ? (
-                  <img src={user.photoURL} alt={user.username} className="w-full h-full object-cover" />
-                ) : (
+              <FitAvatar
+                src={user?.photoURL}
+                alt={user?.username || 'Avatar'}
+                size={34}
+                borderColor="border-secondary"
+                bgColor="bg-primary"
+                fallback={
                   <span className="font-label font-bold text-xs text-white">
                     {user?.username?.charAt(0) || 'U'}
                   </span>
-                )}
-              </div>
+                }
+              />
               <div className="flex-1 flex gap-2">
                 <input
                   type="text"
@@ -369,13 +392,15 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
   return (
     <div className="bg-white border-3 border-secondary shadow-comic-sm p-6 mb-8">
       <div className="flex gap-4">
-        <div className="w-12 h-12 rounded-full border-3 border-secondary overflow-hidden bg-primary flex items-center justify-center flex-shrink-0">
-          {user?.photoURL ? (
-            <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
-          ) : (
-            <span className="font-display text-lg text-white">{user?.username?.charAt(0) || 'U'}</span>
-          )}
-        </div>
+        <FitAvatar
+          src={user?.photoURL}
+          alt="Avatar"
+          size={48}
+          borderWidth="border-3"
+          borderColor="border-secondary"
+          bgColor="bg-primary"
+          fallback={<span className="font-display text-lg text-white">{user?.username?.charAt(0) || 'U'}</span>}
+        />
         <div className="flex-1">
           <textarea
             value={content}
@@ -431,6 +456,7 @@ export default function ForoPage() {
             ? raw.comentarios.map((c: any) => ({
               id: c.id,
               autor_username: c.autor_username,
+              autor_avatar: c.autor_avatar || '',
               contenido: c.contenido,
               created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
             }))
@@ -484,6 +510,7 @@ export default function ForoPage() {
       comentarios: arrayUnion({
         id: `${user.uid}-${Date.now()}`,
         autor_username: user.username,
+        autor_avatar: user.photoURL || '',
         contenido: content,
         created_at: new Date(),
       }),

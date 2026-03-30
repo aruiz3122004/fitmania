@@ -14,6 +14,7 @@ import {
   CheckCircle,
   ArrowRight
 } from 'lucide-react'
+import { FitAvatar } from '@/components/ui/fit-avatar'
 
 const tiposPQRS = [
   {
@@ -123,15 +124,20 @@ export default function PQRSPage() {
               <form onSubmit={handleSubmit}>
                 {/* User info */}
                 <div className="flex items-center gap-3 pb-6 mb-6 border-b-2 border-gray-200">
-                  <div className="w-12 h-12 rounded-full overflow-hidden bg-primary flex items-center justify-center border-3 border-secondary flex-shrink-0">
-                    {user?.photoURL ? (
-                      <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
-                    ) : (
+                  <FitAvatar
+                    src={user?.photoURL}
+                    alt="Avatar"
+                    size={48}
+                    borderWidth="border-3"
+                    borderColor="border-secondary"
+                    bgColor="bg-primary"
+                    overflowScale={1.3}
+                    fallback={
                       <span className="font-display text-lg text-white">
                         {user?.username?.charAt(0) || 'U'}
                       </span>
-                    )}
-                  </div>
+                    }
+                  />
                   <div>
                     <h4 className="font-label font-bold text-sm text-secondary">
                       {user?.username || 'Usuario'}

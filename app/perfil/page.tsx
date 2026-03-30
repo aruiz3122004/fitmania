@@ -9,6 +9,7 @@ import { db } from '@/lib/firebase'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import { doc, updateDoc } from 'firebase/firestore'
 import { Save, UserCircle, Camera, Loader2 } from 'lucide-react'
+import { FitAvatar } from '@/components/ui/fit-avatar'
 
 export default function PerfilPage() {
   const { user, updateUser } = useAuthStore()
@@ -111,13 +112,15 @@ export default function PerfilPage() {
 
               {/* Avatar with upload button */}
               <div className="relative group shrink-0">
-                <div className="w-16 h-16 rounded-full border-3 border-secondary overflow-hidden bg-gray-100 flex items-center justify-center">
-                  {currentAvatar ? (
-                    <img src={currentAvatar} alt="Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <UserCircle className="w-10 h-10 text-gray-400" />
-                  )}
-                </div>
+                <FitAvatar
+                  src={currentAvatar}
+                  alt="Avatar"
+                  size={64}
+                  borderWidth="border-3"
+                  borderColor="border-secondary"
+                  bgColor="bg-gray-100"
+                  fallback={<UserCircle className="w-10 h-10 text-gray-400" />}
+                />
 
                 {/* Overlay button */}
                 <button
