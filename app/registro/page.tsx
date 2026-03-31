@@ -92,7 +92,7 @@ export default function RegistroPage() {
         <div
           className="absolute inset-0 z-0"
           style={{
-            backgroundImage: 'url("/Imagenes/FatuBackground.jpeg")',
+            backgroundImage: 'url("/Imagenes/FatuBackground .jpeg")',
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             opacity: 0.3,
