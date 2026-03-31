@@ -22,20 +22,49 @@ export function UserDropdown() {
   const updateUserProfile = async (updates: { avatar?: string; photoURL?: string }) => {
     if (!user?.uid) return
     await updateDoc(doc(db, 'users', user.uid), updates)
-    
+
     if (updates.photoURL) {
       const postsRef = collection(db, 'posts')
-      const q = query(postsRef, where('autor_id', '==', user.uid))
-      const querySnapshot = await getDocs(q)
+      const querySnapshot = await getDocs(postsRef)
+
       if (!querySnapshot.empty) {
         const batch = writeBatch(db)
         querySnapshot.forEach((docSnap) => {
-          batch.update(docSnap.ref, { autor_avatar: updates.photoURL })
+          const postData = docSnap.data()
+          let needsUpdate = false
+          const postUpdate: any = {}
+
+          // Actualizar avatar del autor del post
+          if (postData.autor_id === user.uid) {
+            postUpdate.autor_avatar = updates.photoURL
+            needsUpdate = true
+          }
+
+          // Actualizar avatares en los comentarios
+          if (Array.isArray(postData.comentarios)) {
+            const updatedComentarios = postData.comentarios.map((comment: any) => {
+              if (comment.autor_username === user.username) {
+                return { ...comment, autor_avatar: updates.photoURL }
+              }
+              return comment
+            })
+
+            // Verificar si algún comentario cambió
+            const changed = JSON.stringify(updatedComentarios) !== JSON.stringify(postData.comentarios)
+            if (changed) {
+              postUpdate.comentarios = updatedComentarios
+              needsUpdate = true
+            }
+          }
+
+          if (needsUpdate) {
+            batch.update(docSnap.ref, postUpdate)
+          }
         })
         await batch.commit()
       }
     }
-    
+
     updateUser(updates)
   }
 
@@ -58,7 +87,7 @@ export function UserDropdown() {
     try {
       const resultado = await uploadToCloudinary(file)
       await updateUserProfile({ photoURL: resultado.url })
-    } catch(err) {
+    } catch (err) {
       console.error("Error al subir imagen:", err)
     } finally {
       setIsSavingAvatar(false)
@@ -106,100 +135,129 @@ export function UserDropdown() {
   }
 
   const daysRemaining = getDaysRemaining()
+  const isPremium = !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
 
   return (
-    <div className="absolute top-full right-0 mt-2 w-80 bg-white border-3 border-secondary shadow-comic z-50">
-      <div className="p-4 border-b-2 border-gray-200">
-        <div className="flex items-start gap-3">
-          <FitAvatar
-            src={user?.photoURL}
-            alt="Avatar"
-            size={56}
-            borderWidth="border-3"
-            borderColor="border-secondary"
-            bgColor="bg-primary"
-            fallback={<UserCircle className="w-10 h-10 text-gray-400" />}
-          />
-          <div className="flex-1 min-w-0">
-            <h3 className="font-label font-bold text-sm text-secondary truncate">
-              {user?.username || 'Usuario'}
-            </h3>
-            <p className="font-label text-xs text-gray-400 truncate">
-              {user?.email}
-            </p>
-            {user?.plan && daysRemaining !== null && daysRemaining > 0 && (
-              <div className="mt-2 bg-accent/20 border-2 border-accent px-2 py-1 inline-block">
-                <span className="font-label text-xs font-bold text-secondary">
-                  {daysRemaining} dias restantes
-                </span>
-              </div>
-            )}
+    <div className="absolute top-full right-0 mt-2 w-[400px] z-50">
+      {/* Animated gradient wrapper for premium users */}
+      {isPremium && (
+        <div
+          className="absolute inset-0 rounded-sm"
+          style={{
+            background: 'linear-gradient(45deg, #ef4444, #ffffff, #3b82f6, #ef4444, #ffffff, #3b82f6)',
+            backgroundSize: '400% 400%',
+            animation: 'premium-gradient-spin 4s linear infinite',
+            boxShadow: '0 0 20px rgba(59,130,246,0.4), 0 0 40px rgba(220,38,38,0.2)',
+          }}
+        />
+      )}
+
+      <div
+        className={`relative shadow-comic ${isPremium ? 'm-[4px]' : 'bg-white border-3 border-secondary'}`}
+        style={isPremium ? {
+          background: 'linear-gradient(135deg, #abd4f0ff 0%, #ffffff 50%, #e97373ff 100%)',
+        } : {}}
+      >
+        <div className="p-5 border-b-2 border-gray-200">
+          <div className="flex items-start gap-4">
+            <FitAvatar
+              src={user?.photoURL}
+              alt="Avatar"
+              size={64}
+              borderWidth="border-3"
+              borderColor="border-secondary"
+              bgColor="bg-primary"
+              isPremium={isPremium}
+              fallback={<UserCircle className="w-12 h-12 text-gray-400" />}
+            />
+            <div className="flex-1 min-w-0 pt-1">
+              <h3 className="font-label font-bold text-base text-secondary truncate">
+                {user?.username || 'Usuario'}
+              </h3>
+              <p className="font-label text-sm text-gray-400 truncate">
+                {user?.email}
+              </p>
+              {isPremium && daysRemaining !== null && (
+                <div className="mt-3 bg-blue-100 border-2 border-blue-400 px-3 py-1.5 inline-flex items-center gap-2">
+                  <span className="text-sm">⭐</span>
+                  <span className="font-label text-xs font-bold text-blue-700 uppercase tracking-tight">
+                    PREMIUM · {daysRemaining} dias
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Avatar Selection */}
-      <div className="p-4 border-b-2 border-gray-200">
-        <h4 className="font-label text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-          Cambiar Avatar
-        </h4>
-        <div className="grid grid-cols-6 gap-2">
-          {avatarOptions.map((avatar) => (
-            <button
-              key={avatar.id}
-              onClick={() => handleAvatarSelect(avatar.id)}
-              disabled={isSavingAvatar}
-              className="relative transition-transform hover:scale-110"
-              title={avatar.name}
-            >
-              <FitAvatar
-                src={avatar.url}
-                alt={avatar.name}
-                size={40}
-                borderColor={user?.avatar === avatar.id ? 'border-primary' : 'border-gray-300'}
-                bgColor="bg-primary"
-                circleClassName={user?.avatar === avatar.id ? 'ring-2 ring-primary/30' : ''}
+        {/* Avatar Selection */}
+        <div className="p-5 border-b-2 border-gray-200">
+          <div className="flex flex-col gap-5">
+            <h4 className="font-label text-xs font-bold text-gray-500 uppercase tracking-widest">
+              Cambiar Avatar
+            </h4>
+
+            <div className="grid grid-cols-6 gap-3">
+              {avatarOptions.map((avatar) => (
+                <button
+                  key={avatar.id}
+                  onClick={() => handleAvatarSelect(avatar.id)}
+                  disabled={isSavingAvatar}
+                  className="relative transition-transform hover:scale-115 active:scale-95"
+                  title={avatar.name}
+                >
+                  <FitAvatar
+                    src={avatar.url}
+                    alt={avatar.name}
+                    size={44}
+                    borderColor={user?.avatar === avatar.id ? 'border-primary' : 'border-gray-300'}
+                    bgColor="bg-primary"
+                    circleClassName={user?.avatar === avatar.id ? 'ring-2 ring-primary/30' : ''}
+                  />
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-col items-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleCustomPhoto}
+                className="hidden"
               />
-            </button>
-          ))}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSavingAvatar}
+                className="font-label text-xs font-bold text-primary hover:underline transition-all disabled:opacity-50 uppercase tracking-wide"
+              >
+                {isSavingAvatar ? 'Subiendo...' : 'Subir foto personalizada'}
+              </button>
+            </div>
+          </div>
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleCustomPhoto}
-          className="hidden"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isSavingAvatar}
-          className="mt-2 w-full font-label text-xs text-primary hover:underline disabled:opacity-50"
-        >
-          {isSavingAvatar ? 'Subiendo...' : 'Subir foto personalizada'}
-        </button>
-      </div>
 
-      {/* Menu Options */}
-      <div className="p-2">
-        <Link
-          href="/perfil"
-          onClick={handleClose}
-          className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 transition-colors"
-        >
-          <Settings className="w-4 h-4 text-gray-500" />
-          <span className="font-label text-sm text-gray-700">Configuracion</span>
-        </Link>
-        <button
-          onClick={async () => {
-            await signOut(auth)
-            logout()
-            handleClose()
-          }}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-red-light transition-colors text-left"
-        >
-          <LogOut className="w-4 h-4 text-primary" />
-          <span className="font-label text-sm text-primary">Cerrar Sesion</span>
-        </button>
+        {/* Menu Options */}
+        <div className="p-2">
+          <Link
+            href="/perfil"
+            onClick={handleClose}
+            className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 transition-colors"
+          >
+            <Settings className="w-4 h-4 text-gray-500" />
+            <span className="font-label text-sm text-gray-700">Configuracion</span>
+          </Link>
+          <button
+            onClick={async () => {
+              await signOut(auth)
+              logout()
+              handleClose()
+            }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-red-light transition-colors text-left"
+          >
+            <LogOut className="w-4 h-4 text-primary" />
+            <span className="font-label text-sm text-primary">Cerrar Sesion</span>
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -173,3 +173,10 @@
   0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
   50% { box-shadow: 0 0 20px 5px rgba(220, 38, 38, 0.2); }
 }
+
+/* Premium user animated gradient */
+@keyframes premium-gradient-spin {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}

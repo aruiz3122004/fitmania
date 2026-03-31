@@ -88,11 +88,17 @@ export default function RegistroPage() {
       <Topbar />
 
       <section className="mt-[72px] min-h-screen bg-navy-dark flex items-center justify-center py-16 relative overflow-hidden">
-        {/* Background pattern */}
-        <div className="absolute inset-0 pointer-events-none" style={{
-          backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px)',
-          backgroundSize: '10px 10px'
-        }} />
+        {/* Background Image with Transparency & Blur */}
+        <div
+          className="absolute inset-0 z-0"
+          style={{
+            backgroundImage: 'url("/Imagenes/FatuBackground.jpeg")',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.3,
+            filter: 'blur(4px)',
+          }}
+        />
 
         <div className="w-full max-w-lg mx-auto px-6 relative z-10">
           {/* Logo */}

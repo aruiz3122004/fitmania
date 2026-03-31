@@ -8,7 +8,7 @@ import { Footer } from '@/components/layout/footer'
 import { useAuthStore } from '@/lib/store'
 import { auth, db } from '@/lib/firebase'
 import { getAvatarUrlById } from '@/lib/avatar-utils'
-import { signInWithEmailAndPassword } from 'firebase/auth'
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Dumbbell } from 'lucide-react'
 
@@ -19,11 +19,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSuccess('')
     setLoading(true)
 
     try {
@@ -54,16 +56,44 @@ export default function LoginPage() {
     }
   }
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError('Por favor ingresa tu correo primero.')
+      return
+    }
+    setError('')
+    setSuccess('')
+    setLoading(true)
+    try {
+      await sendPasswordResetEmail(auth, email)
+      setSuccess('Se ha enviado un enlace para restablecer tu contraseña a tu correo. Revisa tu bandeja de entrada.')
+    } catch (err: any) {
+      if (err.code === 'auth/user-not-found') {
+        setError('No existe un usuario con este correo.')
+      } else {
+        setError('Error al enviar el correo. Verifica tu conexion.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <main>
       <Topbar />
-      
-      <section className="mt-[72px] min-h-screen bg-navy-dark flex items-center justify-center py-16 relative overflow-hidden">
-        {/* Background pattern */}
-        <div className="absolute inset-0 pointer-events-none" style={{
-          backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px)',
-          backgroundSize: '10px 10px'
-        }} />
+
+      <section className="mt-[72px] min-h-screen flex items-center justify-center py-16 relative overflow-hidden bg-navy-dark">
+        {/* Background Image with Transparency & Blur */}
+        <div
+          className="absolute inset-0 z-0"
+          style={{
+            backgroundImage: 'url("/Imagenes/Fitmania Animado.jpeg")',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.3,
+            filter: 'blur(8px)',
+          }}
+        />
 
         <div className="w-full max-w-md mx-auto px-6 relative z-10">
           {/* Logo */}
@@ -91,6 +121,12 @@ export default function LoginPage() {
               </div>
             )}
 
+            {success && (
+              <div className="bg-green-100 border-2 border-green-500 p-3 mb-6">
+                <p className="font-label text-sm text-green-700 text-center">{success}</p>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit}>
               {/* Email */}
               <div className="mb-4">
@@ -103,7 +139,7 @@ export default function LoginPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="tu@correo.com"
+                    placeholder="fitmaniatics@gmail.com"
                     className="w-full font-body pl-11 pr-4 py-3 border-3 border-gray-200 focus:border-primary outline-none transition-colors"
                     required
                   />
@@ -111,9 +147,9 @@ export default function LoginPage() {
               </div>
 
               {/* Password */}
-              <div className="mb-6">
+              <div className="mb-2">
                 <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
-                  Contrasena
+                  Contraseña
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -121,7 +157,7 @@ export default function LoginPage() {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Tu contrasena"
+                    placeholder="Tu contraseña"
                     className="w-full font-body pl-11 pr-12 py-3 border-3 border-gray-200 focus:border-primary outline-none transition-colors"
                     required
                   />
@@ -133,6 +169,17 @@ export default function LoginPage() {
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
+              </div>
+
+              {/* Forgot Password */}
+              <div className="mb-6 text-right">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="font-label text-xs font-bold text-gray-400 hover:text-primary hover:underline uppercase tracking-wide"
+                >
+                  Olvidé mi contraseña
+                </button>
               </div>
 
               {/* Submit */}

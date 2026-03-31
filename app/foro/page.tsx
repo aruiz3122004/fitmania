@@ -35,8 +35,10 @@ import {
 
 type ForumComment = {
   id: string
+  autor_id: string
   autor_username: string
   autor_avatar?: string
+  autor_is_premium?: boolean
   contenido: string
   created_at: Date
 }
@@ -46,6 +48,7 @@ type ForumPost = {
   autor_id: string
   autor_username: string
   autor_avatar: string
+  autor_is_premium?: boolean
   contenido: string
   imagen_url: string | null
   likes: string[]
@@ -168,12 +171,12 @@ function PostCard({
   }
 
   const handleReport = async () => {
-    if (!reportReason) return
+    if (!reportReason || !user) return
 
     try {
       await addDoc(collection(db, 'reportes'), {
-        reportante: user?.username || 'Usuario',
-        reportante_id: user?.uid || '',
+        reportante: user.username,
+        reportante_id: user.uid,
         publicacion_id: post.id,
         autor_publicacion: post.autor_username,
         motivo: reportReason,
@@ -181,7 +184,7 @@ function PostCard({
         fecha_reporte: new Date()
       })
 
-      console.log(`Email mock a: administrador@fitmania.com\nAsunto: Reporte de publicacion\nMensaje: El usuario ${user?.username} ha reportado la publicacion de ${post.autor_username} subida el ${post.created_at}. Motivo: ${reportReason}`)
+      console.log(`Email mock a: administrador@fitmania.com\nAsunto: Reporte de publicacion\nMensaje: El usuario ${user.username} ha reportado la publicacion de ${post.autor_username} subida el ${post.created_at}. Motivo: ${reportReason}`)
       setReportStatus('success')
     } catch (err) {
       console.error('Error al guardar reporte:', err)
@@ -209,15 +212,22 @@ function PostCard({
   return (
     <div className="bg-white border-3 border-secondary shadow-comic-sm mb-6">
       <div className="flex items-center gap-3 p-4 border-b-2 border-gray-200">
-        <FitAvatar
-          src={post.autor_avatar || null}
-          alt={post.autor_username}
-          size={48}
-          borderWidth="border-3"
-          borderColor="border-secondary"
-          bgColor="bg-primary"
-          fallback={<UserCircle className="w-8 h-8 text-gray-400" />}
-        />
+        {(() => {
+          const currentUserIsPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
+          const isPostPremium = post.autor_is_premium || (user?.uid === post.autor_id && currentUserIsPremium)
+          return (
+            <FitAvatar
+              src={post.autor_avatar || null}
+              alt={post.autor_username}
+              size={48}
+              borderWidth="border-3"
+              borderColor="border-secondary"
+              bgColor="bg-primary"
+              isPremium={isPostPremium}
+              fallback={<UserCircle className="w-8 h-8 text-gray-400" />}
+            />
+          )
+        })()}
         <div>
           <h4 className="font-label font-bold text-sm text-secondary">{post.autor_username}</h4>
           <span className="font-label text-xs text-gray-400">{formatDate(post.created_at)}</span>
@@ -256,7 +266,16 @@ function PostCard({
         <button onClick={handleShare} className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-secondary transition-colors">
           <Share2 className="w-5 h-5" />
         </button>
-        <button onClick={() => setShowReport(true)} className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-red-dark transition-colors ml-auto">
+        <button 
+          onClick={() => {
+            if (!isAuthenticated) {
+              alert('Debes iniciar sesión para reportar una publicación.')
+              return
+            }
+            setShowReport(true)
+          }} 
+          className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-red-dark transition-colors ml-auto"
+        >
           <Flag className="w-5 h-5" />
         </button>
       </div>
@@ -296,6 +315,9 @@ function PostCard({
           {post.comentarios.map((comment) => {
             // If the comment doesn't have a stored avatar, fall back to the current user's photo (for old comments)
             const commentAvatar = comment.autor_avatar || (user?.username === comment.autor_username ? user?.photoURL : null) || null
+            // Premium detection: use stored value, but also check if comment is from current premium user (for old comments without the field)
+            const currentUserIsPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
+            const isCommentPremium = comment.autor_is_premium || (user?.username === comment.autor_username && currentUserIsPremium)
             return (
             <div key={comment.id} className="flex gap-3 mb-4 last:mb-0">
               <FitAvatar
@@ -304,6 +326,7 @@ function PostCard({
                 size={34}
                 borderColor="border-secondary"
                 bgColor="bg-primary"
+                isPremium={isCommentPremium}
                 fallback={
                   <span className="font-label font-bold text-xs text-white">
                     {comment.autor_username?.charAt(0) || 'U'}
@@ -329,6 +352,7 @@ function PostCard({
                 size={34}
                 borderColor="border-secondary"
                 bgColor="bg-primary"
+                isPremium={!!(user?.plan && new Date(user.plan.expira) > new Date())}
                 fallback={
                   <span className="font-label font-bold text-xs text-white">
                     {user?.username?.charAt(0) || 'U'}
@@ -399,6 +423,7 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
           borderWidth="border-3"
           borderColor="border-secondary"
           bgColor="bg-primary"
+          isPremium={!!(user?.plan && new Date(user.plan.expira) > new Date())}
           fallback={<span className="font-display text-lg text-white">{user?.username?.charAt(0) || 'U'}</span>}
         />
         <div className="flex-1">
@@ -449,14 +474,17 @@ export default function ForoPage() {
           autor_id: raw.autor_id,
           autor_username: raw.autor_username,
           autor_avatar: raw.autor_avatar || '',
+          autor_is_premium: !!raw.autor_is_premium,
           contenido: raw.contenido || '',
           imagen_url: raw.imagen_url || null,
           likes: Array.isArray(raw.likes) ? raw.likes : [],
           comentarios: Array.isArray(raw.comentarios)
             ? raw.comentarios.map((c: any) => ({
               id: c.id,
+              autor_id: c.autor_id || '',
               autor_username: c.autor_username,
               autor_avatar: c.autor_avatar || '',
+              autor_is_premium: !!c.autor_is_premium,
               contenido: c.contenido,
               created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
             }))
@@ -491,10 +519,13 @@ export default function ForoPage() {
       imageUrl = resultado.url  // URL pública de Cloudinary
     }
 
+    const isPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
+
     await addDoc(collection(db, 'posts'), {
       autor_id: user.uid,
       autor_username: user.username,
       autor_avatar: user.photoURL || '',
+      autor_is_premium: isPremium,
       contenido: content,
       imagen_url: imageUrl,
       likes: [],
@@ -506,11 +537,15 @@ export default function ForoPage() {
   const handleAddComment = async (postId: string, content: string) => {
     if (!user?.uid) return
     const postRef = doc(db, 'posts', postId)
+    const isPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
+
     await updateDoc(postRef, {
       comentarios: arrayUnion({
         id: `${user.uid}-${Date.now()}`,
+        autor_id: user.uid,
         autor_username: user.username,
         autor_avatar: user.photoURL || '',
+        autor_is_premium: isPremium,
         contenido: content,
         created_at: new Date(),
       }),

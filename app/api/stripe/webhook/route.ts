@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { sendPaymentSuccessEmail, sendPaymentFailedEmail } from '@/services/mail'
+import { db } from '@/lib/firebase'
+import { doc, updateDoc } from 'firebase/firestore'
  
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-03-25.dahlia',
@@ -40,6 +42,7 @@ export async function POST(req: NextRequest) {
       // Nombre del banco según el código guardado en metadata
       const bancoNombre = BANCOS_PSE.find((b) => b.codigo === meta.bank)?.nombre || meta.bank
  
+      // 1. Enviar email de éxito
       await sendPaymentSuccessEmail({
         to: meta.customerEmail,
         customerName: meta.customerName,
@@ -49,6 +52,38 @@ export async function POST(req: NextRequest) {
         date,
         transactionId: paymentIntent.id,
       })
+
+      // 2. Activar plan en la base de datos (Firestore)
+      if (meta.uid) {
+        let dias = 30
+        const concepto = meta.concept?.toLowerCase() || ''
+        
+        if (concepto.includes('parejas')) {
+          dias = 40
+        } else if (concepto.includes('dos en uno')) {
+          dias = 60
+        }
+
+        const ahora = new Date()
+        const expira = new Date()
+        expira.setDate(ahora.getDate() + dias)
+
+        try {
+          await updateDoc(doc(db, 'users', meta.uid), {
+            plan: {
+              nombre: meta.concept,
+              precio: paymentIntent.amount / 100, // Dividir entre 100 porque Stripe usa centavos
+              dias_total: dias,
+              inicio: ahora,
+              expira: expira
+            }
+          })
+          console.log(`Plan ${meta.concept} activado para el usuario ${meta.uid}`)
+        } catch (dbErr: any) {
+          console.error('Error al actualizar Firestore:', dbErr.message)
+          // No retornamos error aquí para evitar que Stripe reintente el webhook si el email ya se envió
+        }
+      }
       break
     }
  

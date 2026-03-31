@@ -315,6 +315,8 @@ import { Elements, CardElement, useStripe, useElements } from '@stripe/react-str
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { useAuthStore } from '@/lib/store'
+import { db } from '@/lib/firebase'
+import { doc, updateDoc } from 'firebase/firestore'
 import { ShieldCheck, CreditCard, Loader2 } from 'lucide-react'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!)
@@ -338,7 +340,7 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
 }) {
   const stripe = useStripe()
   const elements = useElements()
-  const { user } = useAuthStore()
+  const { user, updateUser } = useAuthStore()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -357,6 +359,7 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
           concept,
           customerEmail: user?.email || '',
           customerName: user?.username || '',
+          uid: user?.uid || '',
         }),
       })
 
@@ -390,6 +393,33 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
           }),
         })
         setSuccess(true)
+
+        // 3. Actualizar Firestore directamente (para feedback instantáneo y pruebas en localhost)
+        if (user?.uid) {
+          let dias = 30
+          const conceptoLCase = concept.toLowerCase()
+          if (conceptoLCase.includes('parejas')) dias = 40
+          else if (conceptoLCase.includes('dos en uno')) dias = 60
+
+          const ahora = new Date()
+          const expira = new Date()
+          expira.setDate(ahora.getDate() + dias)
+
+          const planData = {
+            nombre: concept,
+            precio: amount,
+            dias_total: dias,
+            inicio: ahora,
+            expira: expira,
+          }
+
+          try {
+            await updateDoc(doc(db, 'users', user.uid), { plan: planData })
+            updateUser({ plan: planData })
+          } catch (err) {
+            console.error("Error al actualizar plan localmente:", err)
+          }
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Error al procesar el pago')

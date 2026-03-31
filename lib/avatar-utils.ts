@@ -11,9 +11,10 @@ export function getAvatarUrlById(avatarId: string) {
   return avatarOptions.find((avatar) => avatar.id === avatarId)?.url
 }
 
-/** Returns true if the given URL belongs to one of the 6 built-in avatars */
-export function isDefaultAvatarUrl(url: string): boolean {
-  return avatarOptions.some((avatar) => avatar.url === url)
+export function isDefaultAvatarUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  const lowerUrl = url.toLowerCase()
+  return avatarOptions.some((avatar) => lowerUrl.includes(avatar.id.toLowerCase() + 'new') || url.includes(avatar.url))
 }
 
 

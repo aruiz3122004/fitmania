@@ -9,7 +9,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { amount, concept, customerEmail, customerName } = body
+    const { amount, concept, customerEmail, customerName, uid } = body
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100),
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       payment_method_types: ['card'],
       description: concept,
       receipt_email: customerEmail,
-      metadata: { customerName, customerEmail, concept },
+      metadata: { customerName, customerEmail, concept, uid },
     })
 
     // Devuelve el clientSecret al frontend
