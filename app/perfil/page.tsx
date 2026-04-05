@@ -146,9 +146,9 @@ export default function PerfilPage() {
                 />
               </div>
 
-              <div>
-                <h3 className="font-heading font-extrabold text-xl text-secondary">{user?.username || 'Usuario'}</h3>
-                <p className="font-label text-sm text-gray-500">{user?.email || 'Sin sesion'}</p>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-heading font-extrabold text-xl text-secondary truncate">{user?.username || 'Usuario'}</h3>
+                <p className="font-label text-sm text-gray-500 truncate">{user?.email || 'Sin sesion'}</p>
                 <button
                   onClick={handleAvatarClick}
                   disabled={isUploadingAvatar}

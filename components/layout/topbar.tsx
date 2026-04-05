@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ShoppingCart, User, Menu, X } from 'lucide-react'
 import { useCartStore, useAuthStore, useUIStore } from '@/lib/store'
 import { UserDropdown } from './user-dropdown'
@@ -29,6 +29,26 @@ export function Topbar() {
   const { user, isAuthenticated, setUser } = useAuthStore()
   const { isMobileMenuOpen, setMobileMenuOpen, isUserDropdownOpen, setUserDropdownOpen } = useUIStore()
   const [scrolled, setScrolled] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setUserDropdownOpen(false)
+      }
+    }
+
+    if (isUserDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isUserDropdownOpen, setUserDropdownOpen])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -61,12 +81,12 @@ export function Topbar() {
         photoURL: photoURL,
         peso: raw?.peso,
         altura: raw?.altura,
-        plan: raw?.plan 
+        plan: raw?.plan
           ? {
-              ...raw.plan,
-              inicio: raw.plan.inicio?.toDate?.() || new Date(raw.plan.inicio),
-              expira: raw.plan.expira?.toDate?.() || new Date(raw.plan.expira),
-            } 
+            ...raw.plan,
+            inicio: raw.plan.inicio?.toDate?.() || new Date(raw.plan.inicio),
+            expira: raw.plan.expira?.toDate?.() || new Date(raw.plan.expira),
+          }
           : null,
       })
     })
@@ -75,10 +95,9 @@ export function Topbar() {
   }, [setUser])
 
   return (
-    <header 
-      className={`fixed top-0 left-0 right-0 z-50 bg-primary border-b-4 border-secondary transition-shadow duration-300 ${
-        scrolled ? 'shadow-[0_4px_30px_rgba(0,0,0,0.4)]' : 'shadow-[0_4px_20px_rgba(0,0,0,0.3)]'
-      }`}
+    <header
+      className={`fixed top-0 left-0 right-0 z-50 bg-primary border-b-4 border-secondary transition-shadow duration-300 ${scrolled ? 'shadow-[0_4px_30px_rgba(0,0,0,0.4)]' : 'shadow-[0_4px_20px_rgba(0,0,0,0.3)]'
+        }`}
     >
       {/* Helper component for calculating remaining days */}
       {(() => {
@@ -95,7 +114,14 @@ export function Topbar() {
         return (
           <div className="max-w-[1400px] mx-auto flex items-center justify-between px-8 h-[72px]">
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-3 transition-transform hover:scale-[1.03]">
+            <Link
+              href="/"
+              onClick={() => {
+                setMobileMenuOpen(false)
+                setUserDropdownOpen(false)
+              }}
+              className="flex items-center gap-3 transition-transform hover:scale-[1.03]"
+            >
               <FitAvatar
                 src="/Imagenes/Avatares/FitmanNEW.png"
                 alt="Fitmania logo"
@@ -121,9 +147,8 @@ export function Topbar() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`font-heading font-bold text-[0.9rem] text-white px-4 py-2 uppercase tracking-[1px] relative transition-all border-2 border-transparent hover:bg-black/15 hover:border-white/20 ${
-                    pathname === link.href ? 'after:scale-x-100' : 'after:scale-x-0'
-                  } after:content-[''] after:absolute after:bottom-[2px] after:left-1/2 after:-translate-x-1/2 after:w-[70%] after:h-[3px] after:bg-accent after:transition-transform hover:after:scale-x-100`}
+                  className={`font-heading font-bold text-[0.9rem] text-white px-4 py-2 uppercase tracking-[1px] relative transition-all border-2 border-transparent hover:bg-black/15 hover:border-white/20 ${pathname === link.href ? 'after:scale-x-100' : 'after:scale-x-0'
+                    } after:content-[''] after:absolute after:bottom-[2px] after:left-1/2 after:-translate-x-1/2 after:w-[70%] after:h-[3px] after:bg-accent after:transition-transform hover:after:scale-x-100`}
                 >
                   {link.label}
                 </Link>
@@ -132,8 +157,8 @@ export function Topbar() {
 
             {/* Actions */}
             <div className="flex items-center gap-3">
-              <Link 
-                href="/carrito" 
+              <Link
+                href="/carrito"
                 className="relative text-white p-2 transition-transform hover:scale-115 hover:-rotate-5"
                 aria-label="Carrito de compras"
               >
@@ -145,7 +170,7 @@ export function Topbar() {
                 )}
               </Link>
 
-              <div className="relative">
+              <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setUserDropdownOpen(!isUserDropdownOpen)}
                   className="text-white p-2 transition-transform hover:scale-115"
@@ -197,10 +222,9 @@ export function Topbar() {
         const isPremium = !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
 
         return (
-          <div 
-            className={`lg:hidden flex flex-col bg-red-dark border-t-3 border-secondary overflow-hidden transition-[max-height] duration-400 ${
-              isMobileMenuOpen ? 'max-h-[800px]' : 'max-h-0'
-            }`}
+          <div
+            className={`lg:hidden flex flex-col bg-red-dark border-t-3 border-secondary overflow-hidden transition-[max-height] duration-400 ${isMobileMenuOpen ? 'max-h-[800px]' : 'max-h-0'
+              }`}
           >
             {navLinks.map((link) => (
               <Link
@@ -226,12 +250,12 @@ export function Topbar() {
                 <div className="px-8 py-4 flex items-center gap-3">
                   {user?.photoURL ? (
                     <FitAvatar
-                       src={user.photoURL}
-                       alt="Avatar"
-                       size={32}
-                       borderColor="border-white"
-                       bgColor="bg-primary"
-                       isPremium={isPremium}
+                      src={user.photoURL}
+                      alt="Avatar"
+                      size={32}
+                      borderColor="border-white"
+                      bgColor="bg-primary"
+                      isPremium={isPremium}
                     />
                   ) : (
                     <User className="w-8 h-8 text-white" strokeWidth={2.5} />

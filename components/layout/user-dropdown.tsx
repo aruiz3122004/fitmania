@@ -105,7 +105,7 @@ export function UserDropdown() {
 
   if (!isAuthenticated) {
     return (
-      <div className="absolute top-full right-0 mt-2 w-72 bg-white border-3 border-secondary shadow-comic z-50">
+      <div className="absolute top-full -right-4 sm:right-0 mt-2 w-[calc(100vw-2rem)] sm:w-72 max-w-xs bg-white border-3 border-secondary shadow-comic z-50">
         <div className="p-4">
           <h3 className="font-display text-xl text-secondary tracking-wider mb-3">
             BIENVENIDO
@@ -138,7 +138,7 @@ export function UserDropdown() {
   const isPremium = !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
 
   return (
-    <div className="absolute top-full right-0 mt-2 w-[400px] z-50">
+    <div className="absolute top-full -right-4 sm:right-0 mt-2 w-[calc(100vw-2rem)] sm:w-[400px] max-w-[400px] z-50">
       {/* Animated gradient wrapper for premium users */}
       {isPremium && (
         <div

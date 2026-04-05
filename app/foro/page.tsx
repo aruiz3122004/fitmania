@@ -31,6 +31,7 @@ import {
   ChevronRight,
   UserCircle,
   ImageIcon,
+  Video,
 } from 'lucide-react'
 
 type ForumComment = {
@@ -51,6 +52,7 @@ type ForumPost = {
   autor_is_premium?: boolean
   contenido: string
   imagen_url: string | null
+  tipo_recurso?: 'image' | 'video'
   likes: string[]
   comentarios: ForumComment[]
   created_at: Date
@@ -237,14 +239,22 @@ function PostCard({
       <div className="p-4">
         <p className="font-body text-gray-700 leading-relaxed mb-4">{post.contenido}</p>
         {post.imagen_url && (
-          <div className="relative w-full h-[400px] border-3 border-secondary overflow-hidden mb-4 bg-gray-50/50">
-            <Image
-              src={post.imagen_url}
-              alt="Post image"
-              fill
-              className="object-contain"
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            />
+          <div className="relative w-full h-[400px] border-3 border-secondary overflow-hidden mb-4 bg-black flex items-center justify-center">
+            {post.tipo_recurso === 'video' ? (
+              <video
+                src={post.imagen_url}
+                controls
+                className="w-full h-full object-contain"
+              />
+            ) : (
+              <Image
+                src={post.imagen_url}
+                alt="Post content"
+                fill
+                className="object-contain"
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              />
+            )}
           </div>
         )}
       </div>
@@ -266,14 +276,14 @@ function PostCard({
         <button onClick={handleShare} className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-secondary transition-colors">
           <Share2 className="w-5 h-5" />
         </button>
-        <button 
+        <button
           onClick={() => {
             if (!isAuthenticated) {
               alert('Debes iniciar sesión para reportar una publicación.')
               return
             }
             setShowReport(true)
-          }} 
+          }}
           className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-red-dark transition-colors ml-auto"
         >
           <Flag className="w-5 h-5" />
@@ -319,28 +329,28 @@ function PostCard({
             const currentUserIsPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
             const isCommentPremium = comment.autor_is_premium || (user?.username === comment.autor_username && currentUserIsPremium)
             return (
-            <div key={comment.id} className="flex gap-3 mb-4 last:mb-0">
-              <FitAvatar
-                src={commentAvatar}
-                alt={comment.autor_username}
-                size={34}
-                borderColor="border-secondary"
-                bgColor="bg-primary"
-                isPremium={isCommentPremium}
-                fallback={
-                  <span className="font-label font-bold text-xs text-white">
-                    {comment.autor_username?.charAt(0) || 'U'}
-                  </span>
-                }
-              />
-              <div className="flex-1">
-                <div className="bg-white p-3 border-2 border-gray-200">
-                  <span className="font-label font-bold text-xs text-secondary">{comment.autor_username}</span>
-                  <p className="font-body text-sm text-gray-700">{comment.contenido}</p>
+              <div key={comment.id} className="flex gap-3 mb-4 last:mb-0">
+                <FitAvatar
+                  src={commentAvatar}
+                  alt={comment.autor_username}
+                  size={34}
+                  borderColor="border-secondary"
+                  bgColor="bg-primary"
+                  isPremium={isCommentPremium}
+                  fallback={
+                    <span className="font-label font-bold text-xs text-white">
+                      {comment.autor_username?.charAt(0) || 'U'}
+                    </span>
+                  }
+                />
+                <div className="flex-1">
+                  <div className="bg-white p-3 border-2 border-gray-200">
+                    <span className="font-label font-bold text-xs text-secondary">{comment.autor_username}</span>
+                    <p className="font-body text-sm text-gray-700">{comment.contenido}</p>
+                  </div>
+                  <span className="font-label text-xs text-gray-400 mt-1 block">{formatDate(comment.created_at)}</span>
                 </div>
-                <span className="font-label text-xs text-gray-400 mt-1 block">{formatDate(comment.created_at)}</span>
               </div>
-            </div>
             )
           })}
 
@@ -359,13 +369,13 @@ function PostCard({
                   </span>
                 }
               />
-              <div className="flex-1 flex gap-2">
+              <div className="flex-1 min-w-0 flex gap-2">
                 <input
                   type="text"
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Escribe un comentario..."
-                  className="flex-1 font-body text-sm px-3 py-2 border-2 border-gray-200 focus:border-primary outline-none"
+                  className="flex-1 min-w-0 font-body text-sm px-3 py-2 border-2 border-gray-200 focus:border-primary outline-none"
                 />
                 <button
                   onClick={handleComment}
@@ -436,11 +446,17 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
           />
           <div className="flex items-center justify-between mt-3">
             <label className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-primary transition-colors cursor-pointer">
-              <ImageIcon className="w-5 h-5" />
-              <span>{selectedFile ? selectedFile.name : 'Agregar imagen'}</span>
+              {selectedFile?.type.startsWith('video/') ? (
+                <Video className="w-5 h-5 text-primary" />
+              ) : (
+                <ImageIcon className="w-5 h-5" />
+              )}
+              <span className="truncate max-w-[200px]">
+                {selectedFile ? selectedFile.name : 'Agregar imagen o video'}
+              </span>
               <input
                 type="file"
-                accept="image/*"
+                accept="image/*,video/*"
                 className="hidden"
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
               />
@@ -477,6 +493,7 @@ export default function ForoPage() {
           autor_is_premium: !!raw.autor_is_premium,
           contenido: raw.contenido || '',
           imagen_url: raw.imagen_url || null,
+          tipo_recurso: raw.tipo_recurso || 'image',
           likes: Array.isArray(raw.likes) ? raw.likes : [],
           comentarios: Array.isArray(raw.comentarios)
             ? raw.comentarios.map((c: any) => ({
@@ -514,9 +531,11 @@ export default function ForoPage() {
     if (!user?.uid) return
 
     let imageUrl: string | null = null
+    let resourceType: 'image' | 'video' = 'image'
     if (file) {
       const resultado = await uploadToCloudinary(file)
-      imageUrl = resultado.url  // URL pública de Cloudinary
+      imageUrl = resultado.url
+      resourceType = resultado.resourceType as 'image' | 'video'
     }
 
     const isPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
@@ -528,6 +547,7 @@ export default function ForoPage() {
       autor_is_premium: isPremium,
       contenido: content,
       imagen_url: imageUrl,
+      tipo_recurso: resourceType,
       likes: [],
       comentarios: [],
       created_at: serverTimestamp(),

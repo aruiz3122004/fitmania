@@ -4,23 +4,23 @@ import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { AuthProvider } from './context/AuthContext'
 
-const bangers = Bangers({ 
+const bangers = Bangers({
   weight: '400',
   subsets: ['latin'],
   variable: '--font-display'
 })
 
-const epilogue = Epilogue({ 
+const epilogue = Epilogue({
   subsets: ['latin'],
   variable: '--font-heading'
 })
 
-const plusJakarta = Plus_Jakarta_Sans({ 
+const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
   variable: '--font-body'
 })
 
-const spaceGrotesk = Space_Grotesk({ 
+const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
   variable: '--font-label'
 })
@@ -29,12 +29,8 @@ export const metadata: Metadata = {
   title: 'FITMANIA - Tu Pasion. Tu Fuerza.',
   description: 'Gimnasio con estilo de superheroes. Planes de membresia, suplementos, snacks y ropa fitness.',
   icons: {
-    icon: [
-      { url: '/icon-light-32x32.png', media: '(prefers-color-scheme: light)' },
-      { url: '/icon-dark-32x32.png', media: '(prefers-color-scheme: dark)' },
-      { url: '/icon.svg', type: 'image/svg+xml' },
-    ],
-    apple: '/apple-icon.png',
+    icon: '/Imagenes/Avatares/FitmanNEW.png',
+    apple: '/Imagenes/Avatares/FitmanNEW.png',
   },
 }
 
