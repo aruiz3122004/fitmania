@@ -19,6 +19,7 @@ import {
   serverTimestamp,
   updateDoc,
   doc,
+  deleteDoc,
 } from 'firebase/firestore'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import {
@@ -32,6 +33,10 @@ import {
   UserCircle,
   ImageIcon,
   Video,
+  Trash2,
+  Pencil,
+  Check,
+  X,
 } from 'lucide-react'
 
 type ForumComment = {
@@ -141,10 +146,18 @@ function PostCard({
   post,
   onLike,
   onAddComment,
+  onDeletePost,
+  onDeleteComment,
+  onEditComment,
+  onEditPost,
 }: {
   post: ForumPost
   onLike: (id: string) => void
   onAddComment: (id: string, content: string) => Promise<void>
+  onDeletePost: (id: string) => Promise<void>
+  onDeleteComment: (postId: string, commentId: string) => Promise<void>
+  onEditComment: (postId: string, commentId: string, newContent: string) => Promise<void>
+  onEditPost: (postId: string, newContent: string) => Promise<void>
 }) {
   const { user, isAuthenticated } = useAuthStore()
   const [showComments, setShowComments] = useState(false)
@@ -153,8 +166,18 @@ function PostCard({
   const [showReport, setShowReport] = useState(false)
   const [reportReason, setReportReason] = useState('')
   const [reportStatus, setReportStatus] = useState<'idle' | 'success'>('idle')
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState('')
+  const [isUpdatingComment, setIsUpdatingComment] = useState(false)
+  const [isEditingPost, setIsEditingPost] = useState(false)
+  const [editingPostContent, setEditingPostContent] = useState('')
+  const [isUpdatingPost, setIsUpdatingPost] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [commentToDelete, setCommentToDelete] = useState<{ postId: string; commentId: string } | null>(null)
+
   const reportOptions = ['Terrorismo', 'Discurso de odio', 'Racismo', 'Desnudos', 'Otro']
   const isLiked = user ? post.likes.includes(user.uid) : false
+  const isAuthor = user?.uid === post.autor_id
 
   const handleShare = async () => {
     if (navigator.share) {
@@ -230,14 +253,68 @@ function PostCard({
             />
           )
         })()}
-        <div>
-          <h4 className="font-label font-bold text-sm text-secondary">{post.autor_username}</h4>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-label font-bold text-sm text-secondary truncate">{post.autor_username}</h4>
           <span className="font-label text-xs text-gray-400">{formatDate(post.created_at)}</span>
         </div>
+        {isAuthor && (
+          <div className="flex gap-1">
+            {!isEditingPost && (
+              <button 
+                onClick={() => {
+                  setIsEditingPost(true)
+                  setEditingPostContent(post.contenido)
+                }}
+                className="p-2 text-gray-400 hover:text-secondary transition-colors"
+                title="Editar publicación"
+              >
+                <Pencil className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="p-2 text-gray-400 hover:text-primary transition-colors"
+              title="Eliminar publicación"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="p-4">
-        <p className="font-body text-gray-700 leading-relaxed mb-4">{post.contenido}</p>
+        {isEditingPost ? (
+          <div className="mb-4">
+            <textarea
+              value={editingPostContent}
+              onChange={(e) => setEditingPostContent(e.target.value)}
+              className="w-full font-body text-gray-700 p-3 border-3 border-secondary outline-none focus:border-primary resize-none shadow-comic-sm bg-gray-50"
+              rows={4}
+            />
+            <div className="flex justify-end gap-3 mt-3">
+              <button 
+                onClick={() => setIsEditingPost(false)}
+                className="px-4 py-2 border-2 border-secondary font-label font-bold text-xs hover:bg-gray-100 transition-all hover:shadow-comic-sm"
+              >
+                CANCELAR
+              </button>
+              <button 
+                onClick={async () => {
+                  setIsUpdatingPost(true)
+                  await onEditPost(post.id, editingPostContent)
+                  setIsEditingPost(false)
+                  setIsUpdatingPost(false)
+                }}
+                disabled={isUpdatingPost || !editingPostContent.trim()}
+                className="px-4 py-2 bg-primary text-white border-2 border-secondary font-label font-bold text-xs hover:bg-red-dark transition-all hover:-translate-y-0.5 hover:shadow-comic-sm disabled:opacity-50"
+              >
+                {isUpdatingPost ? 'GUARDANDO...' : 'GUARDAR CAMBIOS'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="font-body text-gray-700 leading-relaxed mb-4 whitespace-pre-wrap">{post.contenido}</p>
+        )}
         {post.imagen_url && (
           <div className="relative w-full h-[400px] border-3 border-secondary overflow-hidden mb-4 bg-black flex items-center justify-center">
             {post.tipo_recurso === 'video' ? (
@@ -290,6 +367,92 @@ function PostCard({
         </button>
       </div>
 
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white border-4 border-secondary p-8 w-full max-w-sm shadow-comic relative overflow-hidden text-center sm:text-left">
+            {/* Superhero style decoration */}
+            <div className="absolute -right-4 -top-4 w-16 h-16 bg-primary border-4 border-secondary rotate-45" />
+            <div className="absolute -left-4 -bottom-4 w-12 h-12 bg-accent border-4 border-secondary rotate-12" />
+            
+            <div className="relative">
+              <div className="flex flex-col sm:flex-row items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-primary rounded-full border-3 border-secondary flex items-center justify-center text-white shadow-comic-sm shrink-0">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <h3 className="font-display text-2xl text-secondary tracking-tighter italic font-black uppercase">
+                  ¿BORRAR POST?
+                </h3>
+              </div>
+              
+              <p className="font-body text-gray-600 mb-8 leading-tight">
+                ¡Atención! Estás a punto de eliminar esta publicación para siempre. ¿Deseas proceder?
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button 
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 py-3 border-3 border-secondary font-label font-bold text-sm tracking-wider hover:bg-gray-100 transition-all hover:-translate-y-1 active:translate-y-0 hover:shadow-comic-sm"
+                >
+                  CANCELAR
+                </button>
+                <button 
+                  onClick={async () => {
+                    await onDeletePost(post.id)
+                    setShowDeleteConfirm(false)
+                  }}
+                  className="flex-1 py-3 bg-primary text-white border-3 border-secondary font-label font-bold text-sm tracking-wider hover:bg-red-dark transition-all hover:-translate-y-1 active:translate-y-0 hover:shadow-comic-sm"
+                >
+                  ¡ELIMINAR!
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {commentToDelete && (
+        <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-[101] flex items-center justify-center p-4">
+          <div className="bg-white border-4 border-secondary p-8 w-full max-w-sm shadow-comic relative overflow-hidden text-center sm:text-left">
+            {/* Superhero style decoration */}
+            <div className="absolute -right-4 -top-4 w-16 h-16 bg-primary border-4 border-secondary rotate-45" />
+            <div className="absolute -left-4 -bottom-4 w-12 h-12 bg-accent border-4 border-secondary rotate-12" />
+            
+            <div className="relative">
+              <div className="flex flex-col sm:flex-row items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-primary rounded-full border-3 border-secondary flex items-center justify-center text-white shadow-comic-sm shrink-0">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <h3 className="font-display text-2xl text-secondary tracking-tighter italic font-black uppercase">
+                  ¿BORRAR COMENTARIO?
+                </h3>
+              </div>
+              
+              <p className="font-body text-gray-600 mb-8 leading-tight">
+                ¡Cuidado héroe! ¿Estás seguro de que quieres eliminar este comentario? Esta acción no se puede deshacer.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button 
+                  onClick={() => setCommentToDelete(null)}
+                  className="flex-1 py-3 border-3 border-secondary font-label font-bold text-sm tracking-wider hover:bg-gray-100 transition-all hover:-translate-y-1 active:translate-y-0 hover:shadow-comic-sm"
+                >
+                  CANCELAR
+                </button>
+                <button 
+                  onClick={async () => {
+                    await onDeleteComment(commentToDelete.postId, commentToDelete.commentId)
+                    setCommentToDelete(null)
+                  }}
+                  className="flex-1 py-3 bg-primary text-white border-3 border-secondary font-label font-bold text-sm tracking-wider hover:bg-red-dark transition-all hover:-translate-y-1 active:translate-y-0 hover:shadow-comic-sm"
+                >
+                  ¡ELIMINAR!
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showReport && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white border-3 border-secondary p-6 w-full max-w-md shadow-comic">
@@ -328,6 +491,11 @@ function PostCard({
             // Premium detection: use stored value, but also check if comment is from current premium user (for old comments without the field)
             const currentUserIsPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
             const isCommentPremium = comment.autor_is_premium || (user?.username === comment.autor_username && currentUserIsPremium)
+            const isCommentAuthor = user?.uid === comment.autor_id
+            const canDeleteComment = isCommentAuthor || isAuthor
+            const canEditComment = isCommentAuthor
+            const isEditing = editingCommentId === comment.id
+
             return (
               <div key={comment.id} className="flex gap-3 mb-4 last:mb-0">
                 <FitAvatar
@@ -343,10 +511,66 @@ function PostCard({
                     </span>
                   }
                 />
-                <div className="flex-1">
-                  <div className="bg-white p-3 border-2 border-gray-200">
+                <div className="flex-1 min-w-0">
+                  <div className="bg-white p-3 border-2 border-gray-200 relative group">
                     <span className="font-label font-bold text-xs text-secondary">{comment.autor_username}</span>
-                    <p className="font-body text-sm text-gray-700">{comment.contenido}</p>
+                    {isEditing ? (
+                      <div className="mt-2">
+                        <textarea
+                          value={editingContent}
+                          onChange={(e) => setEditingContent(e.target.value)}
+                          className="w-full font-body text-sm p-2 border-2 border-gray-200 outline-none focus:border-primary resize-none"
+                          rows={2}
+                        />
+                        <div className="flex justify-end gap-2 mt-2">
+                          <button
+                            onClick={() => setEditingCommentId(null)}
+                            className="p-1 text-gray-400 hover:text-secondary"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              setIsUpdatingComment(true)
+                              await onEditComment(post.id, comment.id, editingContent)
+                              setEditingCommentId(null)
+                              setIsUpdatingComment(false)
+                            }}
+                            disabled={isUpdatingComment || !editingContent.trim()}
+                            className="p-1 text-primary hover:text-red-dark disabled:opacity-50"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="font-body text-sm text-gray-700 break-words overflow-hidden [overflow-wrap:anywhere]">{comment.contenido}</p>
+                    )}
+
+                    {/* Management Buttons */}
+                    <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                      {canEditComment && !isEditing && (
+                        <button
+                          onClick={() => {
+                            setEditingCommentId(comment.id)
+                            setEditingContent(comment.contenido)
+                          }}
+                          className="p-1 text-gray-400 hover:text-secondary"
+                          title="Editar"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {canDeleteComment && !isEditing && (
+                        <button
+                          onClick={() => setCommentToDelete({ postId: post.id, commentId: comment.id })}
+                          className="p-1 text-gray-400 hover:text-primary transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <span className="font-label text-xs text-gray-400 mt-1 block">{formatDate(comment.created_at)}</span>
                 </div>
@@ -424,18 +648,20 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
   }
 
   return (
-    <div className="bg-white border-3 border-secondary shadow-comic-sm p-6 mb-8">
-      <div className="flex gap-4">
-        <FitAvatar
-          src={user?.photoURL}
-          alt="Avatar"
-          size={48}
-          borderWidth="border-3"
-          borderColor="border-secondary"
-          bgColor="bg-primary"
-          isPremium={!!(user?.plan && new Date(user.plan.expira) > new Date())}
-          fallback={<span className="font-display text-lg text-white">{user?.username?.charAt(0) || 'U'}</span>}
-        />
+    <div className="bg-white border-3 border-secondary shadow-comic-sm p-4 sm:p-6 mb-8">
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex sm:block justify-center">
+          <FitAvatar
+            src={user?.photoURL}
+            alt="Avatar"
+            size={48}
+            borderWidth="border-3"
+            borderColor="border-secondary"
+            bgColor="bg-primary"
+            isPremium={!!(user?.plan && new Date(user.plan.expira) > new Date())}
+            fallback={<span className="font-display text-lg text-white">{user?.username?.charAt(0) || 'U'}</span>}
+          />
+        </div>
         <div className="flex-1">
           <textarea
             value={content}
@@ -444,12 +670,12 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
             className="w-full font-body text-gray-700 p-3 border-2 border-gray-200 focus:border-primary outline-none resize-none"
             rows={3}
           />
-          <div className="flex items-center justify-between mt-3">
-            <label className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-primary transition-colors cursor-pointer">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mt-3">
+            <label className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-primary transition-colors cursor-pointer min-w-0">
               {selectedFile?.type.startsWith('video/') ? (
-                <Video className="w-5 h-5 text-primary" />
+                <Video className="w-5 h-5 text-primary shrink-0" />
               ) : (
-                <ImageIcon className="w-5 h-5" />
+                <ImageIcon className="w-5 h-5 shrink-0" />
               )}
               <span className="truncate max-w-[200px]">
                 {selectedFile ? selectedFile.name : 'Agregar imagen o video'}
@@ -464,7 +690,7 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
             <button
               onClick={handlePublish}
               disabled={!content.trim() || isPublishing}
-              className="font-label font-bold text-sm text-white bg-primary px-6 py-2 border-2 border-secondary shadow-comic-sm transition-all hover:bg-red-dark hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[5px_5px_0_var(--navy)] disabled:opacity-50"
+              className="font-label font-bold text-sm text-white bg-primary px-6 py-3 sm:py-2 border-2 border-secondary shadow-comic-sm transition-all hover:bg-red-dark hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[5px_5px_0_var(--navy)] disabled:opacity-50"
             >
               {isPublishing ? 'PUBLICANDO...' : 'PUBLICAR'}
             </button>
@@ -572,17 +798,50 @@ export default function ForoPage() {
     })
   }
 
+  const handleEditPost = async (postId: string, newContent: string) => {
+    if (!user?.uid) return
+    const postRef = doc(db, 'posts', postId)
+    await updateDoc(postRef, {
+      contenido: newContent,
+    })
+  }
+
   return (
     <main>
       <Topbar />
 
       <section className="mt-[72px] min-h-screen bg-muted py-16">
-        <div className="max-w-[900px] mx-auto px-8">
+        <div className="max-w-[900px] mx-auto px-4 sm:px-8">
           <SectionHeader label="COMUNIDAD FITMANIA" title="NUESTRO" titleAccent="FORO" />
           <NewsSlider />
           <CreatePostForm onPublish={handlePublish} />
           {posts.map((post) => (
-            <PostCard key={post.id} post={post} onLike={handleLike} onAddComment={handleAddComment} />
+            <PostCard
+              key={post.id}
+              post={post}
+              onLike={handleLike}
+              onAddComment={handleAddComment}
+              onDeletePost={async (id: string) => {
+                await deleteDoc(doc(db, 'posts', id))
+              }}
+              onEditPost={handleEditPost}
+              onDeleteComment={async (postId: string, commentId: string) => {
+                const postRef = doc(db, 'posts', postId)
+                const updatedComentarios = post.comentarios.filter(c => c.id !== commentId)
+                await updateDoc(postRef, {
+                  comentarios: updatedComentarios
+                })
+              }}
+              onEditComment={async (postId: string, commentId: string, newContent: string) => {
+                const postRef = doc(db, 'posts', postId)
+                const updatedComentarios = post.comentarios.map(c =>
+                  c.id === commentId ? { ...c, contenido: newContent } : c
+                )
+                await updateDoc(postRef, {
+                  comentarios: updatedComentarios
+                })
+              }}
+            />
           ))}
         </div>
       </section>

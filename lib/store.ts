@@ -65,7 +65,7 @@ function getImagenUrlForCartItem(item: Pick<CartItem, 'id' | 'categoria'>): stri
       case 'tostadas':
         return '/Imagenes/Snacks/Tostadas Integrales.jpeg'
       case 'maranones':
-        return '/Imagenes/Snacks/Snacks.jpeg'
+        return '/Imagenes/Snacks/Marañones.jpeg'
       default:
         return undefined
     }

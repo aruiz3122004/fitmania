@@ -20,7 +20,7 @@ export default function CarritoPage() {
   const total = getTotal()
   const router = useRouter()
 
-  const handleCheckout = () => {
+  const handleCheckout = (): void => {
     //setShowModal(true) //modal anterior de pago
     router.push(`/pago?concepto=Compra+Fitmania&monto=${total}`)
   }
@@ -28,13 +28,13 @@ export default function CarritoPage() {
   return (
     <main>
       <Topbar />
-      
+
       <section className="mt-[72px] min-h-screen bg-muted py-16">
         <div className="max-w-[1100px] mx-auto px-8">
-          <SectionHeader 
-            label="TU PEDIDO" 
-            title="CARRITO DE" 
-            titleAccent="COMPRAS" 
+          <SectionHeader
+            label="TU PEDIDO"
+            title="CARRITO DE"
+            titleAccent="COMPRAS"
           />
 
           {items.length === 0 ? (
@@ -105,7 +105,7 @@ export default function CarritoPage() {
                           {item.color && (
                             <div className="flex items-center gap-2">
                               <span className="font-label text-xs text-gray-500">Color:</span>
-                              <div 
+                              <div
                                 className="w-5 h-5 border-2 border-secondary"
                                 style={{ backgroundColor: item.color }}
                               />
@@ -195,7 +195,7 @@ export default function CarritoPage() {
                   </button>
 
                   <p className="font-body text-xs text-gray-500 text-center mt-4">
-                    Pago seguro con PSE
+                    Pago seguro con stripe
                   </p>
                 </div>
               </div>
@@ -208,11 +208,11 @@ export default function CarritoPage() {
 
       {/* Payment Modal */}
       {showModal && (
-        <div 
+        <div
           className="fixed inset-0 bg-navy/85 flex items-center justify-center z-50 animate-[fadeIn_0.3s_ease]"
           onClick={() => setShowModal(false)}
         >
-          <div 
+          <div
             className="bg-white border-4 border-secondary shadow-[8px_8px_0_var(--navy)] p-10 text-center max-w-md w-[90%] animate-[popIn_0.4s_ease]"
             onClick={(e) => e.stopPropagation()}
           >
