@@ -37,5 +37,11 @@ service cloud.firestore {
 
       allow delete: if isSignedIn() && resource.data.autor_id == request.auth.uid;
     }
+
+    match /pqrs/{pqrsId} {
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || request.auth.token.admin == true);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
   }
 }
