@@ -5,16 +5,19 @@ import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
 import { useAuthStore } from '@/lib/store'
-import { 
-  HelpCircle, 
-  AlertTriangle, 
-  XCircle, 
-  Lightbulb, 
+import {
+  HelpCircle,
+  AlertTriangle,
+  XCircle,
+  Lightbulb,
   Send,
   CheckCircle,
   ArrowRight
 } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
+import { db } from '@/lib/firebase'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { Loader2 } from 'lucide-react'
 
 const tiposPQRS = [
   {
@@ -57,13 +60,45 @@ export default function PQRSPage() {
   const [mensaje, setMensaje] = useState('')
   const [isSubmitted, setIsSubmitted] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedTipo || !mensaje.trim()) return
-    
-    // Here would go the Firebase submission
-    console.log('PQRS submitted:', { tipo: selectedTipo, mensaje })
-    setIsSubmitted(true)
+    if (!selectedTipo || !mensaje.trim() || !user) return
+
+    setLoading(true)
+    try {
+      const now = new Date()
+      const fecha = now.toLocaleDateString('es-CO', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      })
+      const hora = now.toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+
+      await addDoc(collection(db, 'pqrs'), {
+        tipo: selectedTipo,
+        mensaje,
+        userId: user.uid,
+        userName: user.username || 'Usuario',
+        userEmail: user.email,
+        fecha,
+        hora,
+        createdAt: serverTimestamp(),
+        status: 'pending'
+      })
+
+      setIsSubmitted(true)
+    } catch (error) {
+      console.error('Error submitting PQRS:', error)
+      alert('Hubo un error al enviar tu PQRS. Por favor, intenta de nuevo.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const resetForm = () => {
@@ -75,13 +110,13 @@ export default function PQRSPage() {
   return (
     <main>
       <Topbar />
-      
+
       <section className="mt-[72px] min-h-screen bg-muted py-16">
         <div className="max-w-[800px] mx-auto px-8">
-          <SectionHeader 
-            label="ATENCION AL CLIENTE" 
-            title="SISTEMA" 
-            titleAccent="PQRS" 
+          <SectionHeader
+            label="ATENCION AL CLIENTE"
+            title="SISTEMA"
+            titleAccent="PQRS"
           />
 
           <div className="bg-white border-3 border-secondary shadow-comic p-8">
@@ -162,11 +197,10 @@ export default function PQRSPage() {
                           key={tipo.id}
                           type="button"
                           onClick={() => setSelectedTipo(tipo.id)}
-                          className={`p-4 border-3 text-center transition-all ${
-                            isSelected 
-                              ? `${tipo.borderColor} bg-gray-50 shadow-comic-sm` 
+                          className={`p-4 border-3 text-center transition-all ${isSelected
+                              ? `${tipo.borderColor} bg-gray-50 shadow-comic-sm`
                               : 'border-gray-200 hover:border-gray-300'
-                          }`}
+                            }`}
                         >
                           <div className={`w-10 h-10 rounded-full ${tipo.color} flex items-center justify-center mx-auto mb-2`}>
                             <Icon className="w-5 h-5 text-white" />
@@ -206,11 +240,20 @@ export default function PQRSPage() {
                 {/* Submit */}
                 <button
                   type="submit"
-                  disabled={!selectedTipo || mensaje.trim().length < 20}
+                  disabled={!selectedTipo || mensaje.trim().length < 20 || loading}
                   className="w-full flex items-center justify-center gap-2 font-display text-xl tracking-[2px] text-white bg-primary py-4 px-6 border-3 border-secondary shadow-comic transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0_var(--navy)] hover:bg-red-dark disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-comic"
                 >
-                  <Send className="w-6 h-6" />
-                  ENVIAR
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      ENVIANDO...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-6 h-6" />
+                      ENVIAR
+                    </>
+                  )}
                 </button>
               </form>
             )}
