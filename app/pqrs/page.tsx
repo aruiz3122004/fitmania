@@ -80,7 +80,7 @@ export default function PQRSPage() {
         second: '2-digit'
       })
 
-      await addDoc(collection(db, 'pqrs'), {
+      const docRef = await addDoc(collection(db, 'pqrs'), {
         tipo: selectedTipo,
         mensaje,
         userId: user.uid,
@@ -91,11 +91,11 @@ export default function PQRSPage() {
         createdAt: serverTimestamp(),
         status: 'pending'
       })
-
+      
       setIsSubmitted(true)
     } catch (error) {
       console.error('Error submitting PQRS:', error)
-      alert('Hubo un error al enviar tu PQRS. Por favor, intenta de nuevo.')
+      alert(`Error al enviar: ${error instanceof Error ? error.message : 'Error desconocido'}`)
     } finally {
       setLoading(false)
     }
@@ -198,8 +198,8 @@ export default function PQRSPage() {
                           type="button"
                           onClick={() => setSelectedTipo(tipo.id)}
                           className={`p-4 border-3 text-center transition-all ${isSelected
-                              ? `${tipo.borderColor} bg-gray-50 shadow-comic-sm`
-                              : 'border-gray-200 hover:border-gray-300'
+                            ? `${tipo.borderColor} bg-gray-50 shadow-comic-sm`
+                            : 'border-gray-200 hover:border-gray-300'
                             }`}
                         >
                           <div className={`w-10 h-10 rounded-full ${tipo.color} flex items-center justify-center mx-auto mb-2`}>
