@@ -10,9 +10,15 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    // Validación de Role system Backend -> Frontend
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
     match /users/{uid} {
-      allow read, create, update: if isOwner(uid);
-      allow delete: if false;
+      allow read, update: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid);
+      allow delete: if false; // Ni el admin borra usuarios directamente desde db sin pasar por Auth.
     }
 
     match /posts/{postId} {
@@ -31,16 +37,25 @@ service cloud.firestore {
           'created_at'
         ]);
 
-      // La app actualiza posts para likes/comentarios con arrayUnion/arrayRemove.
+      // Modificación o likes
       allow update: if isSignedIn()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comentarios']);
 
-      allow delete: if isSignedIn() && resource.data.autor_id == request.auth.uid;
+      // El admin puede moderar posts
+      allow delete: if (isSignedIn() && resource.data.autor_id == request.auth.uid) || isAdmin();
     }
 
     match /pqrs/{pqrsId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || request.auth.token.admin == true);
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // Admin puede actualizar estado de PQRS (ej. resuelto) o borrar
+      allow update, delete: if isAdmin();
+    }
+
+    // Rate limiting para contadores o logs futuros
+    match /logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
       allow update, delete: if false;
     }
   }
