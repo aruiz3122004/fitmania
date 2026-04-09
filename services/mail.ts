@@ -18,6 +18,22 @@ interface PaymentEmailData {
   transactionId: string
 }
 
+interface OrderItem {
+  nombre: string
+  cantidad: number
+  precio: number
+}
+
+interface OrderReceiptData {
+  to: string
+  customerName: string
+  items: OrderItem[]
+  total: number
+  bank: string
+  date: string
+  transactionId: string
+}
+
 export async function sendPaymentSuccessEmail(data: PaymentEmailData) {
   const formattedAmount = new Intl.NumberFormat('es-CO', {
     style: 'currency',
@@ -192,6 +208,144 @@ export async function sendPaymentFailedEmail(data: Pick<PaymentEmailData, 'to' |
     from: `"Fitmania" <${process.env.GMAIL_USER}>`,
     to: data.to,
     subject: '❌ Pago Rechazado - Fitmania',
+    html,
+  })
+}
+
+export async function sendOrderReceiptEmail(data: OrderReceiptData) {
+  const formattedTotal = new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+  }).format(data.total)
+
+  const itemsHtml = data.items.map(item => `
+    <tr>
+      <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;">${item.nombre} x${item.cantidad}</td>
+      <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(item.precio * item.cantidad)}</td>
+    </tr>
+  `).join('')
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8" />
+      <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background: #fff; border-top: 6px solid #D32F2F; }
+        .header { background: #1a1a2e; color: #fff; padding: 30px; text-align: center; }
+        .content { padding: 40px; }
+        .receipt-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .total-row { font-weight: 900; font-size: 18px; color: #D32F2F; border-top: 2px solid #1a1a2e; }
+        .footer { background: #1a1a2e; color: #ffffff55; padding: 20px; text-align: center; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1 style="margin:0;">FIT<span style="color:#f5c518;">MANIA</span></h1>
+          <p style="margin:5px 0 0;font-size:12px;opacity:0.8;">DETALLE DE TU COMPRA</p>
+        </div>
+        <div class="content">
+          <p>Hola <strong>${data.customerName}</strong>,</p>
+          <p>Tu pedido ha sido procesado con éxito. Aquí tienes el detalle de tus productos:</p>
+          
+          <table class="receipt-table">
+            <thead>
+              <tr style="text-align:left;color:#999;font-size:11px;text-transform:uppercase;">
+                <th style="padding-bottom:10px;">Producto</th>
+                <th style="padding-bottom:10px;text-align:right;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+              <tr class="total-row">
+                <td style="padding:20px 0;">TOTAL</td>
+                <td style="padding:20px 0;text-align:right;">${formattedTotal}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style="background:#f9f9f9;padding:20px;border-radius:4px;font-size:13px;color:#666;">
+            <p style="margin:0;"><strong>Banco:</strong> ${data.bank}</p>
+            <p style="margin:5px 0;"><strong>Fecha:</strong> ${data.date}</p>
+            <p style="margin:5px 0;"><strong>ID Transacción:</strong> ${data.transactionId}</p>
+          </div>
+        </div>
+        <div class="footer">
+          © 2026 Fitmania — Tu Pasión. Tu Fuerza.
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+
+  await transporter.sendMail({
+    from: `"Fitmania" <${process.env.GMAIL_USER}>`,
+    to: data.to,
+    subject: '🛍️ Recibo de Compra - Fitmania',
+    html,
+  })
+}
+
+interface PqrsReplyData {
+  to: string
+  customerName: string
+  originalMessage: string
+  adminResponse: string
+}
+
+export async function sendPqrsReplyEmail(data: PqrsReplyData) {
+  const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8" />
+      <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; }
+        .header { background: #1a1a2e; color: #fff; padding: 20px; text-align: center; }
+        .content { padding: 30px; }
+        .quote { background: #f9f9f9; border-left: 4px solid #D32F2F; padding: 15px; margin: 20px 0; font-style: italic; }
+        .response { background: #f0f7ff; border-left: 4px solid #2196F3; padding: 15px; margin: 20px 0; }
+        .footer { font-size: 12px; color: #999; text-align: center; margin-top: 30px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1 style="margin:0;color:#D32F2F;">FIT<span style="color:#f5c518;">MANIA</span></h1>
+          <p style="margin:5px 0 0;font-size:12px;opacity:0.8;">RESPUESTA A TU SOLICITUD</p>
+        </div>
+        <div class="content">
+          <p>Hola <strong>${data.customerName}</strong>,</p>
+          <p>Hemos recibido tu PQRS y un administrador de Fitmania ha revisado tu caso. Aquí tienes nuestra respuesta:</p>
+          
+          <div class="quote">
+            <strong>Tu comentario original:</strong><br/>
+            "${data.originalMessage}"
+          </div>
+
+          <div class="response">
+            <strong>Respuesta del Administrador:</strong><br/>
+            ${data.adminResponse}
+          </div>
+
+          <p>Esperamos que esta respuesta sea satisfactoria. Hemos marcado tu solicitud como <strong>RESUELTA</strong>.</p>
+          <p>Atentamente,<br/><strong>El equipo de Fitmania</strong></p>
+        </div>
+        <div class="footer">
+          © 2026 Fitmania. Por favor no respondas a este correo.
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+
+  await transporter.sendMail({
+    from: `"Fitmania" <${process.env.GMAIL_USER}>`,
+    to: data.to,
+    subject: '📝 Respuesta a tu PQRS - Fitmania',
     html,
   })
 }

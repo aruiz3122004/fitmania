@@ -58,5 +58,19 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update, delete: if false;
     }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.uid || isAdmin());
+      allow write: if isAdmin(); // Solo el webhook (SDK Admin) o el admin real crean órdenes.
+    }
+
+    match /notifications/{notifId} {
+      allow read, write: if isAdmin();
+    }
   }
 }

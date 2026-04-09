@@ -1,54 +1,47 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { SectionHeader } from '@/components/ui/section-header'
 import { useCartStore, type CartItem } from '@/lib/store'
-import { Pill, Cookie, Shirt, Plus } from 'lucide-react'
+import { 
+  Pill, 
+  Cookie, 
+  Shirt, 
+  Plus, 
+  Dumbbell, 
+  Flame, 
+  Heart, 
+  Zap, 
+  Award,
+  Loader2,
+  AlertCircle
+} from 'lucide-react'
+import { db } from '@/lib/firebase'
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore'
 
 interface Product {
   id: string
   nombre: string
   precio: number
-  categoria: 'suplementos' | 'snacks' | 'ropa'
+  categoria: string
   imagen_url?: string
   badge?: string
   colores?: string[]
   tallas?: string[]
+  stock: number
 }
 
-const productos: Record<string, { icon: typeof Pill; title: string; items: Product[] }> = {
-  suplementos: {
-    icon: Pill,
-    title: 'SUPLEMENTOS',
-    items: [
-      { id: 'creatina', nombre: 'Creatina Mono', precio: 200000, categoria: 'suplementos', imagen_url: '/Imagenes/suplementos/creatina_mono.png', badge: 'TOP' },
-      { id: 'proteina', nombre: 'Proteina II', precio: 200000, categoria: 'suplementos', imagen_url: '/Imagenes/suplementos/proteina.png' },
-      { id: 'aminoacidos', nombre: 'Aminoacidos', precio: 200000, categoria: 'suplementos', imagen_url: '/Imagenes/suplementos/aminoacidos.png' },
-      { id: 'citrato', nombre: 'Citrato de Magnesio', precio: 150000, categoria: 'suplementos', imagen_url: '/Imagenes/suplementos/citrato_magnesio.png' },
-    ],
-  },
-  snacks: {
-    icon: Cookie,
-    title: 'SNACKS',
-    items: [
-      { id: 'granola', nombre: 'Barra Granola', precio: 5000, categoria: 'snacks', imagen_url: '/Imagenes/Snacks/granola.jpeg' },
-      { id: 'yogurt', nombre: 'Yogurt Griego', precio: 10000, categoria: 'snacks', imagen_url: '/Imagenes/Snacks/yogurt griego.jpeg' },
-      { id: 'tostadas', nombre: 'Tostadas Integrales', precio: 2100, categoria: 'snacks', imagen_url: '/Imagenes/Snacks/Tostadas Integrales.jpeg' },
-      { id: 'maranones', nombre: 'Marañones', precio: 4000, categoria: 'snacks', imagen_url: '/Imagenes/Snacks/Marañones.jpeg' },
-    ],
-  },
-  ropa: {
-    icon: Shirt,
-    title: 'ROPA',
-    items: [
-      { id: 'camisa', nombre: 'Camisa Fitman', precio: 45000, categoria: 'ropa', imagen_url: '/Imagenes/Ropa/Camisa.jpeg', colores: ['#DC2626', '#1a1a2e', '#FFFFFF'], tallas: ['S', 'M', 'L', 'XL'] },
-      { id: 'pantaloneta', nombre: 'Pantaloneta Fitman', precio: 35000, categoria: 'ropa', imagen_url: '/Imagenes/Ropa/Pantaloneta.jpeg', colores: ['#1a1a2e', '#DC2626', '#374151'], tallas: ['S', 'M', 'L', 'XL'] },
-      { id: 'conjunto', nombre: 'Conjunto Fit + Falda', precio: 60000, categoria: 'ropa', imagen_url: '/Imagenes/Ropa/Conjunto Mujer.jpeg', colores: ['#e11d48', '#1a1a2e', '#DC2626'], tallas: ['S', 'M', 'L'] },
-      { id: 'medias', nombre: 'Medias Fitman', precio: 20000, categoria: 'ropa', imagen_url: '/Imagenes/Ropa/Medias.jpeg', colores: ['#FFFFFF', '#1a1a2e', '#DC2626'], tallas: ['S', 'M', 'L'] },
-    ],
-  },
-}
+const CATEGORY_ICONS: Record<string, any> = {
+  suplementos: Pill,
+  snacks: Cookie,
+  ropa: Shirt,
+  entrenamiento: Dumbbell,
+  ofertas: Flame,
+  salud: Heart,
+  energia: Zap,
+  premiun: Award
+};
 
 function formatPrice(price: number) {
   return '$ ' + price.toLocaleString('es-CO')
@@ -65,7 +58,7 @@ function ProductCard({ product }: { product: Product }) {
       id: product.id,
       nombre: product.nombre,
       precio: product.precio,
-      categoria: product.categoria,
+      categoria: product.categoria as any,
       imagen_url: product.imagen_url,
       ...(product.categoria === 'ropa' && {
         color: selectedColor,
@@ -77,8 +70,10 @@ function ProductCard({ product }: { product: Product }) {
     setTimeout(() => setShowAdded(false), 1200)
   }
 
+  const isOutOfStock = product.stock <= 0;
+
   return (
-    <div className="bg-white border-3 border-secondary overflow-hidden transition-all shadow-comic-sm hover:translate-y-[-6px] hover:-rotate-[0.5deg] hover:shadow-[6px_6px_0_var(--navy)] group">
+    <div className={cn("bg-white border-3 border-secondary overflow-hidden transition-all shadow-comic-sm group relative", !isOutOfStock && "hover:translate-y-[-6px] hover:-rotate-[0.5deg] hover:shadow-[6px_6px_0_var(--navy)]")}>
       {/* Image */}
       <div className="relative h-[200px] bg-gray-100 flex items-center justify-center overflow-hidden border-b-3 border-secondary">
         {product.imagen_url ? (
@@ -87,7 +82,7 @@ function ProductCard({ product }: { product: Product }) {
               src={product.imagen_url}
               alt={product.nombre}
               fill
-              className="object-cover transition-transform duration-400 group-hover:scale-110"
+              className={cn("object-cover transition-transform duration-400", !isOutOfStock && "group-hover:scale-110")}
             />
           </div>
         ) : (
@@ -98,15 +93,21 @@ function ProductCard({ product }: { product: Product }) {
           </div>
         )}
         
-        {product.badge && (
-          <span className="absolute top-3 left-3 bg-primary text-white font-label font-bold text-[0.65rem] tracking-[2px] px-3 py-1 border-2 border-secondary">
+        {product.badge && !isOutOfStock && (
+          <span className="absolute top-3 left-3 bg-primary text-white font-label font-bold text-[0.65rem] tracking-[2px] px-3 py-1 border-2 border-secondary z-10">
             {product.badge}
           </span>
         )}
 
+        {isOutOfStock && (
+           <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10">
+              <span className="bg-white border-2 border-black px-4 py-2 font-black italic text-red-600 rotate-[-5deg] shadow-[4px_4px_0_0_rgba(0,0,0,1)]">AGOTADO</span>
+           </div>
+        )}
+
         {/* Added overlay */}
         {showAdded && (
-          <div className="absolute inset-0 flex items-center justify-center bg-secondary/80 animate-[fadeIn_0.2s_ease]">
+          <div className="absolute inset-0 flex items-center justify-center bg-secondary/80 animate-[fadeIn_0.2s_ease] z-20">
             <span className="font-display text-2xl text-accent [text-shadow:2px_2px_0_var(--navy)]">
               AGREGADO!
             </span>
@@ -124,7 +125,7 @@ function ProductCard({ product }: { product: Product }) {
         </span>
 
         {/* Ropa options */}
-        {product.categoria === 'ropa' && product.colores && product.tallas && (
+        {product.categoria === 'ropa' && product.colores && product.colores.length > 0 && product.tallas && product.tallas.length > 0 && !isOutOfStock && (
           <div className="flex flex-col gap-3 mb-3">
             {/* Color selector */}
             <div className="flex items-center gap-2">
@@ -169,18 +170,71 @@ function ProductCard({ product }: { product: Product }) {
         {/* Add button */}
         <button
           onClick={handleAdd}
-          disabled={product.categoria === 'ropa' && !selectedTalla}
-          className="w-full font-label font-bold text-[0.8rem] tracking-[1.5px] text-white bg-primary py-3 px-4 border-2 border-secondary shadow-[2px_2px_0_var(--navy)] transition-all hover:bg-red-dark hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0_var(--navy)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_var(--navy)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          disabled={isOutOfStock || (product.categoria === 'ropa' && !selectedTalla)}
+          className="w-full font-label font-bold text-[0.8rem] tracking-[1.5px] text-white bg-primary py-3 px-4 border-2 border-secondary shadow-[2px_2px_0_var(--navy)] transition-all hover:bg-red-dark hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0_var(--navy)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_var(--navy)] disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" />
-          AGREGAR
+          {isOutOfStock ? 'SIN STOCK' : 'AGREGAR'}
         </button>
       </div>
     </div>
   )
 }
 
+function cn(...inputs: any[]) {
+  return inputs.filter(Boolean).join(' ');
+}
+
 export function Productos() {
+  const [groupedProducts, setGroupedProducts] = useState<Record<string, Product[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Simplificamos la consulta para evitar errores de índices compuestos faltantes
+    const q = query(collection(db, 'products'), orderBy('nombre', 'asc'));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const grouped: Record<string, Product[]> = {};
+      snapshot.forEach((doc) => {
+        const data = doc.data() as Product;
+        const prod = { ...data, id: doc.id };
+        if (!grouped[prod.categoria]) {
+          grouped[prod.categoria] = [];
+        }
+        grouped[prod.categoria].push(prod);
+      });
+      setGroupedProducts(grouped);
+      setLoading(false);
+    }, (err) => {
+      console.error("Error fetching products:", err);
+      setError("No se pudieron cargar los productos.");
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="py-20 flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="w-12 h-12 text-primary animate-spin" />
+        <p className="font-display text-2xl text-secondary tracking-widest italic animate-pulse">CARGANDO Battle Shop...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="py-20 text-center">
+        <AlertCircle className="w-16 h-16 text-red-600 mx-auto mb-4" />
+        <p className="font-display text-2xl text-secondary">{error}</p>
+      </div>
+    );
+  }
+
+  const categories = Object.keys(groupedProducts);
+
   return (
     <section id="productos" className="bg-white relative py-20">
       <div className="max-w-[1300px] mx-auto px-8">
@@ -190,16 +244,21 @@ export function Productos() {
           titleAccent="PRODUCTOS" 
         />
 
-        {Object.entries(productos).map(([key, category]) => {
-          const Icon = category.icon
+        {categories.length === 0 ? (
+          <div className="text-center py-20 border-4 border-black border-dashed rounded-[2rem] opacity-20">
+             <p className="font-display text-4xl text-zinc-300 italic uppercase">Próximamente nuevas existencias...</p>
+          </div>
+        ) : categories.map((catKey) => {
+          const Icon = CATEGORY_ICONS[catKey] || Pill;
+          const items = groupedProducts[catKey];
           return (
-            <div key={key} className="mb-14 last:mb-0">
-              <h3 className="font-display text-[1.8rem] text-secondary tracking-[2px] flex items-center gap-3 mb-6 pb-3 border-b-3 border-primary">
-                <Icon className="w-6 h-6" />
-                {category.title}
+            <div key={catKey} className="mb-14 last:mb-0">
+              <h3 className="font-display text-[1.8rem] text-secondary tracking-[2px] flex items-center gap-3 mb-6 pb-3 border-b-3 border-primary uppercase">
+                <Icon className="w-6 h-6 text-primary" />
+                {catKey}
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {category.items.map((product) => (
+                {items.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}
               </div>

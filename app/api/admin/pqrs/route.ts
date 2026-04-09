@@ -1,0 +1,30 @@
+import { NextResponse } from 'next/server';
+import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
+
+async function validateAdmin(request: Request) {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const idToken = authHeader.split('Bearer ')[1];
+  const auth = getAdminAuth();
+  try {
+    const decodedToken = await auth.verifyIdToken(idToken);
+    return decodedToken.admin ? decodedToken : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function GET(request: Request) {
+  const isAdmin = await validateAdmin(request);
+  if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+
+  try {
+    const db = getAdminFirestore();
+    const snapshot = await db.collection('pqrs').orderBy('fecha', 'desc').get();
+    const pqrs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    return NextResponse.json(pqrs);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

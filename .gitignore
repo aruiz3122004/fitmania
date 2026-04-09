@@ -12,5 +12,33 @@ next.user-config.*
 
 # Common ignores
 node_modules
+.vercel
 .next/
 .DS_Store
+
+# Diagnostic, Test and Fix Scripts
+app/api/test-admin/
+fix_env.js
+deep_diag.js
+tmp_check_key.js
+tmp_fix_key.js
+verify_flow.js
+init_products.js
+
+# Simulation Scripts and Keys
+scripts/
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!components.json
+!firebase.json
+
+# Firebase Admin SDK specific
+*adminsdk*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.log
