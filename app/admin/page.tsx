@@ -25,6 +25,7 @@ import {
   ArrowRight,
   ClipboardList,
   AlertTriangle,
+  AlertCircle,
   Mail,
   RotateCcw
 } from 'lucide-react';
@@ -32,6 +33,7 @@ import { toast, Toaster } from 'sonner';
 import { useAuthStore } from '@/lib/store';
 import { ConfirmModal } from '@/components/ui/comic-modal';
 import { ProductModal } from '@/components/admin/product-modal';
+import { AdminLoginForm } from '@/components/admin/admin-login-form';
 
 // --- HELPERS ---
 const formatCurrency = (val: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(val);
@@ -159,9 +161,11 @@ export default function AdminPage() {
   const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
+  const [adminSessionValid, setAdminSessionValid] = useState(false);
 
   // Datos
   const [stats, setStats] = useState<any>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [productsList, setProductsList] = useState<any[]>([]);
@@ -186,48 +190,96 @@ export default function AdminPage() {
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
   useEffect(() => {
+    // Verificar si ya hay una sesión de admin válida para esta pestaña del navegador
+    const savedSession = sessionStorage.getItem('fitmania_admin_session');
+    if (savedSession === 'FitmaniaAdmin2026') {
+      setAdminSessionValid(true);
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      
       if (currentUser) {
         const decodedResult = await currentUser.getIdTokenResult();
         if (decodedResult.claims.admin === true) {
-          setVisualState('dashboard');
-          refreshAllData();
+          if (savedSession === 'FitmaniaAdmin2026') {
+            setVisualState('dashboard');
+            refreshAllData();
+          } else {
+            setVisualState('login');
+          }
         } else {
           setVisualState('unauthorized');
         }
       } else {
-        setVisualState('login');
+        setVisualState('unauthorized');
       }
       setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
+  const handleAdminLoginSuccess = async (token: string) => {
+    sessionStorage.setItem('fitmania_admin_session', token);
+    setAdminSessionValid(true);
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const decodedResult = await currentUser.getIdTokenResult();
+      if (decodedResult.claims.admin === true) {
+        setVisualState('dashboard');
+        refreshAllData();
+      } else {
+        setVisualState('unauthorized');
+      }
+    }
+  };
+
   const refreshAllData = async () => {
     const token = await auth.currentUser?.getIdToken();
     if (!token) return;
+    setConnectionError(null);
+
+    const handleFetchError = (err: any) => {
+      console.error('Error fetching admin data:', err);
+      setConnectionError('Error de conexión con el Servidor / Base de Datos. Verifica las variables de entorno en Vercel.');
+    };
 
     fetch('/api/admin/stats', { headers: { 'Authorization': `Bearer ${token}` }})
-      .then(res => res.json()).then(setStats);
+      .then(res => {
+        if (!res.ok) throw new Error('Stats failure');
+        return res.json();
+      })
+      .then(setStats)
+      .catch(handleFetchError);
     
     fetch('/api/admin/notifications', { headers: { 'Authorization': `Bearer ${token}` }})
-      .then(res => res.json()).then(data => Array.isArray(data) ? setNotifications(data) : setNotifications([]));
+      .then(res => res.json())
+      .then(data => Array.isArray(data) ? setNotifications(data) : setNotifications([]))
+      .catch(handleFetchError);
 
     fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` }})
-      .then(res => res.json()).then(data => Array.isArray(data) ? setUsersList(data) : setUsersList([]));
+      .then(res => res.json())
+      .then(data => Array.isArray(data) ? setUsersList(data) : setUsersList([]))
+      .catch(handleFetchError);
 
     fetch('/api/admin/products', { headers: { 'Authorization': `Bearer ${token}` }})
-      .then(res => res.json()).then(data => Array.isArray(data) ? setProductsList(data) : setProductsList([]));
+      .then(res => res.json())
+      .then(data => Array.isArray(data) ? setProductsList(data) : setProductsList([]))
+      .catch(handleFetchError);
 
     fetch('/api/admin/pqrs', { headers: { 'Authorization': `Bearer ${token}` }})
-      .then(res => res.json()).then(data => Array.isArray(data) ? setPqrsList(data) : setPqrsList([]));
+      .then(res => res.json())
+      .then(data => Array.isArray(data) ? setPqrsList(data) : setPqrsList([]))
+      .catch(handleFetchError);
 
     fetch('/api/admin/orders', { headers: { 'Authorization': `Bearer ${token}` }})
-      .then(res => res.json()).then(data => Array.isArray(data) ? setOrdersList(data) : setOrdersList([]));
+      .then(res => res.json())
+      .then(data => Array.isArray(data) ? setOrdersList(data) : setOrdersList([]))
+      .catch(handleFetchError);
   };
 
   const handleLogout = async () => {
+    sessionStorage.removeItem('fitmania_admin_session');
     await signOut(auth);
     setVisualState('login');
   };
@@ -668,13 +720,23 @@ export default function AdminPage() {
 
   if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><div className="w-16 h-16 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
-  if (visualState === 'login' || visualState === 'unauthorized') return (
+  if (visualState === 'login') {
+    return <AdminLoginForm onSuccess={handleAdminLoginSuccess} />;
+  }
+
+  if (visualState === 'unauthorized') return (
     <div className="min-h-screen flex items-center justify-center bg-[#0d0d12] p-6 font-sans">
-      <div className="bg-white border-8 border-black p-12 rounded-[2rem] shadow-[20px_20px_0_0_rgba(220,38,38,0.3)] max-w-sm text-center">
-        <XCircle className="w-24 h-24 text-red-600 mx-auto mb-8" />
-        <h2 className="text-3xl font-black uppercase italic tracking-tighter mb-4" style={{ fontFamily: 'var(--font-display)' }}>DENEGADO</h2>
-        <p className="text-zinc-500 font-bold mb-8 italic uppercase text-xs">Acceso solo para superhéroes certificados (Administradores).</p>
-        <button onClick={() => window.location.href = '/'} className="w-full py-4 bg-black text-white font-black rounded-xl border-b-8 border-zinc-950 hover:-translate-y-1 transition-all">REGRESAR AL SITIO</button>
+      <div className="bg-white border-8 border-black p-12 rounded-[2rem] shadow-[20px_20px_0_0_rgba(220,38,38,1)] max-w-sm text-center animate-in zoom-in-95 duration-500">
+        <div className="w-24 h-24 bg-red-100 rounded-3xl mx-auto flex items-center justify-center mb-8 border-4 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
+          <XCircle className="w-16 h-16 text-red-600" />
+        </div>
+        <h2 className="text-3xl font-black uppercase italic tracking-tighter mb-4" style={{ fontFamily: 'var(--font-display)' }}>ACCESO RESTRINGIDO</h2>
+        <p className="text-zinc-500 font-bold mb-8 italic uppercase text-[10px] tracking-widest leading-relaxed">
+          Este centro de mando está reservado <br/> exclusivamente para personal administrativo <br/> de nivel 5 (FITMANIA ADMIN).
+        </p>
+        <div className="flex flex-col gap-3">
+          <button onClick={() => window.location.href = '/'} className="w-full py-4 bg-black text-white font-black rounded-xl border-b-8 border-zinc-950 hover:-translate-y-1 transition-all shadow-[6px_6px_0_0_rgba(220,38,38,0.2)]">REGRESAR AL SITIO</button>
+        </div>
       </div>
     </div>
   );
