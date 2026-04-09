@@ -138,7 +138,7 @@ export function UserDropdown() {
   const isPremium = !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
 
   return (
-    <div className="absolute top-full -right-4 sm:right-0 mt-2 w-[calc(100vw-2rem)] sm:w-[400px] max-w-[400px] z-50">
+    <div className="fixed inset-x-4 sm:absolute sm:inset-auto sm:right-0 top-[76px] sm:top-full mt-2 w-auto sm:w-[320px] max-w-[400px] z-50">
       {/* Animated gradient wrapper for premium users */}
       {isPremium && (
         <div
@@ -159,11 +159,11 @@ export function UserDropdown() {
         } : {}}
       >
         <div className="p-5 border-b-2 border-gray-200">
-          <div className="flex items-start gap-4">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
             <FitAvatar
               src={user?.photoURL}
               alt="Avatar"
-              size={64}
+              size={72}
               borderWidth="border-3"
               borderColor="border-secondary"
               bgColor="bg-primary"
@@ -171,17 +171,17 @@ export function UserDropdown() {
               fallback={<UserCircle className="w-12 h-12 text-gray-400" />}
             />
             <div className="flex-1 min-w-0 pt-1">
-              <h3 className="font-label font-bold text-base text-secondary truncate">
+              <h3 className="font-label font-black text-xl sm:text-base text-secondary truncate uppercase">
                 {user?.username || 'Usuario'}
               </h3>
-              <p className="font-label text-sm text-gray-400 truncate">
+              <p className="font-label text-xs sm:text-sm text-gray-400 truncate mb-2">
                 {user?.email}
               </p>
               {isPremium && daysRemaining !== null && (
-                <div className="mt-3 bg-blue-100 border-2 border-blue-400 px-3 py-1.5 inline-flex items-center gap-2">
+                <div className="bg-blue-100 border-2 border-blue-400 px-3 py-1.5 inline-flex items-center gap-2 rounded-lg shadow-[3px_3px_0_0_rgba(59,130,246,0.3)]">
                   <span className="text-sm">⭐</span>
-                  <span className="font-label text-xs font-bold text-blue-700 uppercase tracking-tight">
-                    PREMIUM · {daysRemaining} dias
+                  <span className="font-label text-[10px] font-black text-blue-700 uppercase tracking-widest">
+                    <span className="sm:inline hidden">PREMIUM · </span>{daysRemaining} DIAS
                   </span>
                 </div>
               )}
@@ -237,14 +237,14 @@ export function UserDropdown() {
         </div>
 
         {/* Menu Options */}
-        <div className="p-2">
+        <div className="p-3 bg-zinc-50 border-t-2 border-gray-200 flex sm:flex-col gap-2">
           <Link
             href="/perfil"
             onClick={handleClose}
-            className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100 transition-colors"
+            className="flex-1 flex items-center justify-center sm:justify-start gap-3 px-3 py-3 sm:py-2 bg-white sm:bg-transparent border-2 sm:border-0 border-black sm:rounded rounded-xl hover:bg-gray-100 transition-all active:translate-y-1"
           >
-            <Settings className="w-4 h-4 text-gray-500" />
-            <span className="font-label text-sm text-gray-700">Configuracion</span>
+            <Settings className="w-5 h-5 text-zinc-600" />
+            <span className="hidden sm:inline font-label text-sm text-gray-700">Configuracion</span>
           </Link>
           <button
             onClick={async () => {
@@ -252,10 +252,10 @@ export function UserDropdown() {
               logout()
               handleClose()
             }}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-red-light transition-colors text-left"
+            className="flex-1 flex items-center justify-center sm:justify-start gap-3 px-3 py-3 sm:py-2 bg-red-50 sm:bg-transparent border-2 sm:border-0 border-primary sm:rounded rounded-xl hover:bg-red-light transition-all active:translate-y-1"
           >
-            <LogOut className="w-4 h-4 text-primary" />
-            <span className="font-label text-sm text-primary">Cerrar Sesion</span>
+            <LogOut className="w-5 h-5 text-primary" />
+            <span className="hidden sm:inline font-label text-sm text-primary">Cerrar Sesion</span>
           </button>
         </div>
       </div>

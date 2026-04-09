@@ -23,6 +23,7 @@ import {
   ShoppingBag,
   Send,
   ArrowRight,
+  ChevronLeft,
   ClipboardList,
   AlertTriangle,
   AlertCircle,
@@ -40,14 +41,11 @@ const formatCurrency = (val: number) => new Intl.NumberFormat('es-CO', { style: 
 
 const formatDate = (dateValue: any) => {
   if (!dateValue) return 'N/A';
-  // Si es un Timestamp de Firestore { seconds, nanoseconds }
-  if (dateValue?.seconds) {
-    return new Date(dateValue.seconds * 1000).toLocaleDateString();
-  }
-  // Si es un objeto Date o un string ISO
+  if (dateValue?.seconds !== undefined) return new Date(dateValue.seconds * 1000).toLocaleDateString('es-CO');
+  if (dateValue?._seconds !== undefined) return new Date(dateValue._seconds * 1000).toLocaleDateString('es-CO');
   const d = new Date(dateValue);
   if (isNaN(d.getTime())) return 'Fecha Inválida';
-  return d.toLocaleDateString();
+  return d.toLocaleDateString('es-CO');
 };
 
 // --- COMPONENTES ---
@@ -102,6 +100,14 @@ const NotificationBell = ({ notifications, onMarkRead, onNavigate }: any) => {
   const [open, setOpen] = useState(false);
   const unreadCount = notifications.filter((n: any) => !n.leido).length;
 
+  useEffect(() => {
+    const handleScroll = () => {
+      if (open) setOpen(false);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [open]);
+
   return (
     <div className="relative">
       <button 
@@ -117,7 +123,7 @@ const NotificationBell = ({ notifications, onMarkRead, onNavigate }: any) => {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-4 w-80 bg-white border-4 border-black shadow-[8px_8px_0_0_rgba(0,0,0,1)] z-50 rounded-xl overflow-hidden">
+        <div className="fixed inset-x-4 sm:absolute sm:inset-auto sm:right-[-2.5rem] mt-4 w-auto sm:w-[350px] bg-white border-4 border-black shadow-[8px_8px_0_0_rgba(0,0,0,1)] z-[100] rounded-xl overflow-hidden origin-top-right sm:origin-top-right">
           <div className="bg-zinc-900 p-4 border-b-4 border-black flex justify-between items-center">
             <h3 className="text-white font-black uppercase text-sm tracking-widest">Notificaciones</h3>
             <button onClick={() => setOpen(false)}><X className="w-4 h-4 text-white" /></button>
@@ -150,6 +156,90 @@ const NotificationBell = ({ notifications, onMarkRead, onNavigate }: any) => {
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+const UserPlanModal = ({ isOpen, onClose, user, onSave }: any) => {
+  const [inicio, setInicio] = useState('');
+  const [expira, setExpira] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user?.plan) {
+      // Formatear fechas para input type="date" (YYYY-MM-DD)
+      const formatDateForInput = (dateVal: any) => {
+        if (!dateVal) return '';
+        let d: Date;
+        if (dateVal.seconds) d = new Date(dateVal.seconds * 1000);
+        else d = new Date(dateVal);
+        const month = '' + (d.getMonth() + 1);
+        const day = '' + d.getDate();
+        const year = d.getFullYear();
+        return [year, month.padStart(2, '0'), day.padStart(2, '0')].join('-');
+      };
+      setInicio(formatDateForInput(user.plan.inicio));
+      setExpira(formatDateForInput(user.plan.expira));
+    }
+  }, [user]);
+
+  if (!isOpen || !user) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    await onSave(user.uid, {
+      ...user.plan,
+      inicio: new Date(inicio + 'T00:00:00'),
+      expira: new Date(expira + 'T00:00:00'),
+    });
+    setLoading(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+      <div className="bg-white border-4 border-black rounded-[2rem] shadow-[12px_12px_0_0_rgba(0,0,0,1)] w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300">
+        <div className="bg-zinc-900 p-6 border-b-4 border-black flex justify-between items-center">
+          <div>
+            <h3 className="text-white text-xl font-black uppercase italic italic tracking-tighter">Editar Membresía</h3>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{user.displayName}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-full text-white transition-colors"><X className="w-5 h-5" /></button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[10px] font-black uppercase text-zinc-500 mb-2 tracking-widest">Fecha de Inicio</label>
+              <input 
+                type="date" 
+                required
+                className="w-full p-4 bg-zinc-50 border-3 border-black rounded-xl font-bold focus:bg-white outline-none"
+                value={inicio}
+                onChange={(e) => setInicio(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black uppercase text-zinc-500 mb-2 tracking-widest">Fecha de Expiración</label>
+              <input 
+                type="date" 
+                required
+                className="w-full p-4 bg-zinc-50 border-3 border-black rounded-xl font-bold focus:bg-white outline-none"
+                value={expira}
+                onChange={(e) => setExpira(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-4 pt-4">
+             <button type="button" onClick={onClose} className="flex-1 py-4 font-black uppercase text-xs border-3 border-black rounded-xl hover:bg-zinc-100 transition-all">Cancelar</button>
+             <button type="submit" disabled={loading} className="flex-1 py-4 bg-black text-white font-black uppercase text-xs border-b-4 border-zinc-950 rounded-xl hover:-translate-y-1 transition-all disabled:opacity-50">
+                {loading ? 'Guardando...' : 'Actualizar'}
+             </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };
@@ -188,6 +278,8 @@ export default function AdminPage() {
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [selectedUserForPlan, setSelectedUserForPlan] = useState<any>(null);
 
   useEffect(() => {
     // Verificar si ya hay una sesión de admin válida para esta pestaña del navegador
@@ -285,6 +377,27 @@ export default function AdminPage() {
   };
 
   // --- ACTIONS ---
+
+  const handleUpdateUserPlan = async (uid: string, plan: any) => {
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) return;
+
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ uid, plan })
+      });
+      if (!res.ok) throw new Error('Update failed');
+      toast.success('Membresía actualizada');
+      refreshAllData();
+    } catch (err) {
+      toast.error('Error al actualizar plan');
+    }
+  };
 
   const handleDeleteUser = (uid: string) => {
      setConfirmModal({
@@ -438,13 +551,13 @@ export default function AdminPage() {
            </div>
            <div className="p-4 space-y-4">
               {ordersList.slice(0, 5).map(order => (
-                <div key={order.id} className="flex justify-between items-center p-4 border-2 border-zinc-100 rounded-xl hover:bg-zinc-50 transition-colors">
-                   <div>
-                     <p className="font-black text-sm">{order.customerName}</p>
-                     <p className="text-[10px] text-zinc-400 font-bold uppercase">{new Date(order.fecha?.seconds * 1000).toLocaleDateString()}</p>
-                   </div>
-                   <p className="font-black text-green-600">{formatCurrency(order.total || 0)}</p>
-                </div>
+                 <div key={order.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 p-4 border-2 border-zinc-100 rounded-xl hover:bg-zinc-50 transition-colors">
+                    <div>
+                      <p className="font-black text-sm">{order.customerName}</p>
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase">{formatDate(order.fecha)}</p>
+                    </div>
+                    <p className="font-black text-green-600 sm:text-right">{formatCurrency(order.total || 0)}</p>
+                 </div>
               ))}
            </div>
         </div>
@@ -530,6 +643,9 @@ export default function AdminPage() {
                   {u.admin ? <span className="text-red-600 font-black italic tracking-tighter text-sm uppercase">ADMIN</span> : <span className="text-zinc-300 font-bold text-sm uppercase">SOCIO</span>}
                 </td>
                 <td className="p-6 text-right space-x-2">
+                  {u.plan && (
+                    <button onClick={() => { setSelectedUserForPlan(u); setIsPlanModalOpen(true); }} className="p-2 border-2 border-transparent hover:border-black hover:bg-zinc-100 rounded-lg transition-all" title="Editar Vigencia"><Edit3 className="w-5 h-5" /></button>
+                  )}
                   <button onClick={() => handleDeleteUser(u.uid)} className="p-2 border-2 border-transparent hover:border-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-5 h-5 text-red-600" /></button>
                 </td>
               </tr>
@@ -669,32 +785,32 @@ export default function AdminPage() {
 
   const renderOrders = () => (
     <div className="space-y-8 animate-in fade-in duration-600">
-       <div className="bg-white p-8 border-4 border-black rounded-[2rem] shadow-[6px_6px_0_0_rgba(0,0,0,1)] flex justify-between items-center">
+       <div className="bg-white p-6 sm:p-8 border-4 border-black rounded-[2rem] shadow-[6px_6px_0_0_rgba(0,0,0,1)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
           <div>
             <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">Historial de Ventas</h2>
             <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest">Listado de transacciones y pedidos procesados</p>
           </div>
-          <div className="bg-zinc-900 border-2 border-black p-4 rounded-xl text-white">
+          <div className="bg-zinc-900 border-2 border-black p-4 rounded-xl text-white w-full sm:w-auto text-center sm:text-left">
              <p className="text-[10px] font-bold text-zinc-500 uppercase italic">Recaudado (Total)</p>
-             <p className="text-2xl font-black text-green-400">{formatCurrency(ordersList.reduce((acc, o) => acc + (o.total || 0), 0))}</p>
+             <p className="text-2xl font-black text-green-400 truncate max-w-full">{formatCurrency(ordersList.reduce((acc, o) => acc + (o.total || 0), 0))}</p>
           </div>
        </div>
 
        <div className="grid grid-cols-1 gap-6">
           {ordersList.map(order => (
             <div key={order.id} className="bg-white border-4 border-black rounded-2xl shadow-[6px_6px_0_0_rgba(0,0,0,1)] overflow-hidden">
-               <div className="p-6 flex flex-col md:flex-row justify-between items-center gap-6 bg-zinc-50 border-b-2 border-zinc-100">
-                  <div className="flex items-center gap-4">
-                     <div className="w-12 h-12 bg-zinc-900 border-2 border-black rounded-xl flex items-center justify-center text-white"><ShoppingBag /></div>
-                     <div>
-                        <p className="font-black uppercase text-sm">{order.customerName}</p>
-                        <p className="text-xs text-zinc-400 font-bold font-mono uppercase tracking-tighter">ID: {order.id.slice(0, 12)}...</p>
+               <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 bg-zinc-50 border-b-2 border-zinc-100">
+                  <div className="flex items-center gap-4 w-full sm:w-auto">
+                     <div className="w-12 h-12 bg-zinc-900 border-2 border-black rounded-xl flex items-center justify-center text-white shrink-0"><ShoppingBag /></div>
+                     <div className="min-w-0">
+                        <p className="font-black uppercase text-sm truncate">{order.customerName}</p>
+                        <p className="text-xs text-zinc-400 font-bold font-mono uppercase tracking-tighter truncate">ID: {order.id.slice(0, 12)}...</p>
                      </div>
                   </div>
-                  <div className="flex gap-8 items-center text-center">
-                     <div><p className="text-[10px] font-black uppercase text-zinc-400">Fecha</p><p className="text-sm font-bold">{new Date(order.fecha?.seconds * 1000).toLocaleDateString()}</p></div>
-                     <div><p className="text-[10px] font-black uppercase text-zinc-400">Banco</p><p className="text-sm font-bold truncate max-w-[100px]">{order.banco}</p></div>
-                     <div><p className="text-[10px] font-black uppercase text-zinc-400">Total</p><p className="text-xl font-black text-red-600 italic tracking-tighter">{formatCurrency(order.total || 0)}</p></div>
+                  <div className="flex flex-wrap sm:flex-nowrap gap-4 sm:gap-8 items-center text-left sm:text-center w-full sm:w-auto mt-4 sm:mt-0">
+                     <div className="flex-1 sm:flex-none"><p className="text-[10px] font-black uppercase text-zinc-400">Fecha</p><p className="text-sm font-bold truncate">{formatDate(order.fecha)}</p></div>
+                     <div className="flex-1 sm:flex-none"><p className="text-[10px] font-black uppercase text-zinc-400">Banco</p><p className="text-sm font-bold truncate">{order.banco}</p></div>
+                     <div className="w-full sm:w-auto mt-2 sm:mt-0 pt-2 sm:pt-0 border-t-2 sm:border-t-0 border-zinc-200"><p className="text-[10px] font-black uppercase text-zinc-400">Total</p><p className="text-lg sm:text-xl font-black text-red-600 italic tracking-tighter truncate">{formatCurrency(order.total || 0)}</p></div>
                   </div>
                </div>
                <div className="p-6">
@@ -751,8 +867,27 @@ export default function AdminPage() {
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
 
       <main className="md:ml-64 p-4 md:p-12 min-h-screen halftone relative">
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-12 gap-8">
-          <div>
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-12 gap-8 relative mt-16 md:mt-0">
+          {/* Mobile Back / Exit Button */}
+          <div className="md:hidden absolute -top-14 left-0">
+            {activeTab !== 'overview' ? (
+              <button 
+                 onClick={() => setActiveTab('overview')}
+                 className="flex items-center gap-2 text-zinc-600 font-black hover:text-red-600 uppercase text-[10px] tracking-widest border-2 border-black px-4 py-2 bg-white rounded-lg shadow-[3px_3px_0_0_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none transition-all"
+              >
+                 <ChevronLeft className="w-4 h-4" /> DASHBOARD
+              </button>
+            ) : (
+              <button 
+                 onClick={() => window.location.href = '/'}
+                 className="flex items-center gap-2 text-zinc-600 font-black hover:text-red-600 uppercase text-[10px] tracking-widest border-2 border-black px-4 py-2 bg-white rounded-lg shadow-[3px_3px_0_0_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none transition-all"
+              >
+                 <ChevronLeft className="w-4 h-4" /> SALIR
+              </button>
+            )}
+          </div>
+
+          <div className="w-full sm:w-auto mt-4 sm:mt-0">
             <h2 className="text-xs font-black text-red-600 uppercase tracking-[4px] mb-1">Fitmania Command Center</h2>
             <p className="text-4xl md:text-5xl font-black italic underline decoration-red-600 decoration-8 underline-offset-8 tracking-tighter uppercase">{activeTab === 'overview' ? 'Operaciones' : activeTab}</p>
           </div>
@@ -836,6 +971,12 @@ export default function AdminPage() {
         ::-webkit-scrollbar-thumb { background: black; border: 2px solid #f1f1f1; }
         ::-webkit-scrollbar-thumb:hover { background: #333; }
       `}</style>
+       <UserPlanModal 
+         isOpen={isPlanModalOpen} 
+         onClose={() => setIsPlanModalOpen(false)} 
+         user={selectedUserForPlan}
+         onSave={handleUpdateUserPlan}
+       />
     </div>
   );
 }

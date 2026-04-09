@@ -314,7 +314,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
-import { useAuthStore } from '@/lib/store'
+import { useAuthStore, useCartStore } from '@/lib/store'
 import { db } from '@/lib/firebase'
 import { doc, updateDoc } from 'firebase/firestore'
 import { ShieldCheck, CreditCard, Loader2 } from 'lucide-react'
@@ -333,14 +333,16 @@ const CARD_ELEMENT_OPTIONS = {
   },
 }
 
-function CheckoutForm({ amount, concept, montoFormateado }: {
+function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
   amount: number
   concept: string
   montoFormateado: string
+  cartItems: any[]
 }) {
   const stripe = useStripe()
   const elements = useElements()
   const { user, updateUser } = useAuthStore()
+  const { clearCart } = useCartStore()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -360,6 +362,7 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
           customerEmail: user?.email || '',
           customerName: user?.username || '',
           uid: user?.uid || '',
+          items: cartItems.length > 0 ? cartItems : undefined,
         }),
       })
 
@@ -390,34 +393,43 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
             amount,
             concept,
             transactionId: paymentIntent.id,
+            items: cartItems.length > 0 ? cartItems : undefined,
           }),
         })
         setSuccess(true)
+        if (cartItems && cartItems.length > 0) {
+           clearCart() // Vaciamos el carrito tras compra exitosa
+        }
 
-        // 3. Actualizar Firestore directamente (para feedback instantáneo y pruebas en localhost)
+        // 3. Actualizar Firestore directamente (para registrar el plan solo si aplica)
         if (user?.uid) {
-          let dias = 30
           const conceptoLCase = concept.toLowerCase()
-          if (conceptoLCase.includes('parejas')) dias = 40
-          else if (conceptoLCase.includes('dos en uno')) dias = 60
+          
+          // VERIFICACIÓN CLAVE: Solo actualizamos el "Plan" si el concepto incluye plan o mensualidad.
+          // Ignoramos completamente el carrito ("compra fitmania", etc) para no corromper la membresía.
+          if (conceptoLCase.includes('plan') || conceptoLCase.includes('mensualidad') || conceptoLCase.includes('parejas') || conceptoLCase.includes('dos en uno')) {
+             let dias = 30
+             if (conceptoLCase.includes('parejas')) dias = 40
+             else if (conceptoLCase.includes('dos en uno')) dias = 60
+             
+             const ahora = new Date()
+             const expira = new Date()
+             expira.setDate(ahora.getDate() + dias)
 
-          const ahora = new Date()
-          const expira = new Date()
-          expira.setDate(ahora.getDate() + dias)
+             const planData = {
+               nombre: concept,
+               precio: amount,
+               dias_total: dias,
+               inicio: ahora,
+               expira: expira,
+             }
 
-          const planData = {
-            nombre: concept,
-            precio: amount,
-            dias_total: dias,
-            inicio: ahora,
-            expira: expira,
-          }
-
-          try {
-            await updateDoc(doc(db, 'users', user.uid), { plan: planData })
-            updateUser({ plan: planData })
-          } catch (err) {
-            console.error("Error al actualizar plan localmente:", err)
+             try {
+               await updateDoc(doc(db, 'users', user.uid), { plan: planData })
+               updateUser({ plan: planData })
+             } catch (err) {
+               console.error("Error al actualizar plan localmente:", err)
+             }
           }
         }
       }
@@ -497,6 +509,7 @@ function CheckoutForm({ amount, concept, montoFormateado }: {
 function PagoContent() {
   const searchParams = useSearchParams()
   const { isAuthenticated } = useAuthStore()
+  const { items } = useCartStore()
 
   const conceptoParam = searchParams.get('concepto') || 'Servicio Fitmania'
   const montoParam = Number(searchParams.get('monto')) || 0
@@ -536,7 +549,7 @@ function PagoContent() {
           </div>
           <div className="bg-white border-3 border-secondary shadow-comic p-6">
             <Elements stripe={stripePromise}>
-              <CheckoutForm amount={montoParam} concept={conceptoParam} montoFormateado={montoFormateado} />
+              <CheckoutForm amount={montoParam} concept={conceptoParam} montoFormateado={montoFormateado} cartItems={items} />
             </Elements>
           </div>
         </div>

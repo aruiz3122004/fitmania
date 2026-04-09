@@ -10,7 +10,7 @@ const coaches = [
     nombre: 'RANDY',
     role: 'Entrenador de Fuerza',
     specialty: 'Fuerza & Potencia',
-    bio: 'Especialista en entrenamiento de fuerza con mas de 10 anos de experiencia. Certificado en levantamiento olimpico.',
+    bio: 'Especialista en entrenamiento de fuerza con mas de 10 años de experiencia. Certificado en levantamiento olimpico.',
     imagen_url: '/Imagenes/Coaches/Randy.jpeg',
     whatsapp: '+573001234567',
   },
@@ -58,10 +58,10 @@ export function Entrenadores() {
       }} />
 
       <div className="max-w-[1300px] mx-auto px-8 relative z-10">
-        <SectionHeader 
-          label="TU EQUIPO DE HEROES" 
-          title="NUESTROS" 
-          titleAccent="ENTRENADORES" 
+        <SectionHeader
+          label="TU EQUIPO DE HEROES"
+          title="NUESTROS"
+          titleAccent="ENTRENADORES"
           dark
         />
 
@@ -78,10 +78,10 @@ export function Entrenadores() {
                     src={coach.imagen_url}
                     alt={`Coach ${coach.nombre}`}
                     fill
-                    className="object-cover transition-all duration-500 grayscale-[20%] group-hover:grayscale-0 group-hover:scale-110"
+                    className="object-cover object-top transition-all duration-500 grayscale-[20%] group-hover:grayscale-0 group-hover:scale-110"
                   />
                 </div>
-                
+
                 {/* Overlay with specialty */}
                 <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-navy/90 to-transparent translate-y-full transition-transform duration-400 group-hover:translate-y-0">
                   <span className="font-label font-bold text-[0.85rem] text-accent tracking-[1px] uppercase">
@@ -101,7 +101,7 @@ export function Entrenadores() {
                 <p className="font-body text-sm text-gray-400 leading-relaxed mb-4">
                   {coach.bio}
                 </p>
-                
+
                 {/* WhatsApp button */}
                 <button
                   onClick={() => handleWhatsApp(coach.whatsapp, coach.nombre)}

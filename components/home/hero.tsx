@@ -95,9 +95,9 @@ export function Hero() {
             </div>
 
             {/* Content */}
-            <div className="absolute inset-0 flex items-center px-[5%]">
+            <div className="absolute inset-0 flex items-center justify-center sm:justify-start px-[5%]">
               <div 
-                className={`max-w-[700px] relative z-10 ${
+                className={`max-w-[700px] relative z-10 text-center sm:text-left ${
                   index === currentSlide ? 'animate-[slideInUp_0.8s_ease-out]' : ''
                 }`}
               >
@@ -105,14 +105,14 @@ export function Hero() {
                   {slide.badge}
                 </span>
                 
-                <h1 className="font-display text-[clamp(3rem,7vw,5.5rem)] text-white leading-none tracking-[3px] [text-shadow:4px_4px_0_var(--navy),-1px_-1px_0_var(--navy),1px_-1px_0_var(--navy),-1px_1px_0_var(--navy)] mb-4">
+                <h1 className="font-display text-[clamp(2.5rem,8vw,5.5rem)] text-white leading-none tracking-[3px] [text-shadow:4px_4px_0_var(--navy),-1px_-1px_0_var(--navy),1px_-1px_0_var(--navy),-1px_1px_0_var(--navy)] mb-4">
                   {slide.title}<br />
                   <span className="text-accent [text-shadow:4px_4px_0_var(--red-dark),-1px_-1px_0_var(--red-dark),1px_-1px_0_var(--red-dark),-1px_1px_0_var(--red-dark)]">
                     {slide.titleAccent}
                   </span>
                 </h1>
                 
-                <p className="font-body text-xl text-white/90 mb-8 max-w-[500px]">
+                <p className="font-body text-lg sm:text-xl text-white/90 mb-8 max-w-[500px] mx-auto sm:mx-0">
                   {slide.subtitle}
                 </p>
                 

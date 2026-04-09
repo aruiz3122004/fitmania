@@ -187,7 +187,7 @@ export default function RegistroPage() {
                 {/* Password */}
                 <div className="col-span-2 sm:col-span-1">
                   <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
-                    Contrasena
+                    Contraseña
                   </label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -222,7 +222,7 @@ export default function RegistroPage() {
                       name="confirmPassword"
                       value={formData.confirmPassword}
                       onChange={handleChange}
-                      placeholder="Repetir contrasena"
+                      placeholder="Repetir contraseña"
                       className="w-full font-body pl-11 pr-4 py-3 border-3 border-gray-200 focus:border-primary outline-none transition-colors"
                       required
                     />

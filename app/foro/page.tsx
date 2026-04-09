@@ -20,6 +20,8 @@ import {
   updateDoc,
   doc,
   deleteDoc,
+  where,
+  limit
 } from 'firebase/firestore'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import {
@@ -704,12 +706,34 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
 export default function ForoPage() {
   const { user } = useAuthStore()
   const [posts, setPosts] = useState<ForumPost[]>([])
+  const [pageLimit, setPageLimit] = useState(5)
+  const [hasMore, setHasMore] = useState(false)
 
   useEffect(() => {
+    // Definimos el limite de 30 días para descartar basura antigua en memoria
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
     const postsRef = collection(db, 'posts')
-    const postsQuery = query(postsRef, orderBy('created_at', 'desc'))
+    // Pedimos (pageLimit + 1) para saber si hay un elemento extra en la paginación siguiente
+    const postsQuery = query(
+      postsRef, 
+      where('created_at', '>=', thirtyDaysAgo),
+      orderBy('created_at', 'desc'), 
+      limit(pageLimit + 1)
+    )
+
     const unsubscribe = onSnapshot(postsQuery, (snapshot) => {
-      const data: ForumPost[] = snapshot.docs.map((docItem) => {
+      let isMore = false;
+      const docsToProcess = [...snapshot.docs]
+      
+      if (docsToProcess.length > pageLimit) {
+        isMore = true;
+        docsToProcess.pop(); // Remove the extra doc so we only render current limit
+      }
+      setHasMore(isMore);
+
+      const data: ForumPost[] = docsToProcess.map((docItem) => {
         const raw = docItem.data() as any
         return {
           id: docItem.id,
@@ -739,7 +763,13 @@ export default function ForoPage() {
     })
 
     return () => unsubscribe()
-  }, [])
+  }, [pageLimit])
+
+  const handleLoadMore = () => {
+    if (pageLimit < 50) {
+      setPageLimit((prev) => prev + 5)
+    }
+  }
 
   const handleLike = async (postId: string) => {
     if (!user?.uid) return
@@ -843,6 +873,23 @@ export default function ForoPage() {
               }}
             />
           ))}
+          {hasMore && pageLimit < 50 && (
+            <div className="flex justify-center mt-10">
+              <button 
+                onClick={handleLoadMore}
+                className="bg-transparent text-primary border-3 border-primary font-label font-bold px-10 py-3 uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-comic-sm hover:-translate-y-1"
+              >
+                Cargar Más Publicaciones
+              </button>
+            </div>
+          )}
+          {pageLimit >= 50 && hasMore && (
+            <div className="flex justify-center mt-10 p-6 bg-white border-3 border-secondary shadow-comic-sm text-center">
+              <p className="font-label font-bold text-sm text-secondary uppercase tracking-widest">
+                Has alcanzado el límite (10 páginas).<br/> <a href="/foro" className="text-primary underline mt-2 inline-block">Refrescar Publicaciones Nuevas</a>
+              </p>
+            </div>
+          )}
         </div>
       </section>
 

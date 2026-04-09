@@ -53,6 +53,7 @@ export function Topbar() {
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 100)
+      if (isUserDropdownOpen) setUserDropdownOpen(false)
     }
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
@@ -223,57 +224,66 @@ export function Topbar() {
 
         return (
           <div
-            className={`lg:hidden flex flex-col bg-red-dark border-t-3 border-secondary overflow-hidden transition-[max-height] duration-400 ${isMobileMenuOpen ? 'max-h-[800px]' : 'max-h-0'
+            className={`lg:hidden fixed inset-0 top-[72px] bg-secondary/95 backdrop-blur-md z-40 overflow-y-auto transition-all duration-400 ease-in-out ${isMobileMenuOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full pointer-events-none'
               }`}
           >
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className="font-heading font-bold text-base text-white px-8 py-4 uppercase tracking-[1px] border-b-2 border-white/10 transition-colors hover:bg-black/20"
-              >
-                {link.label}
-              </Link>
-            ))}
-            {/* Mobile User/Login item */}
-            {!isAuthenticated ? (
-              <Link
-                href="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="font-heading font-bold text-base text-accent px-8 py-4 uppercase tracking-[1px] border-b-2 border-white/10 transition-colors hover:bg-black/20 flex items-center gap-2"
-              >
-                <User className="w-5 h-5" strokeWidth={2.5} /> Iniciar Sesion / Registrarse
-              </Link>
-            ) : (
-              <div className="flex flex-col border-b-2 border-white/10">
-                <div className="px-8 py-4 flex items-center gap-3">
-                  {user?.photoURL ? (
-                    <FitAvatar
-                      src={user.photoURL}
-                      alt="Avatar"
-                      size={32}
-                      borderColor="border-white"
-                      bgColor="bg-primary"
-                      isPremium={isPremium}
-                    />
-                  ) : (
-                    <User className="w-8 h-8 text-white" strokeWidth={2.5} />
-                  )}
-                  <div className="flex flex-col">
-                    <span className="font-heading font-bold text-base text-white uppercase">{user?.username}</span>
-                    <span className="font-label text-xs text-white/70">{user?.email}</span>
-                  </div>
-                </div>
+            <div className="flex flex-col p-8 gap-2 min-h-full pb-24">
+              <span className="font-label text-xs text-white/50 uppercase tracking-widest mb-4">Navegación</span>
+              {navLinks.map((link) => (
                 <Link
-                  href="/perfil"
+                  key={link.href}
+                  href={link.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="font-heading font-bold text-[0.9rem] text-accent px-8 py-3 uppercase tracking-[1px] transition-colors hover:bg-black/20"
+                  className="font-display italic text-3xl text-white py-4 border-b-2 border-white/10 uppercase tracking-wider hover:text-accent hover:pl-4 transition-all duration-300"
                 >
-                  Configuracion
+                  {link.label}
                 </Link>
+              ))}
+
+              <div className="mt-8 flex-1 flex flex-col justify-end">
+                <span className="font-label text-xs text-white/50 uppercase tracking-widest mb-4 block">Cuenta</span>
+                {!isAuthenticated ? (
+                  <Link
+                    href="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center justify-center gap-3 bg-primary text-white p-4 rounded-xl border-4 border-black shadow-comic-sm font-label font-bold uppercase tracking-widest text-sm hover:bg-black transition-colors"
+                  >
+                    <User className="w-5 h-5" strokeWidth={2.5} /> Iniciar Sesión / Regístrate
+                  </Link>
+                ) : (
+                  <div className="bg-white rounded-2xl p-4 border-4 border-black shadow-comic-sm flex flex-col gap-4">
+                    <div className="flex items-center gap-4">
+                      {user?.photoURL ? (
+                        <FitAvatar
+                          src={user.photoURL}
+                          alt="Avatar"
+                          size={48}
+                          borderWidth="border-3"
+                          borderColor="border-black"
+                          bgColor="bg-primary"
+                          isPremium={isPremium}
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-primary rounded-full border-3 border-black flex items-center justify-center text-white">
+                          <User className="w-6 h-6" strokeWidth={2.5} />
+                        </div>
+                      )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-display italic text-xl text-secondary uppercase truncate">{user?.username}</span>
+                        <span className="font-label text-xs text-gray-500 truncate">{user?.email}</span>
+                      </div>
+                    </div>
+                    <Link
+                      href="/perfil"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="text-center font-label font-bold text-xs text-secondary bg-gray-100 p-3 rounded-xl uppercase tracking-wider hover:bg-gray-200 transition-colors"
+                    >
+                      Configuración de Cuenta
+                    </Link>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         )
       })()}

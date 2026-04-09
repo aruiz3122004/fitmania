@@ -72,7 +72,16 @@ export async function PATCH(request: Request) {
 
     // Actualizar campos en Firestore (especialmente el plan)
     const updates: any = {};
-    if (plan !== undefined) updates.plan = plan; // Si viene null, se remueve el plan
+    if (plan !== undefined) {
+      if (plan && typeof plan === 'object') {
+        const processedPlan = { ...plan };
+        if (typeof plan.inicio === 'string') processedPlan.inicio = new Date(plan.inicio);
+        if (typeof plan.expira === 'string') processedPlan.expira = new Date(plan.expira);
+        updates.plan = processedPlan;
+      } else {
+        updates.plan = plan; // Si viene null (remover plan)
+      }
+    }
 
     if (Object.keys(updates).length > 0) {
       await db.collection('users').doc(uid).update(updates);

@@ -8,8 +8,17 @@ import { useAuthStore } from '@/lib/store'
 import { db } from '@/lib/firebase'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import { doc, updateDoc } from 'firebase/firestore'
-import { Save, UserCircle, Camera, Loader2 } from 'lucide-react'
+import { Save, UserCircle, Camera, Loader2, ShieldCheck, Clock, Calendar } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
+
+const formatDate = (dateValue: any) => {
+  if (!dateValue) return 'N/A';
+  let d: Date;
+  if (dateValue.seconds) d = new Date(dateValue.seconds * 1000);
+  else d = new Date(dateValue);
+  if (isNaN(d.getTime())) return 'N/A';
+  return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+};
 
 export default function PerfilPage() {
   const { user, updateUser } = useAuthStore()
@@ -199,6 +208,50 @@ export default function PerfilPage() {
 
             {status && <p className="mt-4 font-label text-sm text-gray-600">{status}</p>}
           </div>
+
+          {/* Sección de Membresía */}
+          {user?.plan && (
+            <div className="mt-8 bg-zinc-900 border-3 border-black shadow-[8px_8px_0_0_rgba(220,38,38,1)] p-8 text-white animate-in slide-in-from-bottom-4 duration-500">
+               <div className="flex items-center gap-3 mb-6">
+                  <ShieldCheck className="text-primary w-8 h-8" />
+                  <h3 className="font-display text-2xl tracking-[2px]">MI MEMBRESÍA</h3>
+               </div>
+               
+               <div className="grid md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                     <div>
+                        <p className="text-[10px] font-black uppercase text-zinc-500 tracking-[3px]">Plan Activo</p>
+                        <p className="text-2xl font-black italic text-primary uppercase">{user.plan.nombre}</p>
+                     </div>
+                     <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
+                        <p className="text-xs font-bold uppercase tracking-widest text-green-500">Estado: Activo</p>
+                     </div>
+                  </div>
+
+                  <div className="bg-zinc-800 p-6 rounded-2xl border-2 border-zinc-700 flex flex-col gap-4">
+                     <div className="flex items-center gap-4">
+                        <Calendar className="w-5 h-5 text-zinc-500" />
+                        <div>
+                           <p className="text-[10px] font-black uppercase text-zinc-500">Inicio del ciclo</p>
+                           <p className="text-sm font-bold">{formatDate(user.plan.inicio)}</p>
+                        </div>
+                     </div>
+                     <div className="flex items-center gap-4">
+                        <Clock className="w-5 h-5 text-primary" />
+                        <div>
+                           <p className="text-[10px] font-black uppercase text-zinc-500">Próximo vencimiento</p>
+                           <p className="text-sm font-bold">{formatDate(user.plan.expira)}</p>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+               
+               <p className="mt-8 text-[10px] font-bold text-zinc-500 uppercase italic text-center">
+                  * Si necesitas modificar tus fechas o congelar tu plan, contacta al administrador.
+               </p>
+            </div>
+          )}
         </div>
       </section>
       <Footer />
