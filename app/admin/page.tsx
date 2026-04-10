@@ -4,18 +4,18 @@ import React, { useState, useEffect } from 'react';
 import { auth } from '@/lib/firebase';
 import { signOut, onAuthStateChanged, User } from 'firebase/auth';
 import Image from 'next/image';
-import { 
-  Users, 
-  Package, 
-  MessageSquare, 
-  TrendingUp, 
-  Bell, 
-  LogOut, 
-  Search, 
-  Plus, 
-  Trash2, 
-  Edit3, 
-  CheckCircle, 
+import {
+  Users,
+  Package,
+  MessageSquare,
+  TrendingUp,
+  Bell,
+  LogOut,
+  Search,
+  Plus,
+  Trash2,
+  Edit3,
+  CheckCircle,
   XCircle,
   Menu,
   X,
@@ -73,11 +73,10 @@ const Sidebar = ({ activeTab, setActiveTab, onLogout }: any) => {
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
-            className={`w-full flex items-center gap-4 p-4 rounded-xl font-black uppercase text-sm transition-all border-4 ${
-              activeTab === item.id 
-                ? 'bg-red-600 text-white border-black translate-x-1 -translate-y-1 shadow-[4px_4px_0_0_rgba(255,255,255,1)]' 
-                : 'text-zinc-400 border-transparent hover:text-white hover:bg-zinc-800'
-            }`}
+            className={`w-full flex items-center gap-4 p-4 rounded-xl font-black uppercase text-sm transition-all border-4 ${activeTab === item.id
+              ? 'bg-red-600 text-white border-black translate-x-1 -translate-y-1 shadow-[4px_4px_0_0_rgba(255,255,255,1)]'
+              : 'text-zinc-400 border-transparent hover:text-white hover:bg-zinc-800'
+              }`}
           >
             <item.icon className="w-5 h-5" />
             {item.label}
@@ -85,7 +84,7 @@ const Sidebar = ({ activeTab, setActiveTab, onLogout }: any) => {
         ))}
       </nav>
 
-      <button 
+      <button
         onClick={onLogout}
         className="mt-auto flex items-center gap-4 p-4 text-zinc-500 font-bold hover:text-red-500 transition-colors uppercase text-xs"
       >
@@ -110,7 +109,7 @@ const NotificationBell = ({ notifications, onMarkRead, onNavigate }: any) => {
 
   return (
     <div className="relative">
-      <button 
+      <button
         onClick={() => setOpen(!open)}
         className="relative p-2 bg-white border-3 border-black rounded-lg shadow-[3px_3px_0_0_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-none transition-all"
       >
@@ -133,8 +132,8 @@ const NotificationBell = ({ notifications, onMarkRead, onNavigate }: any) => {
               <p className="p-8 text-center text-zinc-400 font-bold italic">Todo despejado, jefe.</p>
             ) : (
               notifications.map((n: any) => (
-                <div 
-                  key={n.id} 
+                <div
+                  key={n.id}
                   className={`p-4 border-b-2 border-zinc-100 cursor-pointer transition-colors ${!n.leido ? 'bg-yellow-50 hover:bg-yellow-100' : 'opacity-60 hover:bg-zinc-50'}`}
                   onClick={() => {
                     onMarkRead(n.id);
@@ -207,13 +206,13 @@ const UserPlanModal = ({ isOpen, onClose, user, onSave }: any) => {
           </div>
           <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-full text-white transition-colors"><X className="w-5 h-5" /></button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <div className="space-y-4">
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-2 tracking-widest">Fecha de Inicio</label>
-              <input 
-                type="date" 
+              <input
+                type="date"
                 required
                 className="w-full p-4 bg-zinc-50 border-3 border-black rounded-xl font-bold focus:bg-white outline-none"
                 value={inicio}
@@ -222,8 +221,8 @@ const UserPlanModal = ({ isOpen, onClose, user, onSave }: any) => {
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase text-zinc-500 mb-2 tracking-widest">Fecha de Expiración</label>
-              <input 
-                type="date" 
+              <input
+                type="date"
                 required
                 className="w-full p-4 bg-zinc-50 border-3 border-black rounded-xl font-bold focus:bg-white outline-none"
                 value={expira}
@@ -233,10 +232,10 @@ const UserPlanModal = ({ isOpen, onClose, user, onSave }: any) => {
           </div>
 
           <div className="flex gap-4 pt-4">
-             <button type="button" onClick={onClose} className="flex-1 py-4 font-black uppercase text-xs border-3 border-black rounded-xl hover:bg-zinc-100 transition-all">Cancelar</button>
-             <button type="submit" disabled={loading} className="flex-1 py-4 bg-black text-white font-black uppercase text-xs border-b-4 border-zinc-950 rounded-xl hover:-translate-y-1 transition-all disabled:opacity-50">
-                {loading ? 'Guardando...' : 'Actualizar'}
-             </button>
+            <button type="button" onClick={onClose} className="flex-1 py-4 font-black uppercase text-xs border-3 border-black rounded-xl hover:bg-zinc-100 transition-all">Cancelar</button>
+            <button type="submit" disabled={loading} className="flex-1 py-4 bg-black text-white font-black uppercase text-xs border-b-4 border-zinc-950 rounded-xl hover:-translate-y-1 transition-all disabled:opacity-50">
+              {loading ? 'Guardando...' : 'Actualizar'}
+            </button>
           </div>
         </form>
       </div>
@@ -274,7 +273,7 @@ export default function AdminPage() {
     title: string;
     message: string;
     onConfirm: () => void;
-  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => { } });
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
@@ -290,7 +289,7 @@ export default function AdminPage() {
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      
+
       if (currentUser) {
         const decodedResult = await currentUser.getIdTokenResult();
         if (decodedResult.claims.admin === true) {
@@ -336,35 +335,35 @@ export default function AdminPage() {
       setConnectionError('Error de conexión con el Servidor / Base de Datos. Verifica las variables de entorno en Vercel.');
     };
 
-    fetch('/api/admin/stats', { headers: { 'Authorization': `Bearer ${token}` }})
+    fetch('/api/admin/stats', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => {
         if (!res.ok) throw new Error('Stats failure');
         return res.json();
       })
       .then(setStats)
       .catch(handleFetchError);
-    
-    fetch('/api/admin/notifications', { headers: { 'Authorization': `Bearer ${token}` }})
+
+    fetch('/api/admin/notifications', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setNotifications(data) : setNotifications([]))
       .catch(handleFetchError);
 
-    fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` }})
+    fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setUsersList(data) : setUsersList([]))
       .catch(handleFetchError);
 
-    fetch('/api/admin/products', { headers: { 'Authorization': `Bearer ${token}` }})
+    fetch('/api/admin/products', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setProductsList(data) : setProductsList([]))
       .catch(handleFetchError);
 
-    fetch('/api/admin/pqrs', { headers: { 'Authorization': `Bearer ${token}` }})
+    fetch('/api/admin/pqrs', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setPqrsList(data) : setPqrsList([]))
       .catch(handleFetchError);
 
-    fetch('/api/admin/orders', { headers: { 'Authorization': `Bearer ${token}` }})
+    fetch('/api/admin/orders', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setOrdersList(data) : setOrdersList([]))
       .catch(handleFetchError);
@@ -385,9 +384,9 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/admin/users', {
         method: 'PATCH',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ uid, plan })
       });
@@ -400,22 +399,22 @@ export default function AdminPage() {
   };
 
   const handleDeleteUser = (uid: string) => {
-     setConfirmModal({
-       isOpen: true,
-       title: "BORRAR SOCIO",
-       message: "¿¡ESTÁS SEGURO!? Este socio será eliminado permanentemente de la base de datos de Fitmania. Esta acción no se puede deshacer.",
-       onConfirm: async () => {
-         const token = await auth.currentUser?.getIdToken();
-         const res = await fetch(`/api/admin/users?uid=${uid}`, { 
-           method: 'DELETE', 
-           headers: { 'Authorization': `Bearer ${token}` } 
-         });
-         if(res.ok) {
-           toast.success("Usuario borrado satisfactoriamente");
-           setUsersList(usersList.filter(u => u.uid !== uid));
-         }
-       }
-     });
+    setConfirmModal({
+      isOpen: true,
+      title: "BORRAR SOCIO",
+      message: "¿¡ESTÁS SEGURO!? Este socio será eliminado permanentemente de la base de datos de Fitmania. Esta acción no se puede deshacer.",
+      onConfirm: async () => {
+        const token = await auth.currentUser?.getIdToken();
+        const res = await fetch(`/api/admin/users?uid=${uid}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          toast.success("Usuario borrado satisfactoriamente");
+          setUsersList(usersList.filter(u => u.uid !== uid));
+        }
+      }
+    });
   };
 
   const handleRemovePlan = (uid: string) => {
@@ -430,7 +429,7 @@ export default function AdminPage() {
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ uid, plan: null })
         });
-        if(res.ok) {
+        if (res.ok) {
           toast.success("Plan removido");
           setUsersList(usersList.map(u => u.uid === uid ? { ...u, plan: null } : u));
         }
@@ -445,7 +444,7 @@ export default function AdminPage() {
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, stock: newStock })
     });
-    if(res.ok) {
+    if (res.ok) {
       toast.success("Stock actualizado");
       setProductsList(productsList.map(p => p.id === id ? { ...p, stock: newStock } : p));
     }
@@ -454,14 +453,14 @@ export default function AdminPage() {
   const handleSaveProduct = async (data: any) => {
     const token = await auth.currentUser?.getIdToken();
     const isEditing = !!selectedProduct;
-    
+
     const res = await fetch('/api/admin/products', {
       method: isEditing ? 'PATCH' : 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(isEditing ? { id: selectedProduct.id, ...data } : data)
     });
 
-    if(res.ok) {
+    if (res.ok) {
       toast.success(isEditing ? "Producto actualizado" : "Producto creado");
       setIsProductModalOpen(false);
       refreshAllData();
@@ -481,7 +480,7 @@ export default function AdminPage() {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if(res.ok) {
+        if (res.ok) {
           toast.success("Producto eliminado");
           setProductsList(productsList.filter(p => p.id !== id));
         }
@@ -490,20 +489,20 @@ export default function AdminPage() {
   };
 
   const handleReplyPqrs = async (pqrs: any) => {
-    if(!replyMessage) return;
+    if (!replyMessage) return;
     const token = await auth.currentUser?.getIdToken();
     const res = await fetch('/api/admin/pqrs/respond', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         pqrsId: pqrs.id,
-        userEmail: pqrs.userEmail, 
+        userEmail: pqrs.userEmail,
         userName: pqrs.userName,
         originalMessage: pqrs.mensaje,
         responseMessage: replyMessage
       })
     });
-    if(res.ok) {
+    if (res.ok) {
       toast.success("Respuesta enviada por Gmail");
       setIsReplying(null);
       setReplyMessage('');
@@ -520,6 +519,80 @@ export default function AdminPage() {
     });
     setNotifications(notifications.map(n => n.id === id ? { ...n, leido: true } : n));
   };
+
+  const handleExportUsersCSV = () => {
+    const headers = ['Nombre,Email,Rol,Plan,Status,Registro'];
+    const rows = usersList.map(u => [
+      `"${u.username || 'Desconocido'}"`,
+      `"${u.email || 'N/A'}"`,
+      `"${u.admin ? 'Admin' : 'Socio'}"`,
+      `"${u.plan?.nombre || 'Sin Plan'}"`,
+      `"${u.plan && new Date(u.plan.expira.seconds * 1000 || u.plan.expira) > new Date() ? 'Activo' : 'Inactivo/Vencido'}"`,
+      `"${u.createdAt ? new Date(u.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}"`
+    ].join(','));
+    
+    const csvContent = "data:text/csv;charset=utf-8," + headers.concat(rows).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "fitmania_usuarios.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  const handleExportUsersJSON = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(usersList, null, 2))
+    const downloadNode = document.createElement('a')
+    downloadNode.setAttribute("href", dataStr)
+    downloadNode.setAttribute("download", "fitmania_directorio.json")
+    document.body.appendChild(downloadNode)
+    downloadNode.click()
+    downloadNode.remove()
+  }
+
+  const handleExportOrdersCSV = () => {
+    const headers = ['Cliente,Fecha,Banco,Total,Items'];
+    const rows = ordersList.map(o => [
+      `"${o.customerName || 'N/A'}"`,
+      `"${formatDate(o.fecha)}"`,
+      `"${o.banco || 'N/A'}"`,
+      `"${o.total || 0}"`,
+      `"${(o.items || []).map((i:any) => i.nombre).join(' | ')}"`
+    ].join(','));
+
+    const csvContent = "data:text/csv;charset=utf-8," + headers.concat(rows).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "fitmania_ventas.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  const handleArchiveSales = async () => {
+    setConfirmModal({
+      isOpen: true,
+      title: "ARCHIVAR CAJA DEL MES",
+      message: "¡ALTO! ¿Deseas hacer un corte de caja? Esto enviará todas las ventas visibles al archivo histórico y el contador de ingresos quedará en $0 para iniciar un nuevo mes. Los datos NO se borrarán de Firebase.",
+      onConfirm: async () => {
+        const token = await auth.currentUser?.getIdToken();
+        const res = await fetch(`/api/admin/archive-sales`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: "FitmaniaAdmin2026" })
+        });
+
+        if (res.ok) {
+          toast.success("Corte de caja exitoso. Archivo guardado.");
+          setOrdersList([]); // Limpia la pantalla
+        } else {
+          toast.error("Error al archivar la caja.");
+        }
+      }
+    });
+  }
 
   // --- RENDERS ---
 
@@ -545,41 +618,41 @@ export default function AdminPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Recent Orders */}
         <div className="bg-white border-4 border-black rounded-[2rem] shadow-[8px_8px_0_0_rgba(0,0,0,1)] overflow-hidden">
-           <div className="p-6 border-b-4 border-black bg-zinc-50 flex justify-between items-center">
-              <h3 className="font-black italic uppercase italic tracking-tighter">Ventas Recientes</h3>
-              <button onClick={() => setActiveTab('orders')} className="text-xs font-black underline hover:text-red-600 transition-colors">VER TODO</button>
-           </div>
-           <div className="p-4 space-y-4">
-              {ordersList.slice(0, 5).map(order => (
-                 <div key={order.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 p-4 border-2 border-zinc-100 rounded-xl hover:bg-zinc-50 transition-colors">
-                    <div>
-                      <p className="font-black text-sm">{order.customerName}</p>
-                      <p className="text-[10px] text-zinc-400 font-bold uppercase">{formatDate(order.fecha)}</p>
-                    </div>
-                    <p className="font-black text-green-600 sm:text-right">{formatCurrency(order.total || 0)}</p>
-                 </div>
-              ))}
-           </div>
+          <div className="p-6 border-b-4 border-black bg-zinc-50 flex justify-between items-center">
+            <h3 className="font-black italic uppercase italic tracking-tighter">Ventas Recientes</h3>
+            <button onClick={() => setActiveTab('orders')} className="text-xs font-black underline hover:text-red-600 transition-colors">VER TODO</button>
+          </div>
+          <div className="p-4 space-y-4">
+            {ordersList.slice(0, 5).map(order => (
+              <div key={order.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 p-4 border-2 border-zinc-100 rounded-xl hover:bg-zinc-50 transition-colors">
+                <div>
+                  <p className="font-black text-sm">{order.customerName}</p>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase">{formatDate(order.fecha)}</p>
+                </div>
+                <p className="font-black text-green-600 sm:text-right">{formatCurrency(order.total || 0)}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Low Stock Alerts */}
         <div className="bg-zinc-900 border-4 border-black rounded-[2rem] shadow-[8px_8px_0_0_rgba(0,0,0,0.1)] p-8 text-white">
-           <div className="flex items-center gap-3 mb-6">
-              <AlertTriangle className="text-yellow-400 w-8 h-8" />
-              <h3 className="text-2xl font-black italic tracking-tighter text-red-500 uppercase">Alertas Críticas</h3>
-           </div>
-           <div className="space-y-4">
-              {productsList.filter(p => p.stock < 5).map(p => (
-                <div key={p.id} className="bg-zinc-800 p-4 rounded-xl border-l-4 border-yellow-500 flex justify-between items-center animate-shake">
-                   <div>
-                     <p className="font-black text-sm uppercase">{p.nombre}</p>
-                     <p className="text-xs text-zinc-500">Solo quedan {p.stock} unidades</p>
-                   </div>
-                   <button onClick={() => handleUpdateStock(p.id, p.stock + 20)} className="text-[10px] font-black underline hover:text-yellow-400">SURTIR +20</button>
+          <div className="flex items-center gap-3 mb-6">
+            <AlertTriangle className="text-yellow-400 w-8 h-8" />
+            <h3 className="text-2xl font-black italic tracking-tighter text-red-500 uppercase">Alertas Críticas</h3>
+          </div>
+          <div className="space-y-4">
+            {productsList.filter(p => p.stock < 5).map(p => (
+              <div key={p.id} className="bg-zinc-800 p-4 rounded-xl border-l-4 border-yellow-500 flex justify-between items-center animate-shake">
+                <div>
+                  <p className="font-black text-sm uppercase">{p.nombre}</p>
+                  <p className="text-xs text-zinc-500">Solo quedan {p.stock} unidades</p>
                 </div>
-              ))}
-              {productsList.filter(p => p.stock < 5).length === 0 && <p className="text-zinc-600 font-bold italic">No hay alertas de inventario por ahora.</p>}
-           </div>
+                <button onClick={() => handleUpdateStock(p.id, p.stock + 20)} className="text-[10px] font-black underline hover:text-yellow-400">SURTIR +20</button>
+              </div>
+            ))}
+            {productsList.filter(p => p.stock < 5).length === 0 && <p className="text-zinc-600 font-bold italic">No hay alertas de inventario por ahora.</p>}
+          </div>
         </div>
       </div>
     </div>
@@ -588,13 +661,19 @@ export default function AdminPage() {
   const renderUsers = () => (
     <div className="bg-white border-4 border-black rounded-[2rem] shadow-[10px_10px_0_0_rgba(0,0,0,1)] overflow-hidden animate-in zoom-in-95 duration-300">
       <div className="p-8 border-b-4 border-black bg-zinc-50 flex flex-col md:flex-row gap-4 justify-between items-center">
-        <h2 className="text-2xl font-black italic uppercase tracking-tighter">Base de Usuarios</h2>
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          <h2 className="text-2xl font-black italic uppercase tracking-tighter">Base de Usuarios</h2>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button onClick={handleExportUsersJSON} className="flex-1 sm:flex-none border-2 border-black bg-white hover:bg-zinc-100 text-[10px] font-black tracking-widest uppercase p-2 rounded-xl shadow-[3px_3px_0_0_rgba(0,0,0,1)] transition-transform active:translate-y-1">↓ JSON</button>
+            <button onClick={handleExportUsersCSV} className="flex-1 sm:flex-none border-2 border-black bg-black text-white hover:bg-zinc-900 text-[10px] font-black tracking-widest uppercase p-2 rounded-xl shadow-[3px_3px_0_0_rgba(220,38,38,1)] transition-transform active:translate-y-1">📊 CSV / EXCEL</button>
+          </div>
+        </div>
         <div className="relative w-full md:w-auto">
           <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-          <input 
-            type="text" 
-            placeholder="Buscar..." 
-            className="pl-10 pr-4 py-3 bg-white border-2 border-black rounded-xl outline-none focus:ring-4 focus:ring-red-500/10 transition-all font-bold text-sm w-full md:w-72" 
+          <input
+            type="text"
+            placeholder="Buscar..."
+            className="pl-10 pr-4 py-3 bg-white border-2 border-black rounded-xl outline-none focus:ring-4 focus:ring-red-500/10 transition-all font-bold text-sm w-full md:w-72"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -627,13 +706,13 @@ export default function AdminPage() {
                 <td className="p-6">
                   {u.plan ? (
                     <div className="flex items-center gap-3">
-                       <div className="flex flex-col">
-                          <span className="bg-yellow-400 text-black border-2 border-black px-3 py-1 rounded-lg text-[10px] font-black uppercase italic shadow-[2px_2px_0_0_rgba(0,0,0,1)]">
-                            {u.plan.nombre}
-                          </span>
-                          <span className="text-[10px] font-bold text-red-500 mt-1 uppercase">Vence: {formatDate(u.plan.expira)}</span>
-                       </div>
-                       <button onClick={() => handleRemovePlan(u.uid)} className="opacity-0 group-hover:opacity-100 p-2 text-zinc-400 hover:text-red-500 transition-all" title="Remover Membresía"><RotateCcw className="w-4 h-4" /></button>
+                      <div className="flex flex-col">
+                        <span className="bg-yellow-400 text-black border-2 border-black px-3 py-1 rounded-lg text-[10px] font-black uppercase italic shadow-[2px_2px_0_0_rgba(0,0,0,1)]">
+                          {u.plan.nombre}
+                        </span>
+                        <span className="text-[10px] font-bold text-red-500 mt-1 uppercase">Vence: {formatDate(u.plan.expira)}</span>
+                      </div>
+                      <button onClick={() => handleRemovePlan(u.uid)} className="opacity-0 group-hover:opacity-100 p-2 text-zinc-400 hover:text-red-500 transition-all" title="Remover Membresía"><RotateCcw className="w-4 h-4" /></button>
                     </div>
                   ) : (
                     <span className="bg-zinc-100 text-zinc-400 px-3 py-1 rounded-full text-[10px] font-bold uppercase">Sin Membresía</span>
@@ -663,7 +742,7 @@ export default function AdminPage() {
           <h2 className="text-2xl font-black italic uppercase tracking-tighter">Suministros y Stock</h2>
           <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">Inventario Global de la sede</p>
         </div>
-        <button 
+        <button
           onClick={() => { setSelectedProduct(null); setIsProductModalOpen(true); }}
           className="bg-black text-white px-8 py-4 rounded-xl font-black uppercase text-xs flex items-center gap-3 hover:bg-zinc-800 transition-all hover:-translate-y-1 shadow-[4px_4px_0_0_rgba(220,38,38,1)]"
         >
@@ -689,24 +768,24 @@ export default function AdminPage() {
               <p className="text-[10px] font-black text-zinc-400 uppercase mb-6 tracking-widest italic">{p.categoria}</p>
 
               <div className="flex items-center gap-4 bg-zinc-50 p-3 border-2 border-black rounded-xl mb-6">
-                 <div className="flex-1">
-                   <p className="text-[8px] font-black uppercase text-zinc-500">Cant. Disponible</p>
-                   <p className={`text-xl font-black ${p.stock < 5 ? 'text-red-600 animate-shake' : 'text-zinc-900'}`}>{p.stock} UDS</p>
-                 </div>
-                 <div className="flex flex-col gap-1">
-                   <button onClick={() => handleUpdateStock(p.id, p.stock + 1)} className="bg-white border-2 border-black p-1 hover:bg-zinc-200"><Plus className="w-3 h-3" /></button>
-                   <button onClick={() => handleUpdateStock(p.id, Math.max(0, p.stock - 1))} className="bg-white border-2 border-black p-1 hover:bg-zinc-200"><RotateCcw className="w-3 h-3" /></button>
-                 </div>
+                <div className="flex-1">
+                  <p className="text-[8px] font-black uppercase text-zinc-500">Cant. Disponible</p>
+                  <p className={`text-xl font-black ${p.stock < 5 ? 'text-red-600 animate-shake' : 'text-zinc-900'}`}>{p.stock} UDS</p>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <button onClick={() => handleUpdateStock(p.id, p.stock + 1)} className="bg-white border-2 border-black p-1 hover:bg-zinc-200"><Plus className="w-3 h-3" /></button>
+                  <button onClick={() => handleUpdateStock(p.id, Math.max(0, p.stock - 1))} className="bg-white border-2 border-black p-1 hover:bg-zinc-200"><RotateCcw className="w-3 h-3" /></button>
+                </div>
               </div>
 
               <div className="flex gap-2">
-                <button 
+                <button
                   onClick={() => { setSelectedProduct(p); setIsProductModalOpen(true); }}
                   className="flex-1 py-3 bg-zinc-900 text-white font-black text-[10px] uppercase border-b-4 border-zinc-950 hover:bg-black transition-all"
                 >
                   Editar
                 </button>
-                <button 
+                <button
                   onClick={() => handleDeleteProduct(p.id)}
                   className="p-3 border-2 border-black hover:bg-red-50 rounded-xl transition-all"
                 >
@@ -722,113 +801,123 @@ export default function AdminPage() {
 
   const renderPQRS = () => (
     <div className="space-y-8 animate-in slide-in-from-top-4 duration-500">
-       <div className="bg-white p-8 border-4 border-black rounded-[2rem] shadow-[6px_6px_0_0_rgba(0,0,0,1)]">
-          <h2 className="text-3xl font-black italic uppercase tracking-tighter text-red-600 mb-2">Buzón de Atención (PQRS)</h2>
-          <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest">Escucha y responde a los integrantes de la comunidad</p>
-       </div>
+      <div className="bg-white p-8 border-4 border-black rounded-[2rem] shadow-[6px_6px_0_0_rgba(0,0,0,1)]">
+        <h2 className="text-3xl font-black italic uppercase tracking-tighter text-red-600 mb-2">Buzón de Atención (PQRS)</h2>
+        <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest">Escucha y responde a los integrantes de la comunidad</p>
+      </div>
 
-       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {pqrsList.map(pqrs => (
-            <div key={pqrs.id} className={`bg-white border-4 border-black rounded-2xl shadow-[8px_8px_0_0_rgba(0,0,0,1)] transition-all ${pqrs.estado === 'resuelto' ? 'opacity-60 bg-zinc-50 shadow-none grayscale' : 'hover:-translate-y-1'}`}>
-               <div className="p-6 flex gap-4">
-                  <div className="w-16 h-16 bg-zinc-100 rounded-full border-3 border-black flex-shrink-0 overflow-hidden relative shadow-[3px_3px_0_0_rgba(0,0,0,1)]">
-                     {pqrs.avatar || pqrs.photoURL ? (
-                       <Image src={pqrs.avatar || pqrs.photoURL} alt="User" fill className="object-cover" />
-                     ) : (
-                       <Users className="p-4 text-zinc-300 w-full h-full" />
-                     )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {pqrsList.map(pqrs => (
+          <div key={pqrs.id} className={`bg-white border-4 border-black rounded-2xl shadow-[8px_8px_0_0_rgba(0,0,0,1)] transition-all ${pqrs.estado === 'resuelto' ? 'opacity-60 bg-zinc-50 shadow-none grayscale' : 'hover:-translate-y-1'}`}>
+            <div className="p-6 flex gap-4">
+              <div className="w-16 h-16 bg-zinc-100 rounded-full border-3 border-black flex-shrink-0 overflow-hidden relative shadow-[3px_3px_0_0_rgba(0,0,0,1)]">
+                {pqrs.avatar || pqrs.photoURL ? (
+                  <Image src={pqrs.avatar || pqrs.photoURL} alt="User" fill className="object-cover" />
+                ) : (
+                  <Users className="p-4 text-zinc-300 w-full h-full" />
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <h4 className="font-black uppercase text-sm">{pqrs.userName || 'Usuario'}</h4>
+                    <p className="text-[10px] text-zinc-400 font-bold">{pqrs.userEmail}</p>
                   </div>
-                  <div className="flex-1">
-                     <div className="flex justify-between items-start mb-2">
-                        <div>
-                           <h4 className="font-black uppercase text-sm">{pqrs.userName || 'Usuario'}</h4>
-                           <p className="text-[10px] text-zinc-400 font-bold">{pqrs.userEmail}</p>
-                        </div>
-                        <span className={`text-[9px] font-black uppercase px-2 py-1 border-2 border-black rounded ${pqrs.estado === 'resuelto' ? 'bg-green-400' : 'bg-yellow-400'}`}>
-                           {pqrs.estado === 'resuelto' ? 'Resuelto' : 'Pendiente'}
-                        </span>
-                     </div>
-                     <p className="text-xs text-zinc-500 font-bold mb-4 uppercase tracking-tighter italic">{pqrs.tipo} - {pqrs.fecha} {pqrs.hora}</p>
-                     <p className="text-sm font-medium text-zinc-800 bg-zinc-50 p-4 border-2 border-dashed border-zinc-200 rounded-xl mb-4 leading-relaxed">"{pqrs.mensaje}"</p>
-                     
-                     {pqrs.estado !== 'resuelto' ? (
-                       isReplying === pqrs.id ? (
-                         <div className="space-y-3 bg-red-50 p-4 border-2 border-black rounded-xl">
-                            <textarea 
-                              placeholder="Escribe tu respuesta aquí..." 
-                              className="w-full bg-white border-2 border-black p-3 rounded-lg outline-none text-sm font-medium focus:ring-4 focus:ring-red-500/10 min-h-[100px] resize-none"
-                              value={replyMessage}
-                              onChange={(e) => setReplyMessage(e.target.value)}
-                            />
-                            <div className="flex gap-2">
-                               <button onClick={() => handleReplyPqrs(pqrs)} className="flex-1 bg-black text-white py-3 rounded-lg font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-zinc-800"><Send className="w-3 h-3" /> Enviar Respuesta</button>
-                               <button onClick={() => setIsReplying(null)} className="p-3 bg-white border-2 border-black rounded-lg hover:bg-zinc-100"><X className="w-4 h-4" /></button>
-                            </div>
-                         </div>
-                       ) : (
-                         <button onClick={() => setIsReplying(pqrs.id)} className="w-full py-4 border-2 border-black rounded-xl font-black text-[10px] uppercase hover:bg-zinc-900 hover:text-white transition-all shadow-[4px_4px_0_0_rgba(0,0,0,1)] active:shadow-none hover:translate-x-0.5 hover:translate-y-0.5"><Mail className="w-4 h-4 inline mr-2" /> Responder via Gmail</button>
-                       )
-                     ) : (
-                       <div className="bg-green-50 p-4 border-2 border-green-200 rounded-xl">
-                          <p className="text-[10px] font-black text-green-700 uppercase mb-2">✓ Respuesta enviada:</p>
-                          <p className="text-xs text-green-800 font-medium italic">"{pqrs.respuesta_admin}"</p>
-                       </div>
-                     )}
+                  <span className={`text-[9px] font-black uppercase px-2 py-1 border-2 border-black rounded ${pqrs.estado === 'resuelto' ? 'bg-green-400' : 'bg-yellow-400'}`}>
+                    {pqrs.estado === 'resuelto' ? 'Resuelto' : 'Pendiente'}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 font-bold mb-4 uppercase tracking-tighter italic">{pqrs.tipo} - {pqrs.fecha} {pqrs.hora}</p>
+                <p className="text-sm font-medium text-zinc-800 bg-zinc-50 p-4 border-2 border-dashed border-zinc-200 rounded-xl mb-4 leading-relaxed">"{pqrs.mensaje}"</p>
+
+                {pqrs.estado !== 'resuelto' ? (
+                  isReplying === pqrs.id ? (
+                    <div className="space-y-3 bg-red-50 p-4 border-2 border-black rounded-xl">
+                      <textarea
+                        placeholder="Escribe tu respuesta aquí..."
+                        className="w-full bg-white border-2 border-black p-3 rounded-lg outline-none text-sm font-medium focus:ring-4 focus:ring-red-500/10 min-h-[100px] resize-none"
+                        value={replyMessage}
+                        onChange={(e) => setReplyMessage(e.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={() => handleReplyPqrs(pqrs)} className="flex-1 bg-black text-white py-3 rounded-lg font-black text-[10px] uppercase flex items-center justify-center gap-2 hover:bg-zinc-800"><Send className="w-3 h-3" /> Enviar Respuesta</button>
+                        <button onClick={() => setIsReplying(null)} className="p-3 bg-white border-2 border-black rounded-lg hover:bg-zinc-100"><X className="w-4 h-4" /></button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setIsReplying(pqrs.id)} className="w-full py-4 border-2 border-black rounded-xl font-black text-[10px] uppercase hover:bg-zinc-900 hover:text-white transition-all shadow-[4px_4px_0_0_rgba(0,0,0,1)] active:shadow-none hover:translate-x-0.5 hover:translate-y-0.5"><Mail className="w-4 h-4 inline mr-2" /> Responder via Gmail</button>
+                  )
+                ) : (
+                  <div className="bg-green-50 p-4 border-2 border-green-200 rounded-xl">
+                    <p className="text-[10px] font-black text-green-700 uppercase mb-2">✓ Respuesta enviada:</p>
+                    <p className="text-xs text-green-800 font-medium italic">"{pqrs.respuesta_admin}"</p>
                   </div>
-               </div>
+                )}
+              </div>
             </div>
-          ))}
-          {pqrsList.length === 0 && <div className="col-span-2 text-center py-20 bg-white border-4 border-black border-dashed rounded-[2rem] text-zinc-300 font-black italic text-2xl uppercase opacity-20">No hay tickets de atención aún</div>}
-       </div>
+          </div>
+        ))}
+        {pqrsList.length === 0 && <div className="col-span-2 text-center py-20 bg-white border-4 border-black border-dashed rounded-[2rem] text-zinc-300 font-black italic text-2xl uppercase opacity-20">No hay tickets de atención aún</div>}
+      </div>
     </div>
   );
 
   const renderOrders = () => (
     <div className="space-y-8 animate-in fade-in duration-600">
-       <div className="bg-white p-6 sm:p-8 border-4 border-black rounded-[2rem] shadow-[6px_6px_0_0_rgba(0,0,0,1)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-          <div>
-            <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">Historial de Ventas</h2>
-            <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest">Listado de transacciones y pedidos procesados</p>
-          </div>
-          <div className="bg-zinc-900 border-2 border-black p-4 rounded-xl text-white w-full sm:w-auto text-center sm:text-left">
-             <p className="text-[10px] font-bold text-zinc-500 uppercase italic">Recaudado (Total)</p>
-             <p className="text-2xl font-black text-green-400 truncate max-w-full">{formatCurrency(ordersList.reduce((acc, o) => acc + (o.total || 0), 0))}</p>
-          </div>
-       </div>
+      <div className="bg-white p-6 sm:p-8 border-4 border-black rounded-[2rem] shadow-[6px_6px_0_0_rgba(0,0,0,1)] flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+        <div className="flex-1">
+          <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-2">Historial de Ventas</h2>
+          <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest">Transacciones y pedidos actuales</p>
+        </div>
 
-       <div className="grid grid-cols-1 gap-6">
-          {ordersList.map(order => (
-            <div key={order.id} className="bg-white border-4 border-black rounded-2xl shadow-[6px_6px_0_0_rgba(0,0,0,1)] overflow-hidden">
-               <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 bg-zinc-50 border-b-2 border-zinc-100">
-                  <div className="flex items-center gap-4 w-full sm:w-auto">
-                     <div className="w-12 h-12 bg-zinc-900 border-2 border-black rounded-xl flex items-center justify-center text-white shrink-0"><ShoppingBag /></div>
-                     <div className="min-w-0">
-                        <p className="font-black uppercase text-sm truncate">{order.customerName}</p>
-                        <p className="text-xs text-zinc-400 font-bold font-mono uppercase tracking-tighter truncate">ID: {order.id.slice(0, 12)}...</p>
-                     </div>
-                  </div>
-                  <div className="flex flex-wrap sm:flex-nowrap gap-4 sm:gap-8 items-center text-left sm:text-center w-full sm:w-auto mt-4 sm:mt-0">
-                     <div className="flex-1 sm:flex-none"><p className="text-[10px] font-black uppercase text-zinc-400">Fecha</p><p className="text-sm font-bold truncate">{formatDate(order.fecha)}</p></div>
-                     <div className="flex-1 sm:flex-none"><p className="text-[10px] font-black uppercase text-zinc-400">Banco</p><p className="text-sm font-bold truncate">{order.banco}</p></div>
-                     <div className="w-full sm:w-auto mt-2 sm:mt-0 pt-2 sm:pt-0 border-t-2 sm:border-t-0 border-zinc-200"><p className="text-[10px] font-black uppercase text-zinc-400">Total</p><p className="text-lg sm:text-xl font-black text-red-600 italic tracking-tighter truncate">{formatCurrency(order.total || 0)}</p></div>
-                  </div>
-               </div>
-               <div className="p-6">
-                  <p className="text-[10px] font-black uppercase text-zinc-400 mb-4 tracking-widest">Artículos Comprados:</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                     {order.items?.map((it:any, idx:number) => (
-                       <div key={idx} className="bg-zinc-50 border-2 border-black p-3 rounded-lg relative overflow-hidden">
-                          <p className="text-xs font-black uppercase mb-1">{it.nombre}</p>
-                          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">Cantidad: {it.cantidad} | {formatCurrency(it.precio)} c/u</p>
-                          <div className="absolute -right-1 -bottom-1 text-2xl opacity-10 font-black">{idx + 1}</div>
-                       </div>
-                     ))}
-                  </div>
-               </div>
+        <div className="flex flex-wrap gap-4 items-center w-full lg:w-auto">
+          <button onClick={handleExportOrdersCSV} className="flex-1 sm:flex-none border-2 border-black bg-white hover:bg-zinc-100 text-[10px] font-black tracking-widest uppercase p-3 rounded-xl shadow-[3px_3px_0_0_rgba(0,0,0,1)] transition-all active:translate-y-1">
+            📊 EXCEL / CSV
+          </button>
+          <button onClick={handleArchiveSales} className="flex-1 sm:flex-none border-2 border-black bg-red-600 text-white hover:bg-red-700 text-[10px] font-black tracking-widest uppercase p-3 rounded-xl shadow-[3px_3px_0_0_rgba(0,0,0,1)] transition-all active:translate-y-1">
+            Archivar y Resetear Caja
+          </button>
+
+          <div className="bg-zinc-900 border-2 border-black p-4 rounded-xl text-white w-full sm:w-auto text-center sm:text-left mt-2 sm:mt-0">
+            <p className="text-[10px] font-bold text-zinc-500 uppercase italic">Recaudado (Total Més)</p>
+            <p className="text-2xl font-black text-green-400 truncate max-w-full">{formatCurrency(ordersList.reduce((acc, o) => acc + (o.total || 0), 0))}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        {ordersList.map(order => (
+          <div key={order.id} className="bg-white border-4 border-black rounded-2xl shadow-[6px_6px_0_0_rgba(0,0,0,1)] overflow-hidden">
+            <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 bg-zinc-50 border-b-2 border-zinc-100">
+              <div className="flex items-center gap-4 w-full sm:w-auto">
+                <div className="w-12 h-12 bg-zinc-900 border-2 border-black rounded-xl flex items-center justify-center text-white shrink-0"><ShoppingBag /></div>
+                <div className="min-w-0">
+                  <p className="font-black uppercase text-sm truncate">{order.customerName}</p>
+                  <p className="text-xs text-zinc-400 font-bold font-mono uppercase tracking-tighter truncate">ID: {order.id.slice(0, 12)}...</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap sm:flex-nowrap gap-4 sm:gap-8 items-center text-left sm:text-center w-full sm:w-auto mt-4 sm:mt-0">
+                <div className="flex-1 sm:flex-none"><p className="text-[10px] font-black uppercase text-zinc-400">Fecha</p><p className="text-sm font-bold truncate">{formatDate(order.fecha)}</p></div>
+                <div className="flex-1 sm:flex-none"><p className="text-[10px] font-black uppercase text-zinc-400">Banco</p><p className="text-sm font-bold truncate">{order.banco}</p></div>
+                <div className="w-full sm:w-auto mt-2 sm:mt-0 pt-2 sm:pt-0 border-t-2 sm:border-t-0 border-zinc-200"><p className="text-[10px] font-black uppercase text-zinc-400">Total</p><p className="text-lg sm:text-xl font-black text-red-600 italic tracking-tighter truncate">{formatCurrency(order.total || 0)}</p></div>
+              </div>
             </div>
-          ))}
-          {ordersList.length === 0 && <div className="text-center py-20 text-zinc-300 font-black italic uppercase text-2xl opacity-20 border-4 border-black border-dashed rounded-[2rem]">Sin registro de ventas</div>}
-       </div>
+            <div className="p-6">
+              <p className="text-[10px] font-black uppercase text-zinc-400 mb-4 tracking-widest">Artículos Comprados:</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {order.items?.map((it: any, idx: number) => (
+                  <div key={idx} className="bg-zinc-50 border-2 border-black p-3 rounded-lg relative overflow-hidden">
+                    <p className="text-xs font-black uppercase mb-1">{it.nombre}</p>
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">Cantidad: {it.cantidad} | {formatCurrency(it.precio)} c/u</p>
+                    <div className="absolute -right-1 -bottom-1 text-2xl opacity-10 font-black">{idx + 1}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+        {ordersList.length === 0 && <div className="text-center py-20 text-zinc-300 font-black italic uppercase text-2xl opacity-20 border-4 border-black border-dashed rounded-[2rem]">Sin registro de ventas</div>}
+      </div>
     </div>
   );
 
@@ -848,7 +937,7 @@ export default function AdminPage() {
         </div>
         <h2 className="text-3xl font-black uppercase italic tracking-tighter mb-4" style={{ fontFamily: 'var(--font-display)' }}>ACCESO RESTRINGIDO</h2>
         <p className="text-zinc-500 font-bold mb-8 italic uppercase text-[10px] tracking-widest leading-relaxed">
-          Este centro de mando está reservado <br/> exclusivamente para personal administrativo <br/> de nivel 5 (FITMANIA ADMIN).
+          Este centro de mando está reservado <br /> exclusivamente para personal administrativo <br /> de nivel 5 (FITMANIA ADMIN).
         </p>
         <div className="flex flex-col gap-3">
           <button onClick={() => window.location.href = '/'} className="w-full py-4 bg-black text-white font-black rounded-xl border-b-8 border-zinc-950 hover:-translate-y-1 transition-all shadow-[6px_6px_0_0_rgba(220,38,38,0.2)]">REGRESAR AL SITIO</button>
@@ -859,11 +948,12 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900">
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .halftone { background-image: radial-gradient(circle, #ddd 1px, transparent 1px); background-size: 14px 14px; }
       `}} />
       <Toaster position="bottom-right" richColors />
-      
+
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
 
       <main className="md:ml-64 p-4 md:p-12 min-h-screen halftone relative">
@@ -871,18 +961,18 @@ export default function AdminPage() {
           {/* Mobile Back / Exit Button */}
           <div className="md:hidden absolute -top-14 left-0">
             {activeTab !== 'overview' ? (
-              <button 
-                 onClick={() => setActiveTab('overview')}
-                 className="flex items-center gap-2 text-zinc-600 font-black hover:text-red-600 uppercase text-[10px] tracking-widest border-2 border-black px-4 py-2 bg-white rounded-lg shadow-[3px_3px_0_0_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none transition-all"
+              <button
+                onClick={() => setActiveTab('overview')}
+                className="flex items-center gap-2 text-zinc-600 font-black hover:text-red-600 uppercase text-[10px] tracking-widest border-2 border-black px-4 py-2 bg-white rounded-lg shadow-[3px_3px_0_0_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none transition-all"
               >
-                 <ChevronLeft className="w-4 h-4" /> DASHBOARD
+                <ChevronLeft className="w-4 h-4" /> DASHBOARD
               </button>
             ) : (
-              <button 
-                 onClick={() => window.location.href = '/'}
-                 className="flex items-center gap-2 text-zinc-600 font-black hover:text-red-600 uppercase text-[10px] tracking-widest border-2 border-black px-4 py-2 bg-white rounded-lg shadow-[3px_3px_0_0_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none transition-all"
+              <button
+                onClick={() => window.location.href = '/'}
+                className="flex items-center gap-2 text-zinc-600 font-black hover:text-red-600 uppercase text-[10px] tracking-widest border-2 border-black px-4 py-2 bg-white rounded-lg shadow-[3px_3px_0_0_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none transition-all"
               >
-                 <ChevronLeft className="w-4 h-4" /> SALIR
+                <ChevronLeft className="w-4 h-4" /> SALIR
               </button>
             )}
           </div>
@@ -893,25 +983,25 @@ export default function AdminPage() {
           </div>
 
           <div className="flex items-center gap-6 w-full sm:w-auto self-end sm:self-auto">
-            <NotificationBell 
-              notifications={notifications} 
-              onMarkRead={markNotificationRead} 
+            <NotificationBell
+              notifications={notifications}
+              onMarkRead={markNotificationRead}
               onNavigate={(tab: string) => setActiveTab(tab)}
             />
             <div className="flex items-center gap-4 bg-white border-4 border-black p-2 pr-6 rounded-2xl shadow-[6px_6px_0_0_rgba(0,0,0,1)]">
-               <div className="w-12 h-12 bg-zinc-900 border-2 border-black rounded-xl overflow-hidden text-white flex items-center justify-center font-black italic text-xl shadow-[2px_2px_0_0_rgba(220,38,38,1)]">
-                  {authUser?.photoURL || authUser?.avatar ? (
-                    <Image src={authUser.photoURL || authUser.avatar} alt="Admin" width={48} height={48} className="object-cover" />
-                  ) : (
-                    'A'
-                  )}
-               </div>
-               <div className="hidden sm:block">
-                 <p className="text-xs font-black uppercase tracking-tighter truncate max-w-[120px]">
-                   {authUser?.username || authUser?.email?.split('@')[0] || 'Super User'}
-                 </p>
-                 <p className="text-[8px] font-black text-red-600 tracking-[3px] uppercase">Fitmania Admin</p>
-               </div>
+              <div className="w-12 h-12 bg-zinc-900 border-2 border-black rounded-xl overflow-hidden text-white flex items-center justify-center font-black italic text-xl shadow-[2px_2px_0_0_rgba(220,38,38,1)]">
+                {authUser?.photoURL || authUser?.avatar ? (
+                  <Image src={authUser.photoURL || authUser.avatar} alt="Admin" width={48} height={48} className="object-cover" />
+                ) : (
+                  'A'
+                )}
+              </div>
+              <div className="hidden sm:block">
+                <p className="text-xs font-black uppercase tracking-tighter truncate max-w-[120px]">
+                  {authUser?.username || authUser?.email?.split('@')[0] || 'Super User'}
+                </p>
+                <p className="text-[8px] font-black text-red-600 tracking-[3px] uppercase">Fitmania Admin</p>
+              </div>
             </div>
           </div>
         </header>
@@ -923,14 +1013,14 @@ export default function AdminPage() {
           {activeTab === 'pqrs' && renderPQRS()}
           {activeTab === 'orders' && renderOrders()}
         </div>
-        
+
         {/* Decorative corner element */}
         <div className="fixed bottom-0 right-0 w-32 h-32 bg-yellow-400 border-l-4 border-t-4 border-black z-0 pointer-events-none hidden lg:block" style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 100%)' }}>
-           <div className="absolute bottom-4 right-4 font-black uppercase text-black text-xs rotate-[-45deg]">v1.0</div>
+          <div className="absolute bottom-4 right-4 font-black uppercase text-black text-xs rotate-[-45deg]">v1.0</div>
         </div>
       </main>
 
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={confirmModal.isOpen}
         onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
         onConfirm={confirmModal.onConfirm}
@@ -938,7 +1028,7 @@ export default function AdminPage() {
         message={confirmModal.message}
       />
 
-      <ProductModal 
+      <ProductModal
         isOpen={isProductModalOpen}
         onClose={() => setIsProductModalOpen(false)}
         onSave={handleSaveProduct}
@@ -971,12 +1061,12 @@ export default function AdminPage() {
         ::-webkit-scrollbar-thumb { background: black; border: 2px solid #f1f1f1; }
         ::-webkit-scrollbar-thumb:hover { background: #333; }
       `}</style>
-       <UserPlanModal 
-         isOpen={isPlanModalOpen} 
-         onClose={() => setIsPlanModalOpen(false)} 
-         user={selectedUserForPlan}
-         onSave={handleUpdateUserPlan}
-       />
+      <UserPlanModal
+        isOpen={isPlanModalOpen}
+        onClose={() => setIsPlanModalOpen(false)}
+        user={selectedUserForPlan}
+        onSave={handleUpdateUserPlan}
+      />
     </div>
   );
 }

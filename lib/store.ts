@@ -27,6 +27,11 @@ export interface User {
     dias_total: number
     inicio: Date
     expira: Date
+    acompanante?: {
+      nombre: string
+      email: string
+      rutinaDias: string[]
+    } | null
   } | null
 }
 
