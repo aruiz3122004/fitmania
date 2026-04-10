@@ -5,7 +5,7 @@ import { Toaster, toast } from 'sonner'
 import { ReceptionLoginForm } from '@/components/recepcion/reception-login-form'
 import { db, auth } from '@/lib/firebase'
 import { collection, getDocs, doc, setDoc, query, where, orderBy, limit } from 'firebase/firestore'
-import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays } from 'lucide-react'
+import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 
@@ -15,7 +15,7 @@ const Scanner = dynamic(() => import('@yudiel/react-qr-scanner').then((mod) => m
 })
 
 export default function ReceptionPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [visualState, setVisualState] = useState<'login' | 'unauthorized' | 'dashboard'>('login')
   const [usersList, setUsersList] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showScanner, setShowScanner] = useState(false)
@@ -28,34 +28,26 @@ export default function ReceptionPage() {
 
   useEffect(() => {
     const AUTHORIZED_EMAIL = 'arturosce56@gmail.com'
+    const savedSession = sessionStorage.getItem('fitmania_reception_session')
 
-    const checkAccess = async () => {
-      const session = sessionStorage.getItem('fitmania_reception_session')
-      const user = auth.currentUser
-
-      // Si hay un usuario logueado que NO es el recepcionista oficial, lo EXPULSAMOS de inmediato
-      if (user && user.email?.toLowerCase() !== AUTHORIZED_EMAIL.toLowerCase()) {
-        await auth.signOut()
-        sessionStorage.removeItem('fitmania_reception_session')
-        setIsAuthenticated(false)
-        setLoading(false)
-        return
-      }
-
-      if (session === 'FitmaniaReception2026' && user && user.email?.toLowerCase() === AUTHORIZED_EMAIL.toLowerCase()) {
-        setIsAuthenticated(true)
-        fetchUsers()
-      } else {
-        if (session === 'FitmaniaReception2026') {
-          sessionStorage.removeItem('fitmania_reception_session')
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        if (user.email?.toLowerCase() === AUTHORIZED_EMAIL.toLowerCase()) {
+          if (savedSession === 'FitmaniaReception2026') {
+            setVisualState('dashboard')
+            fetchUsers()
+          } else {
+            setVisualState('login')
+            setLoading(false)
+          }
+        } else {
+          setVisualState('unauthorized')
+          setLoading(false)
         }
-        setIsAuthenticated(false)
+      } else {
+        setVisualState('unauthorized')
         setLoading(false)
       }
-    }
-
-    const unsubscribe = auth.onAuthStateChanged(() => {
-      checkAccess()
     })
 
     return () => unsubscribe()
@@ -153,8 +145,27 @@ export default function ReceptionPage() {
     return <div className="min-h-screen flex items-center justify-center bg-zinc-950 font-display text-white text-2xl uppercase tracking-widest animate-pulse">Cargando Sistema...</div>
   }
 
-  if (!isAuthenticated) {
-    return <ReceptionLoginForm onSuccess={() => { setIsAuthenticated(true); fetchUsers(); }} />
+  if (visualState === 'login') {
+    return <ReceptionLoginForm onSuccess={() => { setVisualState('dashboard'); fetchUsers(); }} />
+  }
+
+  if (visualState === 'unauthorized') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0d0d12] p-6 font-sans">
+        <div className="bg-white border-8 border-black p-12 rounded-[2rem] shadow-[20px_20px_0_0_rgba(22,163,74,1)] max-w-sm text-center animate-in zoom-in-95 duration-500">
+          <div className="w-24 h-24 bg-green-100 rounded-3xl mx-auto flex items-center justify-center mb-8 border-4 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
+            <XCircle className="w-16 h-16 text-green-600" />
+          </div>
+          <h2 className="text-3xl font-black uppercase italic tracking-tighter mb-4" style={{ fontFamily: 'var(--font-display)' }}>ACCESO RESTRINGIDO</h2>
+          <p className="text-zinc-500 font-bold mb-8 italic uppercase text-[10px] tracking-widest leading-relaxed">
+            Este panel está reservado <br /> exclusivamente para el personal <br /> oficial de RECEPCIÓN.
+          </p>
+          <div className="flex flex-col gap-3">
+            <button onClick={() => window.location.href = '/'} className="w-full py-4 bg-black text-white font-black rounded-xl border-b-8 border-zinc-950 hover:-translate-y-1 transition-all shadow-[6px_6px_0_0_rgba(22,163,74,0.2)]">REGRESAR AL SITIO</button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   const activeMembers = usersList.filter(u => u.plan && new Date(u.plan.expira.seconds * 1000) > new Date())
