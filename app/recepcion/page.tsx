@@ -27,31 +27,38 @@ export default function ReceptionPage() {
   const [isFetchingLogs, setIsFetchingLogs] = useState(false)
 
   useEffect(() => {
-    const AUTHORIZED_EMAIL = 'arturosce56@gmail.com'
-    const savedSession = sessionStorage.getItem('fitmania_reception_session')
-
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        if (user.email?.toLowerCase() === AUTHORIZED_EMAIL.toLowerCase()) {
-          if (savedSession === 'FitmaniaReception2026') {
-            setVisualState('dashboard')
-            fetchUsers()
-          } else {
-            setVisualState('login')
-            setLoading(false)
-          }
+    // Verificar la sesión leyendo la cookie HttpOnly vía el servidor
+    const checkReceptionSession = async () => {
+      try {
+        const res = await fetch('/api/auth/verify?role=reception');
+        if (res.ok) {
+          // Si la cookie es válida, verificar estado de Firebase
+          const unsubscribe = auth.onAuthStateChanged((user) => {
+            if (user) {
+              setVisualState('dashboard');
+              fetchUsers();
+            } else {
+              setVisualState('login');
+              setLoading(false);
+            }
+          });
+          return unsubscribe;
         } else {
-          setVisualState('unauthorized')
-          setLoading(false)
+          setLoading(false);
+          setVisualState('login');
+          return () => {};
         }
-      } else {
-        setVisualState('unauthorized')
-        setLoading(false)
+      } catch {
+        setLoading(false);
+        setVisualState('login');
+        return () => {};
       }
-    })
+    };
 
-    return () => unsubscribe()
-  }, [])
+    let unsubscribeFirebase: (() => void) | void;
+    checkReceptionSession().then(unsub => { unsubscribeFirebase = unsub; });
+    return () => { if (unsubscribeFirebase) unsubscribeFirebase(); };
+  }, []);
 
   const fetchUsers = async () => {
     try {
@@ -136,10 +143,11 @@ export default function ReceptionPage() {
     }
   }
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('fitmania_reception_session')
-    window.location.reload()
-  }
+  const handleLogout = async () => {
+    await fetch('/api/recepcion/logout', { method: 'POST' });
+    await auth.signOut();
+    setVisualState('login');
+  };
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-zinc-950 font-display text-white text-2xl uppercase tracking-widest animate-pulse">Cargando Sistema...</div>

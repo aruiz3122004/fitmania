@@ -5,13 +5,11 @@ import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/store'
 import { auth } from '@/lib/firebase'
 import { signInWithEmailAndPassword } from 'firebase/auth'
-import { ShieldCheck, Mail, Lock, KeyRound, Loader2, PlaySquare } from 'lucide-react'
-import Image from 'next/image'
+import { ShieldCheck, Mail, Lock, Loader2, PlaySquare } from 'lucide-react'
 
 export function ReceptionLoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [securityToken, setSecurityToken] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -23,27 +21,28 @@ export function ReceptionLoginForm({ onSuccess }: { onSuccess: () => void }) {
     setError('')
     setIsLoading(true)
 
-    // TOKEN TRIPLE CAPA (Hardcoded estricto para recepción)
-    const RECEPTION_TOKEN = process.env.NEXT_PUBLIC_RECEPTION_TOKEN || 'REC-2026-FIT'
-
-    if (securityToken !== RECEPTION_TOKEN) {
-      setError('❌ Token de Estación de Recepción Inválido')
-      setIsLoading(false)
-      return
-    }
-
-    // EMAIL WHITELIST (Capa 2.1 - Específicamente el correo solicitado)
-    const AUTHORIZED_RECEPCIONIST = 'arturosce56@gmail.com'
-
-    if (email.toLowerCase() !== AUTHORIZED_RECEPCIONIST.toLowerCase()) {
-      setError('❌ Este correo no está autorizado para acceder a Recepción.')
-      setIsLoading(false)
-      return
-    }
-
     try {
+      // 1. Autenticar con Firebase (client-side)
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
 
+      // 2. Obtener el ID Token y enviarlo al servidor
+      //    El servidor verificará que el email está en la lista autorizada (sin exponerlo al cliente)
+      const idToken = await userCredential.user.getIdToken()
+      const response = await fetch('/api/recepcion/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        const error = new Error(data.error || 'Acceso no autorizado para recepción') as any
+        error.details = data.details
+        error.code = data.code
+        throw error
+      }
+
+      // 3. Sesión creada con cookie HttpOnly — el email autorizado queda protegido en el servidor
       setUser({
         uid: userCredential.user.uid,
         email: userCredential.user.email || '',
@@ -51,11 +50,12 @@ export function ReceptionLoginForm({ onSuccess }: { onSuccess: () => void }) {
         avatar: 'fitman',
       })
 
-      sessionStorage.setItem('fitmania_reception_session', 'FitmaniaReception2026')
       onSuccess()
     } catch (err: any) {
-      setError('Credenciales incorrectas o usuario sin permisos.')
-      console.error(err)
+      setError(err.message || 'Credenciales incorrectas o usuario sin permisos.')
+      if (err.details) {
+        console.error('Detalles del error:', err.details, err.code)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -110,25 +110,6 @@ export function ReceptionLoginForm({ onSuccess }: { onSuccess: () => void }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-12 pr-4 py-4 border-4 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)] rounded-xl outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all font-bold tracking-widest"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="font-label text-xs font-black uppercase text-green-600 tracking-widest">Token de Estación</label>
-              <span className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded font-bold uppercase">Capa 3</span>
-            </div>
-
-            <div className="relative">
-              <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-green-600" />
-              <input
-                type="password"
-                value={securityToken}
-                onChange={(e) => setSecurityToken(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 border-4 border-green-600 shadow-[4px_4px_0_0_rgba(22,163,74,1)] rounded-xl outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all font-bold tracking-widest bg-green-50"
-                placeholder="R E C - * * *"
                 required
               />
             </div>

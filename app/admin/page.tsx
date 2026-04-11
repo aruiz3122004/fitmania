@@ -281,37 +281,51 @@ export default function AdminPage() {
   const [selectedUserForPlan, setSelectedUserForPlan] = useState<any>(null);
 
   useEffect(() => {
-    // Verificar si ya hay una sesión de admin válida para esta pestaña del navegador
-    const savedSession = sessionStorage.getItem('fitmania_admin_session');
-    if (savedSession === 'FitmaniaAdmin2026') {
-      setAdminSessionValid(true);
-    }
-
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-
-      if (currentUser) {
-        const decodedResult = await currentUser.getIdTokenResult();
-        if (decodedResult.claims.admin === true) {
-          if (savedSession === 'FitmaniaAdmin2026') {
-            setVisualState('dashboard');
-            refreshAllData();
-          } else {
-            setVisualState('login');
-          }
+    // Verificar la sesión leyendo la cookie HttpOnly via el endpoint de verificación
+    // (la cookie no es accesible desde JavaScript, el servidor la verifica)
+    const checkAdminSession = async () => {
+      try {
+        const res = await fetch('/api/auth/verify?role=admin');
+        if (res.ok) {
+          setAdminSessionValid(true);
+          // Si la cookie es válida, verificar también el estado de Firebase
+          const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            setUser(currentUser);
+            if (currentUser) {
+              const decodedResult = await currentUser.getIdTokenResult();
+              if (decodedResult.claims.admin === true) {
+                setVisualState('dashboard');
+                refreshAllData();
+              } else {
+                setVisualState('login');
+              }
+            } else {
+              // Cookie válida pero Firebase no tiene sesión activa — mostrar login
+              setVisualState('login');
+            }
+            setLoading(false);
+          });
+          return unsubscribe;
         } else {
-          setVisualState('unauthorized');
+          // Sin cookie válida → mostrar login
+          setLoading(false);
+          setVisualState('login');
+          return () => {};
         }
-      } else {
-        setVisualState('unauthorized');
+      } catch {
+        setLoading(false);
+        setVisualState('login');
+        return () => {};
       }
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    };
+
+    let unsubscribeFirebase: (() => void) | void;
+    checkAdminSession().then(unsub => { unsubscribeFirebase = unsub; });
+    return () => { if (unsubscribeFirebase) unsubscribeFirebase(); };
   }, []);
 
-  const handleAdminLoginSuccess = async (token: string) => {
-    sessionStorage.setItem('fitmania_admin_session', token);
+  // El login ahora no recibe token — la cookie HttpOnly ya fue establecida por el servidor
+  const handleAdminLoginSuccess = async () => {
     setAdminSessionValid(true);
     const currentUser = auth.currentUser;
     if (currentUser) {
@@ -326,8 +340,7 @@ export default function AdminPage() {
   };
 
   const refreshAllData = async () => {
-    const token = await auth.currentUser?.getIdToken();
-    if (!token) return;
+    // Las cookies HttpOnly se envían automáticamente por el navegador — no se necesita el Bearer token manualmente
     setConnectionError(null);
 
     const handleFetchError = (err: any) => {
@@ -335,7 +348,7 @@ export default function AdminPage() {
       setConnectionError('Error de conexión con el Servidor / Base de Datos. Verifica las variables de entorno en Vercel.');
     };
 
-    fetch('/api/admin/stats', { headers: { 'Authorization': `Bearer ${token}` } })
+    fetch('/api/admin/stats')
       .then(res => {
         if (!res.ok) throw new Error('Stats failure');
         return res.json();
@@ -343,51 +356,48 @@ export default function AdminPage() {
       .then(setStats)
       .catch(handleFetchError);
 
-    fetch('/api/admin/notifications', { headers: { 'Authorization': `Bearer ${token}` } })
+    fetch('/api/admin/notifications')
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setNotifications(data) : setNotifications([]))
       .catch(handleFetchError);
 
-    fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } })
+    fetch('/api/admin/users')
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setUsersList(data) : setUsersList([]))
       .catch(handleFetchError);
 
-    fetch('/api/admin/products', { headers: { 'Authorization': `Bearer ${token}` } })
+    fetch('/api/admin/products')
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setProductsList(data) : setProductsList([]))
       .catch(handleFetchError);
 
-    fetch('/api/admin/pqrs', { headers: { 'Authorization': `Bearer ${token}` } })
+    fetch('/api/admin/pqrs')
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setPqrsList(data) : setPqrsList([]))
       .catch(handleFetchError);
 
-    fetch('/api/admin/orders', { headers: { 'Authorization': `Bearer ${token}` } })
+    fetch('/api/admin/orders')
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setOrdersList(data) : setOrdersList([]))
       .catch(handleFetchError);
   };
 
   const handleLogout = async () => {
-    sessionStorage.removeItem('fitmania_admin_session');
+    // Borrar la cookie HttpOnly en el servidor y cerrar sesión en Firebase
+    await fetch('/api/admin/logout', { method: 'POST' });
     await signOut(auth);
+    setAdminSessionValid(false);
     setVisualState('login');
   };
 
   // --- ACTIONS ---
 
   const handleUpdateUserPlan = async (uid: string, plan: any) => {
-    const token = await auth.currentUser?.getIdToken();
-    if (!token) return;
-
     try {
+      // La cookie HttpOnly se envía automáticamente
       const res = await fetch('/api/admin/users', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uid, plan })
       });
       if (!res.ok) throw new Error('Update failed');
@@ -404,11 +414,7 @@ export default function AdminPage() {
       title: "BORRAR SOCIO",
       message: "¿¡ESTÁS SEGURO!? Este socio será eliminado permanentemente de la base de datos de Fitmania. Esta acción no se puede deshacer.",
       onConfirm: async () => {
-        const token = await auth.currentUser?.getIdToken();
-        const res = await fetch(`/api/admin/users?uid=${uid}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await fetch(`/api/admin/users?uid=${uid}`, { method: 'DELETE' });
         if (res.ok) {
           toast.success("Usuario borrado satisfactoriamente");
           setUsersList(usersList.filter(u => u.uid !== uid));
@@ -423,10 +429,9 @@ export default function AdminPage() {
       title: "REMOVER PLAN",
       message: "¿Deseas quitarle el plan activo a este usuario? Ya no tendrá acceso a los beneficios de socio.",
       onConfirm: async () => {
-        const token = await auth.currentUser?.getIdToken();
         const res = await fetch(`/api/admin/users`, {
           method: 'PATCH',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ uid, plan: null })
         });
         if (res.ok) {
@@ -438,10 +443,9 @@ export default function AdminPage() {
   };
 
   const handleUpdateStock = async (id: string, newStock: number) => {
-    const token = await auth.currentUser?.getIdToken();
     const res = await fetch(`/api/admin/products`, {
       method: 'PATCH',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, stock: newStock })
     });
     if (res.ok) {
@@ -451,12 +455,11 @@ export default function AdminPage() {
   };
 
   const handleSaveProduct = async (data: any) => {
-    const token = await auth.currentUser?.getIdToken();
     const isEditing = !!selectedProduct;
 
     const res = await fetch('/api/admin/products', {
       method: isEditing ? 'PATCH' : 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(isEditing ? { id: selectedProduct.id, ...data } : data)
     });
 
@@ -475,11 +478,7 @@ export default function AdminPage() {
       title: "BORRAR PRODUCTO",
       message: "¿Seguro que quieres eliminar este artículo? Desaparecerá de la tienda inmediatamente.",
       onConfirm: async () => {
-        const token = await auth.currentUser?.getIdToken();
-        const res = await fetch(`/api/admin/products?id=${id}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await fetch(`/api/admin/products?id=${id}`, { method: 'DELETE' });
         if (res.ok) {
           toast.success("Producto eliminado");
           setProductsList(productsList.filter(p => p.id !== id));
@@ -490,10 +489,9 @@ export default function AdminPage() {
 
   const handleReplyPqrs = async (pqrs: any) => {
     if (!replyMessage) return;
-    const token = await auth.currentUser?.getIdToken();
     const res = await fetch('/api/admin/pqrs/respond', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         pqrsId: pqrs.id,
         userEmail: pqrs.userEmail,
@@ -511,10 +509,9 @@ export default function AdminPage() {
   };
 
   const markNotificationRead = async (id: string) => {
-    const token = await auth.currentUser?.getIdToken();
     await fetch('/api/admin/notifications', {
       method: 'PATCH',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id })
     });
     setNotifications(notifications.map(n => n.id === id ? { ...n, leido: true } : n));
@@ -577,16 +574,12 @@ export default function AdminPage() {
       title: "ARCHIVAR CAJA DEL MES",
       message: "¡ALTO! ¿Deseas hacer un corte de caja? Esto enviará todas las ventas visibles al archivo histórico y el contador de ingresos quedará en $0 para iniciar un nuevo mes. Los datos NO se borrarán de Firebase.",
       onConfirm: async () => {
-        const token = await auth.currentUser?.getIdToken();
-        const res = await fetch(`/api/admin/archive-sales`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: "FitmaniaAdmin2026" })
-        });
+        // La cookie HttpOnly se envía automáticamente — no se necesita el token en el body
+        const res = await fetch(`/api/admin/archive-sales`, { method: 'POST' });
 
         if (res.ok) {
           toast.success("Corte de caja exitoso. Archivo guardado.");
-          setOrdersList([]); // Limpia la pantalla
+          setOrdersList([]);
         } else {
           toast.error("Error al archivar la caja.");
         }

@@ -1,25 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
+import { verifyAdminRequest } from '@/lib/auth-helpers';
 
 export async function GET(request: Request) {
   try {
-    // Verificar token en el header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Falta Token' }, { status: 401 });
+    const decodedToken = await verifyAdminRequest(request);
+    if (!decodedToken) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const idToken = authHeader.split('Bearer ')[1];
-    
-    // Inicializar servicios bajo demanda
     const auth = getAdminAuth();
     const db = getAdminFirestore();
-
-    const decodedToken = await auth.verifyIdToken(idToken);
-
-    if (!decodedToken.admin) {
-      return NextResponse.json({ error: 'Sin privilegios de administrador' }, { status: 403 });
-    }
 
     // Listar todos los usuarios
     const listUsersResult = await auth.listUsers(1000);

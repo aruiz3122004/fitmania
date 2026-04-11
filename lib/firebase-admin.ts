@@ -10,20 +10,43 @@ function getAdminApp(): admin.app.App {
     return admin.apps[0] as admin.app.App;
   }
 
-  const projectId = process.env.FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim();
+  const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim();
+  const rawKey = process.env.FIREBASE_PRIVATE_KEY || '';
+  const b64Key = process.env.FIREBASE_PRIVATE_KEY_B64 || '';
+  
+  let privateKey = '';
+
+  if (b64Key) {
+    // MÉTODO 1: Base64 (El más robusto para Windows)
+    try {
+      privateKey = Buffer.from(b64Key, 'base64').toString('utf8');
+    } catch (e) {
+      console.error('Error al decodificar FIREBASE_PRIVATE_KEY_B64');
+    }
+  } 
+  
+  if (!privateKey && rawKey) {
+    // MÉTODO 2: Texto plano (Fallback de compatibilidad)
+    let cleanedKey = rawKey.trim();
+    if (cleanedKey.startsWith('"') && cleanedKey.endsWith('"')) {
+      cleanedKey = cleanedKey.substring(1, cleanedKey.length - 1);
+    } else if (cleanedKey.startsWith("'") && cleanedKey.endsWith("'")) {
+      cleanedKey = cleanedKey.substring(1, cleanedKey.length - 1);
+    }
+    cleanedKey = cleanedKey.replace(/\\n/g, '\n');
+    const pemLines = cleanedKey.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    privateKey = pemLines.join('\n');
+  }
+
+  // Asegurar cabeceras correctas
+  if (privateKey && !privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+    privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
+  }
 
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error('Faltan credenciales de Firebase Admin en .env.local');
   }
-
-  // Limpiar la llave: remover comillas si existen y procesar saltos de línea
-  // Esto soluciona el error "Invalid PEM formatted message"
-  privateKey = privateKey
-    .trim()
-    .replace(/^["']|["']$/g, '') // Elimina comillas al inicio y al final
-    .replace(/\\n/g, '\n');       // Convierte \n literales en saltos de línea reales
 
   try {
     return admin.initializeApp({

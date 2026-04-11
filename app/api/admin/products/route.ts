@@ -1,23 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
-
-// Helper para validar admin
-async function validateAdmin(request: Request) {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return null;
-  
-  const idToken = authHeader.split('Bearer ')[1];
-  const auth = getAdminAuth();
-  try {
-    const decodedToken = await auth.verifyIdToken(idToken);
-    return decodedToken.admin ? decodedToken : null;
-  } catch (err) {
-    return null;
-  }
-}
+import { getAdminFirestore } from '@/lib/firebase-admin';
+import { verifyAdminRequest } from '@/lib/auth-helpers';
 
 export async function GET(request: Request) {
-  const isAdmin = await validateAdmin(request);
+  const isAdmin = await verifyAdminRequest(request);
   if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   try {
@@ -31,7 +17,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const isAdmin = await validateAdmin(request);
+  const isAdmin = await verifyAdminRequest(request);
   if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   try {
@@ -53,7 +39,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const isAdmin = await validateAdmin(request);
+  const isAdmin = await verifyAdminRequest(request);
   if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   try {
@@ -70,7 +56,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const isAdmin = await validateAdmin(request);
+  const isAdmin = await verifyAdminRequest(request);
   if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   try {

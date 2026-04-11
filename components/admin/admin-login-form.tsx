@@ -9,22 +9,18 @@ import {
   ShieldAlert,
   Mail,
   Lock,
-  Key,
   Loader2,
-  AlertCircle,
-  Zap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface AdminLoginFormProps {
-  onSuccess: (token: string) => void;
+  onSuccess: () => void;
 }
 
 export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState(false);
@@ -35,33 +31,41 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
     setError(null);
 
     try {
-      // 1. Validar Token de Seguridad (Insensible a mayúsculas para evitar errores)
-      if (token.toLowerCase() !== 'FitmaniaAdmin2026'.toLowerCase()) {
-        throw new Error('Token de Seguridad Incorrecto');
-      }
-
-      // 2. Iniciar sesión en Firebase
+      // 1. Autenticar con Firebase (client-side)
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const idTokenResult = await userCredential.user.getIdTokenResult();
 
-      // 3. Verificar si tiene la claim de admin
+      // 2. Verificar claim de admin antes de enviar al servidor
+      const idTokenResult = await userCredential.user.getIdTokenResult();
       if (idTokenResult.claims.admin !== true) {
         throw new Error('No tienes permisos de administrador');
       }
 
+      // 3. Obtener el ID Token y enviarlo al servidor para crear la cookie HttpOnly
+      const idToken = await userCredential.user.getIdToken();
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error al crear sesión segura');
+      }
+
+      // Sesión creada con cookie HttpOnly — no hay token en el cliente
       setAuthSuccess(true);
       toast.success('Acceso Autorizado');
 
-      // Mostrar la pantala de éxito por 1.5s
       setTimeout(() => {
-        onSuccess(token);
-      }, 1500)
+        onSuccess();
+      }, 1500);
+
     } catch (err: any) {
       console.error(err);
       setError('Credenciales Inválidas u otro error de campo');
       toast.error('Acceso Denegado');
-    } finally {
-      if (!authSuccess) setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -75,7 +79,6 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
         {authSuccess ? (
           <div className="flex flex-col items-center justify-center p-8 animate-in zoom-in duration-500">
             <div className="relative w-full aspect-[4/3] max-w-[300px] mb-8 rounded-3xl overflow-hidden border-8 border-black shadow-[10px_10px_0_0_rgba(0,128,0,1)] bg-green-500 flex items-center justify-center group">
-              {/* Reemplazo de la imagen perdida por iconos HD que no dependen de la red */}
               <ShieldCheck className="w-32 h-32 text-black group-hover:scale-110 transition-transform drop-shadow-[5px_5px_0_rgba(0,0,0,0.5)] z-10" strokeWidth={2.5} />
             </div>
             <h3 className="text-3xl font-black italic text-green-600 uppercase tracking-tighter animate-pulse" style={{ fontFamily: 'var(--font-display)' }}>
@@ -99,7 +102,7 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
           </div>
         ) : (
           <>
-            {/* Header Header */}
+            {/* Header */}
             <div className="text-center mb-10 pt-4">
               <div className="w-28 h-28 bg-primary border-4 border-black rounded-full mx-auto flex items-center justify-center shadow-[6px_6px_0_0_rgba(0,0,0,1)] mb-6 overflow-hidden relative">
                 <Image
@@ -145,24 +148,6 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Token */}
-              <div className="relative group">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-primary mb-2 ml-2 flex items-center gap-2">
-                  <Key className="w-3 h-3" /> Token de Seguridad de Campo
-                </label>
-                <div className="relative">
-                  <Zap className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-primary animate-pulse" />
-                  <input
-                    type="text"
-                    required
-                    className="w-full pl-12 pr-4 py-4 bg-red-50 border-4 border-black rounded-2xl font-black uppercase tracking-widest focus:bg-white focus:ring-8 focus:ring-red-600/5 outline-none transition-all placeholder:text-red-200"
-                    placeholder="TOKEN-ID"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
                   />
                 </div>
               </div>
