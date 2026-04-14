@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { ChangeEvent, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuthStore, useUIStore } from '@/lib/store'
 import { LogOut, Settings, UserCircle } from 'lucide-react'
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
@@ -12,6 +13,7 @@ import { doc, updateDoc, collection, query, where, getDocs, writeBatch } from 'f
 import { uploadToCloudinary } from '@/services/cloudinary'
 
 export function UserDropdown() {
+  const router = useRouter()
   const { user, isAuthenticated, logout, updateUser } = useAuthStore()
   const { setUserDropdownOpen } = useUIStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -196,7 +198,7 @@ export function UserDropdown() {
               Cambiar Avatar
             </h4>
 
-            <div className="grid grid-cols-6 gap-3">
+            <div className="grid grid-cols-3 gap-4 justify-items-center">
               {avatarOptions.map((avatar) => (
                 <button
                   key={avatar.id}
@@ -208,10 +210,10 @@ export function UserDropdown() {
                   <FitAvatar
                     src={avatar.url}
                     alt={avatar.name}
-                    size={44}
+                    size={60}
                     borderColor={user?.avatar === avatar.id ? 'border-primary' : 'border-gray-300'}
                     bgColor="bg-primary"
-                    circleClassName={user?.avatar === avatar.id ? 'ring-2 ring-primary/30' : ''}
+                    circleClassName={user?.avatar === avatar.id ? 'ring-2 ring-primary/30 shadow-comic-sm' : ''}
                   />
                 </button>
               ))}
@@ -251,6 +253,7 @@ export function UserDropdown() {
               await signOut(auth)
               logout()
               handleClose()
+              router.push('/login')
             }}
             className="flex-1 flex items-center justify-center sm:justify-start gap-3 px-3 py-3 sm:py-2 bg-red-50 sm:bg-transparent border-2 sm:border-0 border-primary sm:rounded rounded-xl hover:bg-red-light transition-all active:translate-y-1"
           >

@@ -371,12 +371,11 @@ export default function RegistroPage() {
                 </div>
               </div>
 
-              {/* Avatar Selection */}
               <div className={cn("mb-6 transition-opacity", isBlocked && "opacity-50 pointer-events-none")}>
-                <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-3 px-1">
-                  Elige tu Avatar
+                <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-3 px-1 text-center sm:text-left">
+                  Elige tu Avatar Heroico
                 </label>
-                <div className="grid grid-cols-6 gap-2">
+                <div className="grid grid-cols-3 gap-6 sm:gap-4 justify-items-center max-w-sm mx-auto">
                   {avatarOptions.map((avatar) => (
                     <button
                       key={avatar.id}
@@ -388,10 +387,10 @@ export default function RegistroPage() {
                       <FitAvatar
                         src={avatar.url}
                         alt={avatar.name}
-                        size={56}
+                        size={64}
                         borderColor={formData.avatar === avatar.id ? 'border-primary' : 'border-gray-200'}
                         bgColor={formData.avatar === avatar.id ? 'bg-red-light' : 'bg-gray-50'}
-                        circleClassName={formData.avatar === avatar.id ? 'shadow-comic-sm' : ''}
+                        circleClassName={formData.avatar === avatar.id ? 'shadow-[0_0_15px_rgba(220,38,38,0.5)] scale-105 transition-all' : 'transition-all'}
                       />
                     </button>
                   ))}

@@ -176,6 +176,7 @@ function PostCard({
   const [isUpdatingPost, setIsUpdatingPost] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [commentToDelete, setCommentToDelete] = useState<{ postId: string; commentId: string } | null>(null)
+  const [authRequiredMsg, setAuthRequiredMsg] = useState<{ title: string; message: string } | null>(null)
 
   const reportOptions = ['Terrorismo', 'Discurso de odio', 'Racismo', 'Desnudos', 'Otro']
   const isLiked = user ? post.likes.includes(user.uid) : false
@@ -339,7 +340,16 @@ function PostCard({
       </div>
 
       <div className="flex items-center gap-6 px-4 py-3 border-t-2 border-gray-200">
-        <button onClick={() => onLike(post.id)}
+        <button onClick={() => {
+            if (!isAuthenticated) {
+              setAuthRequiredMsg({
+                title: '¡ALTO AHÍ HÉROE!',
+                message: 'Debes tener una cuenta para reaccionar a esta publicación.'
+              })
+              return
+            }
+            onLike(post.id)
+          }}
           className={`flex items-center gap-2 font-label text-sm transition-colors ${isLiked ? 'text-primary' : 'text-gray-500 hover:text-primary'}`}
         >
           <Heart className={`w-5 h-5 ${isLiked ? 'fill-primary' : ''}`} />
@@ -358,7 +368,10 @@ function PostCard({
         <button
           onClick={() => {
             if (!isAuthenticated) {
-              alert('Debes iniciar sesión para reportar una publicación.')
+              setAuthRequiredMsg({
+                title: 'ACCESO RESTRINGIDO',
+                message: 'Debes iniciar sesión para reportar una publicación.'
+              })
               return
             }
             setShowReport(true)
@@ -456,7 +469,7 @@ function PostCard({
       )}
 
       {showReport && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
           <div className="bg-white border-3 border-secondary p-6 w-full max-w-md shadow-comic">
             {reportStatus === 'success' ? (
               <div className="text-center py-4">
@@ -481,6 +494,45 @@ function PostCard({
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {authRequiredMsg && (
+        <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border-4 border-secondary p-8 w-full max-w-sm shadow-comic relative overflow-hidden text-center sm:text-left">
+            <div className="absolute -right-4 -top-4 w-16 h-16 bg-primary border-4 border-secondary rotate-45" />
+            <div className="absolute -left-4 -bottom-4 w-12 h-12 bg-accent border-4 border-secondary rotate-12" />
+            
+            <div className="relative">
+              <div className="flex flex-col sm:flex-row items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-primary rounded-full border-3 border-secondary flex items-center justify-center text-white shadow-comic-sm shrink-0">
+                  <UserCircle className="w-6 h-6" />
+                </div>
+                <h3 className="font-display text-xl text-secondary tracking-tighter italic font-black uppercase">
+                  {authRequiredMsg.title}
+                </h3>
+              </div>
+              
+              <p className="font-body text-gray-600 mb-8 leading-tight">
+                {authRequiredMsg.message}
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button 
+                  onClick={() => setAuthRequiredMsg(null)}
+                  className="flex-1 py-3 border-3 border-secondary font-label font-bold text-sm tracking-wider hover:bg-gray-100 transition-all hover:-translate-y-1 active:translate-y-0 hover:shadow-comic-sm"
+                >
+                  ENTENDIDO
+                </button>
+                <a 
+                  href="/login"
+                  className="flex-1 py-3 bg-primary text-white border-3 border-secondary text-center font-label font-bold text-sm tracking-wider hover:bg-red-dark transition-all hover:-translate-y-1 active:translate-y-0 hover:shadow-comic-sm"
+                >
+                  INICIAR SESIÓN
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -623,7 +675,19 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
   const { user, isAuthenticated } = useAuthStore()
   const [content, setContent] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [filePreview, setFilePreview] = useState<string | null>(null)
   const [isPublishing, setIsPublishing] = useState(false)
+
+  // Cleanup object URL when component unmounts or file changes
+  useEffect(() => {
+    if (selectedFile) {
+      const objectUrl = URL.createObjectURL(selectedFile)
+      setFilePreview(objectUrl)
+      return () => URL.revokeObjectURL(objectUrl)
+    } else {
+      setFilePreview(null)
+    }
+  }, [selectedFile])
 
   const handlePublish = async () => {
     const text = content.trim()
@@ -633,6 +697,7 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
       await onPublish(text, selectedFile)
       setContent('')
       setSelectedFile(null)
+      setFilePreview(null)
     } finally {
       setIsPublishing(false)
     }
@@ -672,6 +737,25 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
             className="w-full font-body text-gray-700 p-3 border-2 border-gray-200 focus:border-primary outline-none resize-none"
             rows={3}
           />
+          
+          {filePreview && (
+            <div className="relative mt-2 inline-block">
+              {selectedFile?.type.startsWith('video/') ? (
+                <video src={filePreview} className="h-24 w-24 object-cover border-2 border-secondary rounded" />
+              ) : (
+                <img src={filePreview} alt="Preview" className="h-24 w-24 object-cover border-2 border-secondary rounded" />
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedFile(null)}
+                className="absolute -top-2 -right-2 bg-primary text-white rounded-full p-1 border-2 border-secondary hover:bg-red-dark transition-colors"
+                title="Quitar archivo"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mt-3">
             <label className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-primary transition-colors cursor-pointer min-w-0">
               {selectedFile?.type.startsWith('video/') ? (
