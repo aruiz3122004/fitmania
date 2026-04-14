@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
+import { recordAuditLog } from '@/lib/audit-logger';
 
 export async function GET(request: Request) {
   const isAdmin = await verifyAdminRequest(request);
@@ -73,6 +74,16 @@ export async function PATCH(request: Request) {
 
     if (Object.keys(updates).length > 0) {
       await db.collection('users').doc(uid).update(updates);
+      
+      // Audit Log
+      await recordAuditLog({
+        action: 'UPDATE_USER',
+        category: 'ADMIN_ACTION',
+        details: `Socio [${uid}] actualizado: ${plan !== undefined ? (plan ? 'Modificó plan' : 'Removió plan') : ''} ${setAdmin !== undefined ? (setAdmin ? 'Elevado a ADMIN' : 'Bajado a SOCIO') : ''}`,
+        adminEmail: isAdmin.email,
+        targetId: uid,
+        request,
+      });
     }
 
     return NextResponse.json({ success: true });
@@ -97,6 +108,16 @@ export async function DELETE(request: Request) {
     await auth.deleteUser(uid);
     // 2. Eliminar de Firestore
     await db.collection('users').doc(uid).delete();
+
+    // Audit Log
+    await recordAuditLog({
+      action: 'DELETE_USER',
+      category: 'ADMIN_ACTION',
+      details: `Socio eliminado permanentemente de Firebase. UID: ${uid}`,
+      adminEmail: isAdmin.email,
+      targetId: uid,
+      request,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

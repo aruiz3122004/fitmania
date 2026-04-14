@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { sendPqrsReplyEmail } from '@/services/mail';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
+import { recordAuditLog } from '@/lib/audit-logger';
 
 export async function POST(request: Request) {
   const isAdmin = await verifyAdminRequest(request);
@@ -24,11 +25,19 @@ export async function POST(request: Request) {
       adminResponse: responseMessage
     });
 
-    // 2. Marcar como resuelto en Firestore
     await db.collection('pqrs').doc(pqrsId).update({
       estado: 'resuelto',
       respuesta_admin: responseMessage,
       fecha_respuesta: new Date()
+    });
+
+    await recordAuditLog({
+      action: 'RESPOND_PQRS',
+      category: 'ADMIN_ACTION',
+      details: `Respesta oficial enviada vía Email al socio ${userEmail} para el ticket ${pqrsId}`,
+      adminEmail: isAdmin.email,
+      targetId: pqrsId,
+      request: request,
     });
 
     return NextResponse.json({ success: true });

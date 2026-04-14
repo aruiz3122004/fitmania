@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
@@ -10,7 +10,18 @@ import { auth, db } from '@/lib/firebase'
 import { getAvatarUrlById } from '@/lib/avatar-utils'
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
-import { Mail, Lock, Eye, EyeOff, ArrowRight, Dumbbell } from 'lucide-react'
+import { 
+  Mail, 
+  Lock, 
+  Eye, 
+  EyeOff, 
+  ArrowRight, 
+  Dumbbell, 
+  AlertTriangle, 
+  Timer 
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { getRateLimitStatus, consumeRateLimitAttempt, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -22,13 +33,56 @@ export default function LoginPage() {
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // Rate Limit States
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState(0)
+  const [isBlocked, setIsBlocked] = useState(false)
+
+  // Countdown effect
+  useEffect(() => {
+    if (secondsLeft <= 0) {
+      if (isBlocked) setIsBlocked(false)
+      return
+    }
+    const timer = setInterval(() => setSecondsLeft(prev => prev - 1), 1000)
+    return () => clearInterval(timer)
+  }, [secondsLeft, isBlocked])
+
+  // Status check on mount
+  useEffect(() => {
+    const checkStatus = async () => {
+      const status = await getRateLimitStatus()
+      setRemainingAttempts(status.remaining)
+      if (!status.success) {
+        setIsBlocked(true)
+        setSecondsLeft(status.secondsLeft)
+        setError(status.message || 'Límite de intentos excedido')
+      }
+    }
+    checkStatus()
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isBlocked) return
+
     setError('')
     setSuccess('')
     setLoading(true)
 
     try {
+      // 1. Consumimos un intento exactamente al presionar "ENTRAR"
+      const status = await consumeRateLimitAttempt()
+      setRemainingAttempts(status.remaining)
+      
+      if (!status.success) {
+        setIsBlocked(true)
+        setSecondsLeft(status.secondsLeft)
+        setError(status.message || 'Has excedido el límite de intentos.')
+        setLoading(false)
+        return
+      }
+
       const credentials = await signInWithEmailAndPassword(auth, email, password)
       const userDoc = await getDoc(doc(db, 'users', credentials.user.uid))
       const userData = userDoc.data()
@@ -44,12 +98,16 @@ export default function LoginPage() {
         altura: userData?.altura,
         plan: userData?.plan || null,
       })
+
+      // EXITO: Limpiamos por completo el historial de fallos y rate limit
+      await clearRateLimit()
+
       router.push('/')
     } catch (err: any) {
       if (err?.code === 'auth/invalid-credential') {
         setError('Credenciales invalidas.')
       } else {
-        setError('Error al iniciar sesion. Intenta de nuevo.')
+        setError(err.message || 'Error al iniciar sesion. Intenta de nuevo.')
       }
     } finally {
       setLoading(false)
@@ -110,27 +168,58 @@ export default function LoginPage() {
           </div>
 
           {/* Form */}
-          <div className="bg-white border-4 border-secondary shadow-[8px_8px_0_var(--red-primary)] p-8">
+          <div className={cn(
+            "bg-white border-4 border-secondary shadow-[8px_8px_0_var(--red-primary)] p-8 transition-all duration-300",
+            (isBlocked || error) && "animate-shake"
+          )}>
+            
+            {/* Intentos restantes */}
+            {!isBlocked && remainingAttempts !== null && (
+              <div className="flex justify-center gap-1.5 mb-6">
+                {[...Array(5)].map((_, i) => (
+                  <div 
+                    key={i} 
+                    className={cn(
+                      "w-3 h-1.5 rounded-full border border-secondary transition-all",
+                      i < remainingAttempts ? "bg-primary" : "bg-red-100"
+                    )}
+                  />
+                ))}
+              </div>
+            )}
+
             <h2 className="font-display text-2xl text-secondary text-center tracking-wider mb-6">
               INICIAR SESION
             </h2>
 
-            {error && (
-              <div className="bg-red-light border-2 border-primary p-3 mb-6">
-                <p className="font-label text-sm text-primary text-center">{error}</p>
+            {isBlocked ? (
+              <div className="bg-primary text-white p-6 mb-6 border-b-4 border-navy-dark rounded flex flex-col items-center">
+                <AlertTriangle className="w-12 h-12 mb-2 animate-bounce" />
+                <div className="bg-navy-dark px-4 py-1 rounded-full text-xl font-black flex items-center gap-2 mb-3">
+                  <Timer className="w-5 h-5" />
+                  {formatTimeLeft(secondsLeft)}
+                </div>
+                <p className="font-label text-[10px] text-center uppercase tracking-widest font-black">
+                  Seguridad Activada <br />Demasiados intentos
+                </p>
               </div>
-            )}
+            ) : error ? (
+              <div className="bg-red-light border-2 border-primary p-3 mb-6 flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-primary shrink-0" />
+                <p className="font-label text-[10px] font-black text-primary uppercase leading-tight tracking-wider">{error}</p>
+              </div>
+            ) : null}
 
             {success && (
               <div className="bg-green-100 border-2 border-green-500 p-3 mb-6">
-                <p className="font-label text-sm text-green-700 text-center">{success}</p>
+                <p className="font-label text-sm text-green-700 text-center font-bold italic">{success}</p>
               </div>
             )}
 
             <form onSubmit={handleSubmit}>
               {/* Email */}
-              <div className="mb-4">
-                <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
+              <div className={cn("mb-4", isBlocked && "opacity-50 pointer-events-none")}>
+                <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
                   Correo Electronico
                 </label>
                 <div className="relative">
@@ -147,8 +236,8 @@ export default function LoginPage() {
               </div>
 
               {/* Password */}
-              <div className="mb-2">
-                <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
+              <div className={cn("mb-2", isBlocked && "opacity-50 pointer-events-none")}>
+                <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
                   Contraseña
                 </label>
                 <div className="relative">
@@ -176,7 +265,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={handleForgotPassword}
-                  className="font-label text-xs font-bold text-gray-400 hover:text-primary hover:underline uppercase tracking-wide"
+                  className="font-label text-[10px] font-black text-gray-400 hover:text-primary hover:underline uppercase tracking-widest"
                 >
                   Olvidé mi contraseña
                 </button>
@@ -185,8 +274,8 @@ export default function LoginPage() {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-2 font-display text-xl tracking-[2px] text-white bg-primary py-4 border-3 border-secondary shadow-comic transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0_var(--navy)] hover:bg-red-dark disabled:opacity-70 disabled:cursor-not-allowed"
+                disabled={loading || isBlocked}
+                className="w-full flex items-center justify-center gap-3 font-display text-xl tracking-[2px] text-white bg-primary py-4 border-3 border-secondary shadow-comic transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0_var(--navy)] hover:bg-red-dark disabled:opacity-70 disabled:grayscale disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <span className="animate-pulse">ENTRANDO...</span>
@@ -203,23 +292,27 @@ export default function LoginPage() {
             <div className="mt-6 pt-6 border-t-2 border-gray-200 text-center">
               <p className="font-body text-sm text-gray-500">
                 No tienes cuenta?{' '}
-                <Link href="/registro" className="font-label font-bold text-primary hover:underline">
+                <Link href="/registro" className="font-label font-bold text-primary hover:underline uppercase tracking-wider">
                   Registrate aqui
                 </Link>
               </p>
             </div>
           </div>
-
-          {/* Demo info */}
-          <div className="mt-6 text-center">
-            <p className="font-label text-xs text-white/40">
-              Demo: Usa cualquier correo y contrasena
-            </p>
-          </div>
         </div>
       </section>
 
       <Footer />
+      
+      <style jsx global>{`
+        @keyframes comicShake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-8px); }
+          75% { transform: translateX(8px); }
+        }
+        .animate-shake {
+          animation: comicShake 0.1s ease-in-out 4;
+        }
+      `}</style>
     </main>
   )
 }

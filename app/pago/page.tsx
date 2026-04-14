@@ -308,7 +308,7 @@
 
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
@@ -317,7 +317,9 @@ import { Footer } from '@/components/layout/footer'
 import { useAuthStore, useCartStore } from '@/lib/store'
 import { db } from '@/lib/firebase'
 import { doc, updateDoc } from 'firebase/firestore'
-import { ShieldCheck, CreditCard, Loader2 } from 'lucide-react'
+import { ShieldCheck, CreditCard, Loader2, AlertTriangle, Timer } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { getRateLimitStatus, consumeRateLimitAttempt, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!)
 
@@ -347,12 +349,53 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
 
+  // Rate Limit States
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState(0)
+  const [isBlocked, setIsBlocked] = useState(false)
+
+  // Countdown effect
+  useEffect(() => {
+    if (secondsLeft <= 0) {
+      if (isBlocked) setIsBlocked(false)
+      return
+    }
+    const timer = setInterval(() => setSecondsLeft(prev => prev - 1), 1000)
+    return () => clearInterval(timer)
+  }, [secondsLeft, isBlocked])
+
+  // Initial check
+  useEffect(() => {
+    const checkStatus = async () => {
+      const status = await getRateLimitStatus()
+      setRemainingAttempts(status.remaining)
+      if (!status.success) {
+        setIsBlocked(true)
+        setSecondsLeft(status.secondsLeft)
+        setError(status.message || 'Límite de intentos de pago excedido')
+      }
+    }
+    checkStatus()
+  }, [])
+
   const handlePagar = async () => {
-    if (!stripe || !elements) return
+    if (!stripe || !elements || isBlocked) return
     setError('')
     setLoading(true)
 
     try {
+      // 1. Consumimos un intento al presionar COMPRAR
+      const status = await consumeRateLimitAttempt()
+      setRemainingAttempts(status.remaining)
+
+      if (!status.success) {
+        setIsBlocked(true)
+        setSecondsLeft(status.secondsLeft)
+        setError(status.message || 'Demasiados intentos de pago.')
+        setLoading(false)
+        return
+      }
+
       const res = await fetch('/api/stripe/create-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -366,8 +409,23 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
         }),
       })
 
-      const { clientSecret, error: backendError } = await res.json()
-      if (backendError) throw new Error(backendError)
+      // Update remaining from headers
+      const remaining = res.headers.get('X-RateLimit-Remaining')
+      if (remaining) setRemainingAttempts(parseInt(remaining))
+
+      if (!res.ok) {
+        const data = await res.json()
+        if (res.status === 429) {
+          setIsBlocked(true)
+          const reset = parseInt(res.headers.get('X-RateLimit-Reset') || '0')
+          const wait = Math.max(0, Math.ceil((reset - Date.now()) / 1000))
+          setSecondsLeft(wait)
+          throw new Error(data.error || 'Seguridad: Demasiados intentos de pago.')
+        }
+        throw new Error(data.error || 'Error al procesar el pago')
+      }
+
+      const { clientSecret } = await res.json()
 
       const cardElement = elements.getElement(CardElement)!
       const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
@@ -397,6 +455,10 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
           }),
         })
         setSuccess(true)
+        
+        // EXITO: Limpiar historial de rate limit
+        await clearRateLimit()
+
         if (cartItems && cartItems.length > 0) {
            clearCart() // Vaciamos el carrito tras compra exitosa
         }
@@ -405,8 +467,6 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
         if (user?.uid) {
           const conceptoLCase = concept.toLowerCase()
           
-          // VERIFICACIÓN CLAVE: Solo actualizamos el "Plan" si el concepto incluye plan o mensualidad.
-          // Ignoramos completamente el carrito ("compra fitmania", etc) para no corromper la membresía.
           if (conceptoLCase.includes('plan') || conceptoLCase.includes('mensualidad') || conceptoLCase.includes('parejas') || conceptoLCase.includes('dos en uno')) {
              let dias = 30
              if (conceptoLCase.includes('parejas')) dias = 40
@@ -444,9 +504,9 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
     return (
       <div className="text-center py-8">
         <p className="text-5xl mb-4">✅</p>
-        <h2 className="font-display text-2xl text-secondary tracking-wider mb-2">¡PAGO EXITOSO!</h2>
-        <p className="font-body text-gray-500 mb-6">Recibirás un correo de confirmación.</p>
-        <a href="/" className="inline-block font-label font-bold text-sm text-white bg-primary px-6 py-3 border-2 border-secondary">
+        <h2 className="font-display text-2xl text-secondary tracking-wider mb-2 uppercase italic">¡PAGO EXITOSO!</h2>
+        <p className="font-body text-gray-500 mb-6 font-bold">Recibirás un correo de confirmación en unos minutos.</p>
+        <a href="/" className="inline-block font-label font-bold text-sm text-white bg-green-600 px-8 py-4 border-4 border-black shadow-[6px_6px_0_0_rgba(0,0,0,1)] hover:-translate-y-1 transition-all">
           IR AL INICIO
         </a>
       </div>
@@ -455,11 +515,37 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
 
   return (
     <div>
-      <div className="bg-secondary text-white border-3 border-secondary p-5 mb-6">
+      <style jsx global>{`
+        @keyframes comicShake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-6px); }
+          75% { transform: translateX(6px); }
+        }
+        .animate-shake {
+          animation: comicShake 0.1s ease-in-out 4;
+        }
+      `}</style>
+
+      {/* Attempts Remaining */}
+      {!isBlocked && remainingAttempts !== null && (
+        <div className="flex items-center justify-between mb-4 px-2">
+          <span className="font-label text-[10px] uppercase font-black text-gray-400 tracking-widest">Seguridad del Pago</span>
+          <div className="flex gap-1">
+             {[...Array(5)].map((_, i) => (
+                <div key={i} className={cn(
+                  "w-2.5 h-2.5 rounded-full border-2 border-secondary",
+                  i < remainingAttempts ? "bg-primary" : "bg-red-100"
+                )} />
+             ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-secondary text-white border-3 border-secondary p-5 mb-6 shadow-comic-sm">
         <div className="flex items-center justify-between">
           <div>
             <p className="font-label text-xs text-white/60 uppercase tracking-wider mb-1">Concepto</p>
-            <p className="font-label font-bold">{concept}</p>
+            <p className="font-label font-bold text-base">{concept}</p>
           </div>
           <div className="text-right">
             <p className="font-label text-xs text-white/60 uppercase tracking-wider mb-1">Total</p>
@@ -468,44 +554,58 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
         </div>
       </div>
 
-      <div className="mb-6">
-        <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider mb-2 block">
-          Datos de la tarjeta
+      <div className={cn("mb-6 transition-all duration-300", (isBlocked || error) && "animate-shake")}>
+        <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider mb-2 block px-1">
+          Datos de la tarjeta (Visa/Mastercard)
         </label>
-        <div className="border-2 border-gray-200 focus-within:border-primary px-4 py-4 transition-colors">
+        <div className={cn(
+          "border-4 border-secondary px-4 py-5 transition-all shadow-[4px_4px_0_0_rgba(0,0,0,0.1)]",
+          isBlocked ? "bg-gray-100 opacity-50 grayscale" : "bg-white"
+        )}>
           <CardElement options={CARD_ELEMENT_OPTIONS} />
         </div>
-        <p className="font-label text-xs text-gray-400 mt-2">
-          💡 Daviplata: usa tu tarjeta virtual Mastercard desde la app
+        <p className="font-label text-[10px] text-gray-400 mt-3 font-bold uppercase tracking-widest">
+          💡 Daviplata: usa tu tarjeta virtual Mastercard
         </p>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border-2 border-primary px-4 py-3 mb-5">
-          <p className="font-label text-sm text-primary">{error}</p>
+      {isBlocked ? (
+        <div className="bg-primary text-white p-6 mb-6 rounded-xl border-4 border-navy-dark flex flex-col items-center shadow-comic">
+          <AlertTriangle className="w-12 h-12 mb-2 animate-bounce" />
+          <div className="bg-navy-dark px-4 py-1 rounded-full text-xl font-black flex items-center gap-2 mb-3">
+            <Timer className="w-5 h-5" />
+            {formatTimeLeft(secondsLeft)}
+          </div>
+          <p className="font-label text-xs text-center uppercase tracking-widest font-black leading-tight">
+            Pasarela Bloqueada <br />Demasiados intentos de pago
+          </p>
         </div>
-      )}
+      ) : error ? (
+        <div className="bg-red-light border-3 border-primary p-4 mb-6 flex items-center gap-4 animate-in slide-in-from-top">
+          <AlertTriangle className="w-6 h-6 text-primary shrink-0" />
+          <p className="font-label text-[11px] font-black text-primary uppercase leading-tight tracking-wider">{error}</p>
+        </div>
+      ) : null}
 
       <button
         onClick={handlePagar}
-        disabled={loading || !stripe}
-        className="w-full flex items-center justify-center gap-3 font-label font-bold text-base text-white bg-primary py-4 border-3 border-secondary shadow-comic transition-all hover:bg-red-dark disabled:opacity-60"
+        disabled={loading || !stripe || isBlocked}
+        className="w-full flex items-center justify-center gap-3 font-display italic text-2xl tracking-[2px] text-white bg-primary py-5 border-4 border-secondary shadow-comic transition-all hover:bg-red-dark hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[8px_8px_0_var(--navy)] disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed"
       >
         {loading
-          ? <><Loader2 className="w-5 h-5 animate-spin" />PROCESANDO...</>
-          : <><CreditCard className="w-5 h-5" />PAGAR {montoFormateado}</>
+          ? <><Loader2 className="w-8 h-8 animate-spin" />PROCESANDO...</>
+          : <><CreditCard className="w-8 h-8" />COMPRAR AHORA</>
         }
       </button>
 
-      <div className="flex items-center justify-center gap-2 mt-4">
-        <ShieldCheck className="w-4 h-4 text-gray-400" />
-        <p className="font-label text-xs text-gray-400">Pago seguro con <strong>Stripe</strong></p>
+      <div className="flex items-center justify-center gap-2 mt-6">
+        <ShieldCheck className="w-5 h-5 text-gray-500" />
+        <p className="font-label text-[10px] text-gray-400 font-bold uppercase tracking-widest">Pago 100% Seguro con <strong>Stripe Encryption</strong></p>
       </div>
     </div>
   )
 }
 
-// ↓ Renombrada a PagoContent (sin export default)
 function PagoContent() {
   const searchParams = useSearchParams()
   const { isAuthenticated } = useAuthStore()
@@ -523,8 +623,8 @@ function PagoContent() {
         <Topbar />
         <section className="mt-[72px] min-h-screen bg-muted flex items-center justify-center py-16">
           <div className="bg-white border-3 border-secondary shadow-comic p-8 text-center max-w-sm">
-            <p className="font-body text-gray-600 mb-4">Debes iniciar sesión para realizar un pago.</p>
-            <a href="/login" className="inline-block font-label font-bold text-sm text-white bg-primary px-6 py-3 border-2 border-secondary">
+            <p className="font-body text-gray-600 mb-4 font-bold">Debes iniciar sesión para realizar un pago seguro.</p>
+            <a href="/login" className="inline-block font-label font-bold text-sm text-white bg-primary px-8 py-4 border-4 border-secondary shadow-[6px_6px_0_0_rgba(0,0,0,1)] hover:-translate-y-1 transition-all">
               INICIAR SESIÓN
             </a>
           </div>
@@ -540,14 +640,14 @@ function PagoContent() {
       <section className="mt-[72px] min-h-screen bg-muted py-16">
         <div className="max-w-[520px] mx-auto px-6">
           <div className="text-center mb-8">
-            <span className="inline-block font-label font-bold text-xs text-navy bg-accent px-3 py-1 tracking-wider uppercase border-2 border-navy mb-3">
-              PAGO SEGURO
+            <span className="inline-block font-label font-bold text-[10px] text-navy bg-accent px-4 py-1.5 tracking-[4px] uppercase border-4 border-navy mb-4 shadow-comic-sm">
+              PROTECTED CHECKOUT
             </span>
-            <h1 className="font-display text-3xl text-secondary tracking-wider">
+            <h1 className="font-display text-4xl text-secondary tracking-[2px] uppercase italic">
               PAGAR CON <span className="text-primary">TARJETA</span>
             </h1>
           </div>
-          <div className="bg-white border-3 border-secondary shadow-comic p-6">
+          <div className="bg-white border-4 border-secondary shadow-[12px_12px_0_0_var(--red-primary)] p-8">
             <Elements stripe={stripePromise}>
               <CheckoutForm amount={montoParam} concept={conceptoParam} montoFormateado={montoFormateado} cartItems={items} />
             </Elements>
@@ -559,13 +659,15 @@ function PagoContent() {
   )
 }
 
-// ↓ Export default: solo envuelve PagoContent en Suspense
 export default function PagoPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-muted flex items-center justify-center">
-        <p className="font-label text-gray-500">Cargando...</p>
-      </div>
+       <div className="min-h-screen bg-[#F0F0F0] flex items-center justify-center">
+         <div className="flex flex-col items-center">
+           <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
+           <p className="font-display text-xl text-gray-500 uppercase tracking-widest italic animate-pulse">Protegiendo tu sesión...</p>
+         </div>
+       </div>
     }>
       <PagoContent />
     </Suspense>

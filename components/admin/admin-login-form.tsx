@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import Image from 'next/image';
@@ -10,9 +10,12 @@ import {
   Mail,
   Lock,
   Loader2,
+  AlertTriangle,
+  Timer
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { getRateLimitStatus, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client';
 
 interface AdminLoginFormProps {
   onSuccess: () => void;
@@ -24,9 +27,44 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState(false);
+  
+  // Estados para Rate Limit
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [isBlocked, setIsBlocked] = useState(false);
+
+  // Efecto para la cuenta regresiva
+  useEffect(() => {
+    if (secondsLeft <= 0) {
+      if (isBlocked) setIsBlocked(false);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => prev - 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [secondsLeft, isBlocked]);
+
+  // Verificar estado inicial
+  useEffect(() => {
+    const checkInitialStatus = async () => {
+      const status = await getRateLimitStatus();
+      setRemainingAttempts(status.remaining);
+      if (!status.success) {
+        setIsBlocked(true);
+        setSecondsLeft(status.secondsLeft);
+        setError(status.message || 'Límite excedido');
+      }
+    };
+    checkInitialStatus();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBlocked) return;
+    
     setLoading(true);
     setError(null);
 
@@ -48,14 +86,30 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
         body: JSON.stringify({ idToken }),
       });
 
+      // Actualizar contadores desde los headers
+      const remaining = response.headers.get('X-RateLimit-Remaining');
+      if (remaining) setRemainingAttempts(parseInt(remaining));
+
       if (!response.ok) {
         const data = await response.json();
+        
+        if (response.status === 429) {
+          setIsBlocked(true);
+          const reset = parseInt(response.headers.get('X-RateLimit-Reset') || '0');
+          const wait = Math.max(0, Math.ceil((reset - Date.now()) / 1000));
+          setSecondsLeft(wait);
+          throw new Error(data.error || 'Has excedido el límite de intentos.');
+        }
+        
         throw new Error(data.error || 'Error al crear sesión segura');
       }
 
       // Sesión creada con cookie HttpOnly — no hay token en el cliente
       setAuthSuccess(true);
       toast.success('Acceso Autorizado');
+      
+      // Limpiar rate limit histórico de fallos exitosamente
+      await clearRateLimit();
 
       setTimeout(() => {
         onSuccess();
@@ -63,8 +117,8 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
 
     } catch (err: any) {
       console.error(err);
-      setError('Credenciales Inválidas u otro error de campo');
-      toast.error('Acceso Denegado');
+      setError(err.message || 'Credenciales Inválidas u otro error de campo');
+      toast.error(isBlocked ? 'Seguridad: Límite excedido' : 'Acceso Denegado');
       setLoading(false);
     }
   };
@@ -72,9 +126,32 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0d0d12] p-6 font-sans">
       <div className={cn(
-        "bg-white border-8 border-black p-8 md:p-12 rounded-[2.5rem] shadow-[20px_20px_0_0_rgba(220,38,38,1)] max-w-md w-full transition-all duration-500",
-        error ? "animate-shake" : "animate-in zoom-in-95"
+        "bg-white border-8 border-black p-8 md:p-12 rounded-[2.5rem] shadow-[20px_20px_0_0_rgba(220,38,38,1)] max-w-md w-full transition-all duration-500 relative overflow-hidden",
+        (error || isBlocked) ? "animate-shake" : "animate-in zoom-in-95"
       )}>
+
+        {/* Indicador de Intentos (Header) */}
+        {!authSuccess && remainingAttempts !== null && !isBlocked && (
+          <div className="absolute top-4 right-6 flex items-center gap-2">
+            <div className={cn(
+              "flex gap-1",
+              remainingAttempts <= 2 ? "animate-pulse" : ""
+            )}>
+              {[...Array(5)].map((_, i) => (
+                <div 
+                  key={i} 
+                  className={cn(
+                    "w-2 h-2 rounded-full border border-black",
+                    i < remainingAttempts ? "bg-green-500" : "bg-red-200"
+                  )}
+                />
+              ))}
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+              {remainingAttempts} intentos
+            </span>
+          </div>
+        )}
 
         {authSuccess ? (
           <div className="flex flex-col items-center justify-center p-8 animate-in zoom-in duration-500">
@@ -85,14 +162,39 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
               ACCESO CONCEDIDO
             </h3>
           </div>
+        ) : isBlocked ? (
+          <div className="flex flex-col items-center justify-center p-8 animate-in zoom-in duration-500">
+            <div className="relative w-full aspect-[4/3] max-w-[300px] mb-8 rounded-3xl overflow-hidden border-8 border-black shadow-[10px_10px_0_0_rgba(220,38,38,1)] bg-red-600 flex flex-col items-center justify-center group">
+              <AlertTriangle className="w-24 h-24 text-white mb-2 animate-bounce" strokeWidth={2.5} />
+              <div className="bg-black text-white px-4 py-1 rounded-full font-black text-xl flex items-center gap-2">
+                <Timer className="w-5 h-5" />
+                {formatTimeLeft(secondsLeft)}
+              </div>
+            </div>
+            <h3 className="text-2xl font-black italic text-red-600 uppercase tracking-tighter mb-2 text-center" style={{ fontFamily: 'var(--font-display)' }}>
+              SISTEMA BLOQUEADO
+            </h3>
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[2px] text-center mb-6">
+              Detectados demasiados intentos fallidos. <br />Seguridad activada.
+            </p>
+            <div className="w-full bg-zinc-100 h-2 rounded-full overflow-hidden border-2 border-black">
+              <div 
+                className="h-full bg-red-600 transition-all duration-1000 ease-linear"
+                style={{ width: `${(secondsLeft / 60) * 100}%` }}
+              />
+            </div>
+          </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center p-8 animate-in zoom-in duration-500">
             <div className="relative w-full aspect-[4/3] max-w-[300px] mb-8 rounded-3xl overflow-hidden border-8 border-black shadow-[10px_10px_0_0_rgba(220,38,38,1)] bg-red-500 flex items-center justify-center group">
               <ShieldAlert className="w-32 h-32 text-black group-hover:scale-110 transition-transform drop-shadow-[5px_5px_0_rgba(0,0,0,0.5)] z-10" strokeWidth={2.5} />
             </div>
-            <h3 className="text-3xl font-black italic text-red-600 uppercase tracking-tighter mb-6" style={{ fontFamily: 'var(--font-display)' }}>
-              ACCESO DENEGADO
+            <h3 className="text-3xl font-black italic text-red-600 uppercase tracking-tighter mb-4 text-center leading-none" style={{ fontFamily: 'var(--font-display)' }}>
+              ERROR DE <br />VERIFICACIÓN
             </h3>
+            <p className="text-[10px] font-bold text-red-500 uppercase tracking-[1px] text-center mb-6 px-4">
+              {error}
+            </p>
             <button
               onClick={() => setError(null)}
               className="px-8 py-4 bg-black text-white font-black uppercase text-sm border-b-8 border-zinc-900 rounded-2xl hover:bg-zinc-800 hover:-translate-y-1 active:translate-y-0 active:border-b-0 transition-all shadow-comic-sm"
@@ -155,7 +257,7 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isBlocked}
                 className="w-full py-5 bg-black text-white font-black uppercase tracking-widest rounded-3xl border-b-8 border-zinc-900 flex items-center justify-center gap-3 hover:-translate-y-1 hover:bg-zinc-800 transition-all active:translate-y-0 active:border-b-0 disabled:opacity-50 shadow-[10px_10px_0_0_rgba(220,38,38,0.3)] hover:shadow-[15px_15px_0_0_rgba(220,38,38,0.5)]"
               >
                 {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'INICIAR SESIÓN'}

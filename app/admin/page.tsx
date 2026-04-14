@@ -28,13 +28,15 @@ import {
   AlertTriangle,
   AlertCircle,
   Mail,
-  RotateCcw
+  RotateCcw,
+  Database
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { useAuthStore } from '@/lib/store';
 import { ConfirmModal } from '@/components/ui/comic-modal';
 import { ProductModal } from '@/components/admin/product-modal';
 import { AdminLoginForm } from '@/components/admin/admin-login-form';
+import { AuditLogsTab } from '@/components/admin/audit-logs-tab';
 
 // --- HELPERS ---
 const formatCurrency = (val: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(val);
@@ -57,6 +59,7 @@ const Sidebar = ({ activeTab, setActiveTab, onLogout }: any) => {
     { id: 'inventory', icon: Package, label: 'Inventario' },
     { id: 'pqrs', icon: MessageSquare, label: 'PQRS' },
     { id: 'orders', icon: ShoppingBag, label: 'Compras' },
+    { id: 'audit', icon: Database, label: 'Auditoría' },
   ];
 
   return (
@@ -260,6 +263,7 @@ export default function AdminPage() {
   const [productsList, setProductsList] = useState<any[]>([]);
   const [pqrsList, setPqrsList] = useState<any[]>([]);
   const [ordersList, setOrdersList] = useState<any[]>([]);
+  const [auditLogsList, setAuditLogsList] = useState<any[]>([]);
 
   // UI States
   const [isReplying, setIsReplying] = useState<string | null>(null);
@@ -379,6 +383,11 @@ export default function AdminPage() {
     fetch('/api/admin/orders')
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setOrdersList(data) : setOrdersList([]))
+      .catch(handleFetchError);
+
+    fetch('/api/admin/logs')
+      .then(res => res.json())
+      .then(data => Array.isArray(data) ? setAuditLogsList(data) : setAuditLogsList([]))
       .catch(handleFetchError);
   };
 
@@ -1005,6 +1014,7 @@ export default function AdminPage() {
           {activeTab === 'inventory' && renderInventory()}
           {activeTab === 'pqrs' && renderPQRS()}
           {activeTab === 'orders' && renderOrders()}
+          {activeTab === 'audit' && <AuditLogsTab logs={auditLogsList} loading={false} onRefreshAction={refreshAllData} />}
         </div>
 
         {/* Decorative corner element */}

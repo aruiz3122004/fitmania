@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { recordAuditLog } from '@/lib/audit-logger';
 
 export async function POST(request: Request) {
   try {
@@ -22,6 +23,14 @@ export async function POST(request: Request) {
     }
 
     if (decodedToken.email?.toLowerCase() !== authorizedEmail.toLowerCase()) {
+      await recordAuditLog({
+        action: 'LOGIN_FAILED',
+        category: 'AUTH_FAILURE',
+        details: `Intento de acceso denegado a Recepción. Razón: Correo no autorizado. Email: ${decodedToken.email}`,
+        adminEmail: decodedToken.email,
+        targetId: decodedToken.uid,
+        request: request,
+      });
       return NextResponse.json({ error: 'Acceso denegado: este correo no está autorizado para recepción.' }, { status: 403 });
     }
 
@@ -34,6 +43,15 @@ export async function POST(request: Request) {
       sameSite: 'strict',
       path: '/',
       maxAge: 60 * 60, // 1 hora
+    });
+
+    await recordAuditLog({
+      action: 'LOGIN_RECEPTION',
+      category: 'AUTH_SUCCESS',
+      details: 'Inicio de sesión de Recepción exitoso.',
+      adminEmail: decodedToken.email,
+      targetId: decodedToken.uid,
+      request: request,
     });
 
     return response;

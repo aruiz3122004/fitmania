@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
@@ -10,8 +10,22 @@ import { auth, db } from '@/lib/firebase'
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
 import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
-import { Mail, Lock, Eye, EyeOff, User, ArrowRight, Dumbbell, Scale, Ruler } from 'lucide-react'
+import { 
+  Mail, 
+  Lock, 
+  Eye, 
+  EyeOff, 
+  User, 
+  ArrowRight, 
+  Dumbbell, 
+  Scale, 
+  Ruler,
+  AlertTriangle,
+  Timer
+} from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
+import { cn } from '@/lib/utils'
+import { getRateLimitStatus, consumeRateLimitAttempt, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
 
 export default function RegistroPage() {
   const router = useRouter()
@@ -30,12 +44,43 @@ export default function RegistroPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // Rate Limit States
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState(0)
+  const [isBlocked, setIsBlocked] = useState(false)
+
+  // Countdown effect
+  useEffect(() => {
+    if (secondsLeft <= 0) {
+      if (isBlocked) setIsBlocked(false)
+      return
+    }
+    const timer = setInterval(() => setSecondsLeft(prev => prev - 1), 1000)
+    return () => clearInterval(timer)
+  }, [secondsLeft, isBlocked])
+
+  // Initial status check
+  useEffect(() => {
+    const checkStatus = async () => {
+      const status = await getRateLimitStatus()
+      setRemainingAttempts(status.remaining)
+      if (!status.success) {
+        setIsBlocked(true)
+        setSecondsLeft(status.secondsLeft)
+        setError(status.message || 'Límite de intentos excedido')
+      }
+    }
+    checkStatus()
+  }, [])
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isBlocked) return
+
     setError('')
 
     if (formData.password !== formData.confirmPassword) {
@@ -51,6 +96,18 @@ export default function RegistroPage() {
     setLoading(true)
 
     try {
+      // 1. Consumimos un intento exactamente al presionar "REGISTRARSE"
+      const status = await consumeRateLimitAttempt()
+      setRemainingAttempts(status.remaining)
+
+      if (!status.success) {
+        setIsBlocked(true)
+        setSecondsLeft(status.secondsLeft)
+        setError(status.message || 'Demasiados intentos de registro.')
+        setLoading(false)
+        return
+      }
+
       const credentials = await createUserWithEmailAndPassword(auth, formData.email, formData.password)
       const avatarUrl = getAvatarUrlById(formData.avatar) || '/Imagenes/Avatares/Fitman.jpeg'
       const userData = {
@@ -71,12 +128,16 @@ export default function RegistroPage() {
       })
 
       setUser(userData)
+      
+      // EXITO: Limpiamos por completo el historial de fallos y rate limit
+      await clearRateLimit()
+      
       router.push('/')
     } catch (err: any) {
       if (err?.code === 'auth/email-already-in-use') {
         setError('Este correo ya esta registrado.')
       } else {
-        setError('Error al crear la cuenta. Intenta de nuevo.')
+        setError(err.message || 'Error al crear la cuenta. Intenta de nuevo.')
       }
     } finally {
       setLoading(false)
@@ -85,6 +146,17 @@ export default function RegistroPage() {
 
   return (
     <main>
+      <style jsx global>{`
+        @keyframes comicShake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-8px); }
+          75% { transform: translateX(8px); }
+        }
+        .animate-shake {
+          animation: comicShake 0.1s ease-in-out 4;
+        }
+      `}</style>
+
       <Topbar />
 
       <section className="mt-[72px] min-h-screen bg-navy-dark flex items-center justify-center py-16 relative overflow-hidden">
@@ -112,22 +184,53 @@ export default function RegistroPage() {
           </div>
 
           {/* Form */}
-          <div className="bg-white border-4 border-secondary shadow-[8px_8px_0_var(--red-primary)] p-8">
+          <div className={cn(
+            "bg-white border-4 border-secondary shadow-[8px_8px_0_var(--red-primary)] p-8 transition-all duration-300",
+            (isBlocked || error) && "animate-shake"
+          )}>
+            
+            {/* Indicador de Intentos */}
+            {!isBlocked && remainingAttempts !== null && (
+              <div className="flex justify-center gap-1.5 mb-6">
+                {[...Array(5)].map((_, i) => (
+                  <div 
+                    key={i} 
+                    className={cn(
+                      "w-4 h-2 rounded-full border border-secondary transition-all",
+                      i < remainingAttempts ? "bg-primary" : "bg-red-100"
+                    )}
+                  />
+                ))}
+              </div>
+            )}
+
             <h2 className="font-display text-2xl text-secondary text-center tracking-wider mb-6">
               CREAR CUENTA
             </h2>
 
-            {error && (
-              <div className="bg-red-light border-2 border-primary p-3 mb-6">
-                <p className="font-label text-sm text-primary text-center">{error}</p>
+            {isBlocked ? (
+              <div className="bg-primary text-white p-6 mb-6 border-b-4 border-navy-dark rounded flex flex-col items-center">
+                <AlertTriangle className="w-12 h-12 mb-2 animate-bounce" />
+                <div className="bg-navy-dark px-4 py-1 rounded-full text-xl font-black flex items-center gap-2 mb-3">
+                  <Timer className="w-5 h-5" />
+                  {formatTimeLeft(secondsLeft)}
+                </div>
+                <p className="font-label text-xs text-center uppercase tracking-widest font-black leading-tight">
+                  Protección de Registro <br />Espera antes de reintentar
+                </p>
               </div>
-            )}
+            ) : error ? (
+              <div className="bg-red-light border-2 border-primary p-3 mb-6 flex items-center gap-3">
+                 <AlertTriangle className="w-5 h-5 text-primary shrink-0" />
+                 <p className="font-label text-xs font-black text-primary uppercase leading-tight tracking-wider">{error}</p>
+              </div>
+            ) : null}
 
             <form onSubmit={handleSubmit}>
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className={cn("grid grid-cols-2 gap-4 mb-4 transition-opacity", isBlocked && "opacity-50 pointer-events-none")}>
                 {/* Username */}
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
+                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
                     Nombre de Usuario
                   </label>
                   <div className="relative">
@@ -146,7 +249,7 @@ export default function RegistroPage() {
 
                 {/* Gender */}
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
+                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
                     Genero
                   </label>
                   <select
@@ -165,8 +268,8 @@ export default function RegistroPage() {
               </div>
 
               {/* Email */}
-              <div className="mb-4">
-                <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
+              <div className={cn("mb-4 transition-opacity", isBlocked && "opacity-50 pointer-events-none")}>
+                <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
                   Correo Electronico
                 </label>
                 <div className="relative">
@@ -183,10 +286,10 @@ export default function RegistroPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className={cn("grid grid-cols-2 gap-4 mb-4 transition-opacity", isBlocked && "opacity-50 pointer-events-none")}>
                 {/* Password */}
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
+                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
                     Contraseña
                   </label>
                   <div className="relative">
@@ -212,7 +315,7 @@ export default function RegistroPage() {
 
                 {/* Confirm Password */}
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
+                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
                     Confirmar
                   </label>
                   <div className="relative">
@@ -230,10 +333,10 @@ export default function RegistroPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className={cn("grid grid-cols-2 gap-4 mb-4 transition-opacity", isBlocked && "opacity-50 pointer-events-none")}>
                 {/* Weight */}
                 <div>
-                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
+                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
                     Peso (kg)
                   </label>
                   <div className="relative">
@@ -251,7 +354,7 @@ export default function RegistroPage() {
 
                 {/* Height */}
                 <div>
-                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2">
+                  <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
                     Altura (cm)
                   </label>
                   <div className="relative">
@@ -269,8 +372,8 @@ export default function RegistroPage() {
               </div>
 
               {/* Avatar Selection */}
-              <div className="mb-6">
-                <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-3">
+              <div className={cn("mb-6 transition-opacity", isBlocked && "opacity-50 pointer-events-none")}>
+                <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-3 px-1">
                   Elige tu Avatar
                 </label>
                 <div className="grid grid-cols-6 gap-2">
@@ -298,8 +401,8 @@ export default function RegistroPage() {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-2 font-display text-xl tracking-[2px] text-white bg-primary py-4 border-3 border-secondary shadow-comic transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0_var(--navy)] hover:bg-red-dark disabled:opacity-70 disabled:cursor-not-allowed"
+                disabled={loading || isBlocked}
+                className="w-full flex items-center justify-center gap-3 font-display text-xl tracking-[2px] text-white bg-primary py-4 border-3 border-secondary shadow-comic transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0_var(--navy)] hover:bg-red-dark disabled:opacity-70 disabled:grayscale disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <span className="animate-pulse">CREANDO...</span>
@@ -316,7 +419,7 @@ export default function RegistroPage() {
             <div className="mt-6 pt-6 border-t-2 border-gray-200 text-center">
               <p className="font-body text-sm text-gray-500">
                 Ya tienes cuenta?{' '}
-                <Link href="/login" className="font-label font-bold text-primary hover:underline">
+                <Link href="/login" className="font-label font-bold text-primary hover:underline uppercase tracking-wider">
                   Inicia sesion
                 </Link>
               </p>

@@ -25,6 +25,9 @@ tmp_fix_key.js
 verify_flow.js
 init_products.js
 
+tmp/
+test-ratelimit.js
+
 # Simulation Scripts and Keys
 scripts/
 *.json

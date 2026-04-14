@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
+import { recordAuditLog } from '@/lib/audit-logger';
 
 export async function POST(req: Request) {
   try {
@@ -26,6 +27,15 @@ export async function POST(req: Request) {
     });
 
     await batch.commit();
+
+    await recordAuditLog({
+      action: 'ARCHIVE_SALES',
+      category: 'ADMIN_ACTION',
+      details: `Se realizó un archivo masivo de caja (Corte de mes). Ventas archivadas: ${snapshot.docs.length}`,
+      adminEmail: decodedToken.email,
+      targetId: 'ALL_SALES',
+      request: req,
+    });
 
     return NextResponse.json({ message: 'Ventas archivadas con éxito. Contador de ingresos puesto a 0.' }, { status: 200 });
   } catch (error) {

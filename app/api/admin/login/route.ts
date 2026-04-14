@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { recordAuditLog } from '@/lib/audit-logger';
 
 export async function POST(request: Request) {
   try {
@@ -17,6 +18,14 @@ export async function POST(request: Request) {
     // Verificar que el usuario tiene el custom claim de administrador
     const authorizedAdminEmail = process.env.ADMIN_AUTHORIZED_EMAIL;
     if (!decodedToken.admin || (authorizedAdminEmail && decodedToken.email?.toLowerCase() !== authorizedAdminEmail.toLowerCase())) {
+      await recordAuditLog({
+        action: 'LOGIN_FAILED',
+        category: 'AUTH_FAILURE',
+        details: `Intento de acceso denegado a panel Admin. Razón: Sin privilegios de Admin. Correo: ${decodedToken.email}`,
+        adminEmail: decodedToken.email,
+        targetId: decodedToken.uid,
+        request: request,
+      });
       return NextResponse.json({ error: 'Acceso denegado: no tienes privilegios de administrador.' }, { status: 403 });
     }
 
@@ -29,6 +38,15 @@ export async function POST(request: Request) {
       sameSite: 'strict',   // Protege contra CSRF
       path: '/',
       maxAge: 60 * 60,      // 1 hora en segundos
+    });
+
+    await recordAuditLog({
+      action: 'LOGIN_ADMIN',
+      category: 'AUTH_SUCCESS',
+      details: 'Inicio de sesión administrativo exitoso.',
+      adminEmail: decodedToken.email,
+      targetId: decodedToken.uid,
+      request: request,
     });
 
     return response;

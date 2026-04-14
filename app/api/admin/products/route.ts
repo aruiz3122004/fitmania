@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
+import { recordAuditLog } from '@/lib/audit-logger';
 
 export async function GET(request: Request) {
   const isAdmin = await verifyAdminRequest(request);
@@ -31,6 +32,15 @@ export async function POST(request: Request) {
       ...data,
       created_at: new Date(),
     });
+
+    await recordAuditLog({
+      action: 'CREATE_PRODUCT',
+      category: 'ADMIN_ACTION',
+      details: `Producto creado: ${data.nombre} | ID Asignado: ${id}`,
+      adminEmail: isAdmin.email,
+      targetId: id,
+      request,
+    });
     
     return NextResponse.json({ success: true, id });
   } catch (error: any) {
@@ -48,6 +58,15 @@ export async function PATCH(request: Request) {
 
     const db = getAdminFirestore();
     await db.collection('products').doc(id).update(updates);
+
+    await recordAuditLog({
+      action: 'UPDATE_PRODUCT',
+      category: 'ADMIN_ACTION',
+      details: `Producto actualizado. ID: ${id} | Campos: ${Object.keys(updates).join(', ')}`,
+      adminEmail: isAdmin.email,
+      targetId: id,
+      request,
+    });
     
     return NextResponse.json({ success: true });
   } catch (error: any) {
@@ -66,6 +85,15 @@ export async function DELETE(request: Request) {
 
     const db = getAdminFirestore();
     await db.collection('products').doc(id).delete();
+
+    await recordAuditLog({
+      action: 'DELETE_PRODUCT',
+      category: 'ADMIN_ACTION',
+      details: `Producto eliminado permanentemente. ID de stock borrado: ${id}`,
+      adminEmail: isAdmin.email,
+      targetId: id,
+      request,
+    });
     
     return NextResponse.json({ success: true });
   } catch (error: any) {
