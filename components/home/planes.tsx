@@ -1,79 +1,55 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { SectionHeader } from '@/components/ui/section-header'
-import { Clock, Users, Star, Coffee, ArrowRight } from 'lucide-react'
+import { Clock, Users, Star, Coffee, ArrowRight, Loader2 } from 'lucide-react'
+import { db } from '@/lib/firebase'
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore'
 
-const planes = [
-  {
-    id: 'estandar',
-    name: 'Plan Estandar',
-    price: 80000,
-    duration: '1 Mes',
-    days: 30,
-    ribbon: 'BASICO',
-    ribbonFeatured: false,
-    description: 'Plan basico con acceso a las instalaciones durante un mes. Ideal para empezar tu transformacion heroica.',
-    features: [
-      'Acceso completo al gym',
-      'Casillero incluido',
-      'Zona de cardio y pesas',
-    ],
-    icon: Coffee,
-    featured: false,
-  },
-  {
-    id: 'parejas',
-    name: 'Plan Parejas',
-    price: 95000,
-    duration: '40 Dias',
-    days: 40,
-    ribbon: 'POPULAR',
-    ribbonFeatured: true,
-    description: 'El usuario inscrito puede llevar un invitado 3 veces por semana. Entrena con tu companero de equipo!',
-    features: [
-      'Todo del Plan Estandar',
-      'Invitado 3 veces/semana',
-      'Acceso a clases grupales',
-      'Asesoria nutricional',
-    ],
-    icon: Users,
-    featured: true,
-  },
-  {
-    id: 'dosenuno',
-    name: 'Plan Dos en Uno',
-    price: 140000,
-    duration: '2 Meses',
-    days: 60,
-    ribbon: '25% OFF',
-    ribbonFeatured: false,
-    description: 'El usuario puede disfrutar 2 meses de gimnasio con un descuento aplicado del 25%. Maximo poder!',
-    features: [
-      'Todo del Plan Parejas',
-      '25% de descuento',
-      'Plan personalizado',
-      'Seguimiento semanal',
-    ],
-    icon: Star,
-    featured: false,
-  },
-]
+const ICON_MAP: Record<string, any> = {
+  'Coffee': Coffee,
+  'Users': Users,
+  'Star': Star,
+}
 
 function formatPrice(price: number) {
   return price.toLocaleString('es-CO')
 }
 
 export function Planes() {
+  const [planes, setPlanes] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [selectedPlan, setSelectedPlan] = useState<typeof planes[0] | null>(null)
+  const [selectedPlan, setSelectedPlan] = useState<any | null>(null)
   const router = useRouter()
-  const handlePay = (plan: typeof planes[0]) => {
-    //setSelectedPlan(plan) //modal anterior
-    //setShowModal(true) //modal anterior
-    const concepto = encodeURIComponent(plan.name)
-    router.push(`/pago?concepto=${concepto}&monto=${plan.price}`)
+
+  useEffect(() => {
+    const q = query(collection(db, 'planes'), orderBy('price', 'asc'))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const plansData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      setPlanes(plansData)
+      setLoading(false)
+    })
+
+    return () => unsubscribe()
+  }, [])
+
+  const handlePay = (plan: any) => {
+    // Redirigir enviando solo el ID del plan. 
+    // El backend se encargará de validar el precio real.
+    router.push(`/pago?planId=${plan.id}`)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 bg-muted">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -93,7 +69,7 @@ export function Planes() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {planes.map((plan) => {
-            const Icon = plan.icon
+            const Icon = ICON_MAP[plan.icon] || Coffee
             return (
               <div
                 key={plan.id}

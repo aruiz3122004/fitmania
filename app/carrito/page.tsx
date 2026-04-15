@@ -21,8 +21,7 @@ export default function CarritoPage() {
   const router = useRouter()
 
   const handleCheckout = (): void => {
-    //setShowModal(true) //modal anterior de pago
-    router.push(`/pago?concepto=Compra+Fitmania&monto=${total}`)
+    router.push('/pago')
   }
 
   return (

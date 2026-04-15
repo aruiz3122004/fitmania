@@ -335,11 +335,12 @@ const CARD_ELEMENT_OPTIONS = {
   },
 }
 
-function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
+function CheckoutForm({ amount, concept, planId, cartItems, montoFormateado }: {
   amount: number
   concept: string
-  montoFormateado: string
+  planId?: string
   cartItems: any[]
+  montoFormateado: string
 }) {
   const stripe = useStripe()
   const elements = useElements()
@@ -400,12 +401,11 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount,
-          concept,
+          planId,
+          items: cartItems.length > 0 ? cartItems : undefined,
           customerEmail: user?.email || '',
           customerName: user?.username || '',
           uid: user?.uid || '',
-          items: cartItems.length > 0 ? cartItems : undefined,
         }),
       })
 
@@ -441,6 +441,7 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
       if (stripeError) throw new Error(stripeError.message)
 
       if (paymentIntent?.status === 'succeeded') {
+        // Enviar email con los datos finales calculados por el server
         await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -448,7 +449,7 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
             type: 'success',
             to: user?.email || '',
             customerName: user?.username || '',
-            amount,
+            amount, // Para el UI/Email usamos lo que cargamos inicialmente, pero el cobro real ya pasó
             concept,
             transactionId: paymentIntent.id,
             items: cartItems.length > 0 ? cartItems : undefined,
@@ -477,18 +478,18 @@ function CheckoutForm({ amount, concept, montoFormateado, cartItems }: {
              expira.setDate(ahora.getDate() + dias)
 
              const planData = {
-               nombre: concept,
-               precio: amount,
-               dias_total: dias,
-               inicio: ahora,
-               expira: expira,
+                nombre: concept,
+                precio: amount,
+                dias_total: dias,
+                inicio: ahora,
+                expira: expira,
              }
 
              try {
-               await updateDoc(doc(db, 'users', user.uid), { plan: planData })
-               updateUser({ plan: planData })
+                await updateDoc(doc(db, 'users', user.uid), { plan: planData })
+                updateUser({ plan: planData })
              } catch (err) {
-               console.error("Error al actualizar plan localmente:", err)
+                console.error("Error al actualizar plan localmente:", err)
              }
           }
         }
@@ -610,12 +611,40 @@ function PagoContent() {
   const searchParams = useSearchParams()
   const { isAuthenticated } = useAuthStore()
   const { items } = useCartStore()
+  const [planData, setPlanData] = useState<{name: string, price: number} | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const conceptoParam = searchParams.get('concepto') || 'Servicio Fitmania'
-  const montoParam = Number(searchParams.get('monto')) || 0
+  const planId = searchParams.get('planId')
+  const conceptoLegacy = searchParams.get('concepto')
+  const montoLegacy = Number(searchParams.get('monto')) || 0
+
+  useEffect(() => {
+    async function loadPlan() {
+      if (planId) {
+        try {
+          const { doc, getDoc } = await import('firebase/firestore')
+          const planDoc = await getDoc(doc(db, 'planes', planId))
+          if (planDoc.exists()) {
+            const data = planDoc.data()
+            setPlanData({ name: data.name, price: data.price })
+          }
+        } catch (err) {
+          console.error("Error cargando plan:", err)
+        }
+      } else if (items.length > 0) {
+        const total = items.reduce((acc, item) => acc + (item.price * item.cantidad), 0)
+        setPlanData({ name: "Compra de Productos", price: total })
+      } else if (conceptoLegacy && montoLegacy) {
+        setPlanData({ name: conceptoLegacy, price: montoLegacy })
+      }
+      setLoading(false)
+    }
+    loadPlan()
+  }, [planId, items, conceptoLegacy, montoLegacy])
+
   const montoFormateado = new Intl.NumberFormat('es-CO', {
     style: 'currency', currency: 'COP', minimumFractionDigits: 0,
-  }).format(montoParam)
+  }).format(planData?.price || 0)
 
   if (!isAuthenticated) {
     return (
@@ -634,6 +663,14 @@ function PagoContent() {
     )
   }
 
+  if (loading) {
+     return (
+       <main className="min-h-screen bg-muted flex items-center justify-center">
+         <Loader2 className="w-12 h-12 text-primary animate-spin" />
+       </main>
+     )
+  }
+
   return (
     <main>
       <Topbar />
@@ -649,7 +686,13 @@ function PagoContent() {
           </div>
           <div className="bg-white border-4 border-secondary shadow-[12px_12px_0_0_var(--red-primary)] p-8">
             <Elements stripe={stripePromise}>
-              <CheckoutForm amount={montoParam} concept={conceptoParam} montoFormateado={montoFormateado} cartItems={items} />
+              <CheckoutForm 
+                amount={planData?.price || 0} 
+                concept={planData?.name || ''} 
+                planId={planId || undefined}
+                montoFormateado={montoFormateado} 
+                cartItems={items} 
+              />
             </Elements>
           </div>
         </div>
