@@ -261,8 +261,8 @@ export default function ReceptionPage() {
                 </button>
               </div>
             ) : (
-              <div className="animate-in zoom-in-95 duration-300">
-                <div className="flex items-start gap-4 p-6 bg-zinc-50 border-4 border-black rounded-3xl mb-8 relative shadow-[8px_8px_0_0_rgba(0,0,0,1)]">
+              <div className="animate-in zoom-in-95 duration-300 w-full">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 p-6 sm:p-8 bg-zinc-50 border-4 border-black rounded-3xl mb-8 relative shadow-[8px_8px_0_0_rgba(0,0,0,1)] text-center sm:text-left">
                   {scannedUser.plan && new Date(scannedUser.plan.expira.seconds * 1000) > new Date() ? (
                     <div className="absolute -top-4 -right-4 w-12 h-12 bg-green-500 border-4 border-black rounded-full flex items-center justify-center animate-bounce shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
                       <CheckCircle2 className="text-white w-6 h-6" />
@@ -273,40 +273,40 @@ export default function ReceptionPage() {
                     </div>
                   )}
 
-                  <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl border-4 border-black overflow-hidden bg-white shrink-0 shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
+                  <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-2xl border-4 border-black overflow-hidden bg-white shrink-0 shadow-[4px_4px_0_0_rgba(0,0,0,1)] mx-auto sm:mx-0">
                     {scannedUser.photoURL || scannedUser.avatar ? (
-                      <Image src={scannedUser.photoURL || scannedUser.avatar} alt="Foto" width={128} height={128} className="object-cover w-full h-full" />
+                      <Image src={scannedUser.photoURL || scannedUser.avatar} alt="Foto" width={160} height={160} className="object-cover w-full h-full" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-zinc-200">
-                        <UserCircle className="w-12 h-12 text-zinc-400" />
+                        <UserCircle className="w-16 h-16 text-zinc-400" />
                       </div>
                     )}
                   </div>
 
-                  <div className="flex-1">
-                    <h3 className="font-display italic text-3xl uppercase">{scannedUser.username || 'Desconocido'}</h3>
-                    <p className="font-label text-xs text-zinc-500 font-bold uppercase tracking-widest mb-2">{scannedUser.email}</p>
+                  <div className="flex-1 min-w-0 w-full">
+                    <h3 className="font-display italic text-3xl sm:text-4xl uppercase mb-1 leading-none break-words text-secondary">{scannedUser.username || 'Desconocido'}</h3>
+                    <p className="font-label text-xs sm:text-sm text-zinc-500 font-bold uppercase tracking-widest mb-4 break-all">{scannedUser.email}</p>
 
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      <div className="flex items-center gap-1 bg-zinc-200 px-2 py-1 rounded text-[10px] font-black uppercase text-zinc-600">
-                        <CalendarDays className="w-3 h-3" />
+                    <div className="flex flex-wrap justify-center sm:justify-start gap-2 mb-6">
+                      <div className="flex items-center gap-2 bg-zinc-200 px-3 py-1.5 rounded-lg text-[10px] sm:text-xs font-black uppercase text-zinc-600">
+                        <CalendarDays className="w-4 h-4" />
                         Desde: {scannedUser.createdAt ? new Date(scannedUser.createdAt.seconds * 1000).toLocaleDateString() : 'Desconocido'}
                       </div>
                     </div>
 
-                    <div className="p-3 bg-white border-2 border-dashed border-black rounded-xl">
-                      <p className="text-[10px] font-black uppercase text-zinc-500">Estado de Membresía</p>
+                    <div className="p-4 bg-white border-4 border-dashed border-zinc-200 rounded-2xl">
+                      <p className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-1">Estado de Membresía</p>
                       {scannedUser.plan ? (
-                        <div className="flex items-center justify-between mt-1">
-                          <p className={`font-black uppercase text-lg ${new Date(scannedUser.plan.expira.seconds * 1000) > new Date() ? 'text-green-600' : 'text-red-600'}`}>
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                          <p className={`font-black uppercase text-xl leading-none ${new Date(scannedUser.plan.expira.seconds * 1000) > new Date() ? 'text-green-600' : 'text-red-600'}`}>
                             {scannedUser.plan.nombre}
                           </p>
-                          <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg border-2 ${new Date(scannedUser.plan.expira.seconds * 1000) > new Date() ? 'bg-green-100 border-green-600 text-green-700' : 'bg-red-100 border-red-600 text-red-700'}`}>
+                          <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-xl border-2 shrink-0 ${new Date(scannedUser.plan.expira.seconds * 1000) > new Date() ? 'bg-green-100 border-green-600 text-green-700' : 'bg-red-100 border-red-600 text-red-700'}`}>
                             {new Date(scannedUser.plan.expira.seconds * 1000) > new Date() ? 'VIGENTE' : 'VENCIDO'}
                           </span>
                         </div>
                       ) : (
-                        <p className="font-black uppercase text-lg text-zinc-400 mt-1">Visitante (Sin Plan)</p>
+                        <p className="font-black uppercase text-xl text-zinc-400">Visitante (Sin Plan)</p>
                       )}
                     </div>
                   </div>
