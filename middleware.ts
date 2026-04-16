@@ -28,6 +28,47 @@ function getLockoutTime(level: number): number {
   }
 }
 
+// -------------------------------------------------------
+// CONFIGURACIÓN DE SEGURIDAD PROACTIVA (CSP)
+// -------------------------------------------------------
+function applySecurityHeaders(response: NextResponse) {
+  const isProd = process.env.NODE_ENV === 'production';
+  
+  // CSP: Content Security Policy robusta para soportar Stripe, Firebase, Cloudinary y Google Fonts
+  const cspHeader = `
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    img-src 'self' blob: data: https://res.cloudinary.com https://*.googleusercontent.com https://*.stripe.com https://*.firebaseapp.com;
+    connect-src 'self' https://*.stripe.com https://*.googleapis.com https://*.firebaseio.com https://res.cloudinary.com https://va.vercel-scripts.com;
+    frame-src 'self' https://*.stripe.com https://*.firebaseapp.com;
+    font-src 'self' data: https://fonts.gstatic.com;
+    worker-src 'self' blob:;
+    upgrade-insecure-requests;
+  `.replace(/\s{2,}/g, ' ').trim();
+
+  const headers = response.headers;
+  
+  // Inyectar CSP
+  headers.set('Content-Security-Policy', cspHeader);
+  
+  // Prevenir Clickjacking (solo permitir el mismo origen si fuera necesario, o denegar por completo)
+  headers.set('X-Frame-Options', 'DENY');
+  
+  // Prevenir sniffing de tipos de contenido
+  headers.set('X-Content-Type-Options', 'nosniff');
+  
+  // Referrer Policy para privacidad
+  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // HSTS (HTTP Strict Transport Security) - Solo en producción
+  if (isProd) {
+    headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
@@ -41,10 +82,10 @@ export async function middleware(request: NextRequest) {
     if (pathname === '/api/security/success') {
       try {
         await redis.del(`fw_attempts_${ip}`, `fw_lockout_${ip}`, `fw_level_${ip}`);
-        return NextResponse.json({ success: true, message: 'Intentos restaurados' });
+        return applySecurityHeaders(NextResponse.json({ success: true, message: 'Intentos restaurados' }));
       } catch (e) {
         console.error('Error limpiando rate limit:', e);
-        return NextResponse.json({ success: true }); // Fallback
+        return applySecurityHeaders(NextResponse.json({ success: true })); // Fallback
       }
     }
 
@@ -72,16 +113,16 @@ export async function middleware(request: NextRequest) {
           resp.headers.set('X-RateLimit-Limit', MAX_ATTEMPTS.toString());
           resp.headers.set('X-RateLimit-Remaining', '0');
           resp.headers.set('X-RateLimit-SecondsLeft', lockoutTtl.toString());
-          return resp;
+          return applySecurityHeaders(resp);
         }
 
         // B. Lectura inofensiva de estado (Renderizado inicial de la página)
         if (isCheckEndpoint) {
           const currentAttempts = (await redis.get<number>(`fw_attempts_${ip}`)) || 0;
-          return NextResponse.json({
+          return applySecurityHeaders(NextResponse.json({
             success: true,
             remaining: Math.max(0, MAX_ATTEMPTS - currentAttempts),
-          });
+          }));
         }
 
         // C. Ejecutar Intento Explicito (Pulsó ENTRAR o PAGAR)
@@ -118,7 +159,7 @@ export async function middleware(request: NextRequest) {
           resp.headers.set('X-RateLimit-Limit', MAX_ATTEMPTS.toString());
           resp.headers.set('X-RateLimit-Remaining', '0');
           resp.headers.set('X-RateLimit-SecondsLeft', lockoutTime.toString());
-          return resp;
+          return applySecurityHeaders(resp);
         }
 
         // D. Intento válido procesado (aún le quedan oportunidades)
@@ -126,19 +167,19 @@ export async function middleware(request: NextRequest) {
         
         if (pathname === '/api/security/attempt') {
           // Interceptamos su llegada porque su único trabajo era alertar al middleware del click
-          return NextResponse.json({ success: true, remaining });
+          return applySecurityHeaders(NextResponse.json({ success: true, remaining }));
         } else {
           // Si es un API Route propio (Stripe, Admin), lo dejamos pasar e inyectamos los headers
           const response = NextResponse.next();
           response.headers.set('X-RateLimit-Limit', MAX_ATTEMPTS.toString());
           response.headers.set('X-RateLimit-Remaining', remaining.toString());
-          return response;
+          return applySecurityHeaders(response);
         }
 
       } catch (e) {
         console.error('Error procesando intentos con Redis:', e);
         // Fail-open si redis falla catastroficamente
-        return NextResponse.next();
+        return applySecurityHeaders(NextResponse.next());
       }
     }
   }
@@ -159,7 +200,7 @@ export async function middleware(request: NextRequest) {
     
     // Permitir si ya tiene sesión iniciada o si ya pasó la "gate" con cookie
     if (adminSession || adminGateCookie === 'true') {
-      return NextResponse.next();
+      return applySecurityHeaders(NextResponse.next());
     }
 
     // Si trae la llave correcta, dejarlo pasar y ponerle la cookie por 1 hora
@@ -172,10 +213,10 @@ export async function middleware(request: NextRequest) {
         path: '/',
         sameSite: 'lax'
       });
-      return resp;
+      return applySecurityHeaders(resp);
     }
 
-    return NextResponse.rewrite(new URL('/404', request.url));
+    return applySecurityHeaders(NextResponse.rewrite(new URL('/404', request.url)));
   }
 
   if (normalizedPath === '/fitception') {
@@ -185,7 +226,7 @@ export async function middleware(request: NextRequest) {
     
     // Permitir si ya tiene sesión iniciada o si ya pasó la "gate" con cookie
     if (receptionSession || receptionGateCookie === 'true') {
-      return NextResponse.next();
+      return applySecurityHeaders(NextResponse.next());
     }
 
     // Si trae la llave correcta, dejarlo pasar y ponerle la cookie por 1 hora
@@ -198,10 +239,10 @@ export async function middleware(request: NextRequest) {
         path: '/',
         sameSite: 'lax'
       });
-      return resp;
+      return applySecurityHeaders(resp);
     }
 
-    return NextResponse.rewrite(new URL('/404', request.url));
+    return applySecurityHeaders(NextResponse.rewrite(new URL('/404', request.url)));
   }
 
   // -------------------------------------------------------
@@ -210,26 +251,28 @@ export async function middleware(request: NextRequest) {
   const isAdminApi = pathname.startsWith('/api/admin/') && 
                      !pathname.startsWith('/api/admin/login');
   if (isAdminApi && !adminSession) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    return applySecurityHeaders(NextResponse.json({ error: 'No autorizado' }, { status: 401 }));
   }
 
   const isRecepcionApi = pathname.startsWith('/api/recepcion/') && 
                          !pathname.startsWith('/api/recepcion/login');
   if (isRecepcionApi && !receptionSession) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    return applySecurityHeaders(NextResponse.json({ error: 'No autorizado' }, { status: 401 }));
   }
 
-  return NextResponse.next();
+  // Devolver respuesta final con todas las cabeceras de seguridad aplicadas
+  return applySecurityHeaders(NextResponse.next());
 }
 
 export const config = {
   matcher: [
-    '/fitministration',
-    '/fitception',
-    '/api/admin/:path*',
-    '/api/recepcion/:path*',
-    '/api/stripe/:path*',
-    '/api/security/:path*',
-    '/api/auth/:path*',
+    /*
+     * Coincidir con todas las rutas excepto:
+     * - _next/static (archivos estáticos)
+     * - _next/image (optimización de imágenes)
+     * - favicon.ico (icono)
+     * - Imagenes/Public (tus carpetas de assets)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|Imagenes|Public).*)',
   ],
 };
