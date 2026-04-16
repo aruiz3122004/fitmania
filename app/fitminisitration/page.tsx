@@ -29,7 +29,10 @@ import {
   AlertCircle,
   Mail,
   RotateCcw,
-  Database
+  Database,
+  Coffee,
+  Star,
+  Clock
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { useAuthStore } from '@/lib/store';
@@ -37,6 +40,7 @@ import { ConfirmModal } from '@/components/ui/comic-modal';
 import { ProductModal } from '@/components/admin/product-modal';
 import { AdminLoginForm } from '@/components/admin/admin-login-form';
 import { AuditLogsTab } from '@/components/admin/audit-logs-tab';
+import { PlanModal } from '@/components/admin/plan-modal';
 
 // --- HELPERS ---
 const formatCurrency = (val: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(val);
@@ -57,6 +61,7 @@ const Sidebar = ({ activeTab, setActiveTab, onLogout }: any) => {
     { id: 'overview', icon: TrendingUp, label: 'Resumen' },
     { id: 'users', icon: Users, label: 'Usuarios' },
     { id: 'inventory', icon: Package, label: 'Inventario' },
+    { id: 'planes', icon: CreditCard, label: 'Planes' },
     { id: 'pqrs', icon: MessageSquare, label: 'PQRS' },
     { id: 'orders', icon: ShoppingBag, label: 'Compras' },
     { id: 'audit', icon: Database, label: 'Auditoría' },
@@ -264,6 +269,7 @@ export default function AdminPage() {
   const [pqrsList, setPqrsList] = useState<any[]>([]);
   const [ordersList, setOrdersList] = useState<any[]>([]);
   const [auditLogsList, setAuditLogsList] = useState<any[]>([]);
+  const [planesList, setPlanesList] = useState<any[]>([]);
 
   // UI States
   const [isReplying, setIsReplying] = useState<string | null>(null);
@@ -281,7 +287,13 @@ export default function AdminPage() {
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
-  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  
+  // Modal de edición de PLANES (el producto de suscripción)
+  const [isPlanEditModalOpen, setIsPlanEditModalOpen] = useState(false);
+  const [selectedPlanForEdit, setSelectedPlanForEdit] = useState<any>(null);
+
+  // Modal de edición de MEMBRESÍA de usuario (vigencia)
+  const [isUserPlanModalOpen, setIsUserPlanModalOpen] = useState(false);
   const [selectedUserForPlan, setSelectedUserForPlan] = useState<any>(null);
 
   useEffect(() => {
@@ -389,6 +401,11 @@ export default function AdminPage() {
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setAuditLogsList(data) : setAuditLogsList([]))
       .catch(handleFetchError);
+
+    fetch('/api/admin/planes')
+      .then(res => res.json())
+      .then(data => Array.isArray(data) ? setPlanesList(data) : setPlanesList([]))
+      .catch(handleFetchError);
   };
 
   const handleLogout = async () => {
@@ -495,7 +512,6 @@ export default function AdminPage() {
       }
     });
   };
-
   const handleReplyPqrs = async (pqrs: any) => {
     if (!replyMessage) return;
     const res = await fetch('/api/admin/pqrs/respond', {
@@ -515,6 +531,38 @@ export default function AdminPage() {
       setReplyMessage('');
       setPqrsList(pqrsList.map(p => p.id === pqrs.id ? { ...p, estado: 'resuelto' } : p));
     }
+  };
+
+  const handleSavePlan = async (data: any) => {
+    const isEditing = !!selectedPlanForEdit;
+    const res = await fetch('/api/admin/planes', {
+      method: isEditing ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(isEditing ? { id: selectedPlanForEdit.id, ...data } : data)
+    });
+
+    if (res.ok) {
+      toast.success(isEditing ? "Plan actualizado" : "Plan creado");
+      setIsPlanEditModalOpen(false);
+      refreshAllData();
+    } else {
+      toast.error("Error al guardar el plan");
+    }
+  };
+
+  const handleDeletePlan = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "ELIMINAR PLAN",
+      message: "¿Seguro que deseas eliminar este plan? Afectará a los nuevos usuarios que intenten suscribirse.",
+      onConfirm: async () => {
+        const res = await fetch(`/api/admin/planes?id=${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          toast.success("Plan eliminado");
+          refreshAllData();
+        }
+      }
+    });
   };
 
   const markNotificationRead = async (id: string) => {
@@ -725,7 +773,7 @@ export default function AdminPage() {
                 </td>
                 <td className="p-6 text-right space-x-2">
                   {u.plan && (
-                    <button onClick={() => { setSelectedUserForPlan(u); setIsPlanModalOpen(true); }} className="p-2 border-2 border-transparent hover:border-black hover:bg-zinc-100 rounded-lg transition-all" title="Editar Vigencia"><Edit3 className="w-5 h-5" /></button>
+                    <button onClick={() => { setSelectedUserForPlan(u); setIsUserPlanModalOpen(true); }} className="p-2 border-2 border-transparent hover:border-black hover:bg-zinc-100 rounded-lg transition-all" title="Editar Vigencia"><Edit3 className="w-5 h-5" /></button>
                   )}
                   <button onClick={() => handleDeleteUser(u.uid)} className="p-2 border-2 border-transparent hover:border-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-5 h-5 text-red-600" /></button>
                 </td>
@@ -860,6 +908,75 @@ export default function AdminPage() {
           </div>
         ))}
         {pqrsList.length === 0 && <div className="col-span-2 text-center py-20 bg-white border-4 border-black border-dashed rounded-[2rem] text-zinc-300 font-black italic text-2xl uppercase opacity-20">No hay tickets de atención aún</div>}
+      </div>
+    </div>
+  );
+
+  const renderPlanes = () => (
+    <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
+      <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 border-4 border-black rounded-2xl shadow-[6px_6px_0_0_rgba(0,0,0,1)] gap-6">
+        <div>
+          <h2 className="text-2xl font-black italic uppercase tracking-tighter">Suscripciones (Planes)</h2>
+          <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">Gestión de precios y beneficios de membresía</p>
+        </div>
+        <button
+          onClick={() => { setSelectedPlanForEdit(null); setIsPlanEditModalOpen(true); }}
+          className="bg-black text-white px-8 py-4 rounded-xl font-black uppercase text-xs flex items-center gap-3 hover:bg-zinc-800 transition-all hover:-translate-y-1 shadow-[4px_4px_0_0_rgba(220,38,38,1)]"
+        >
+          <Plus className="w-5 h-5" /> Nuevo Plan
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {planesList.map(plan => (
+          <div key={plan.id} className={`bg-white border-4 border-black overflow-hidden rounded-2xl shadow-[8px_8px_0_0_rgba(0,0,0,1)] flex flex-col ${plan.featured ? 'ring-8 ring-red-600/10' : ''}`}>
+            {plan.ribbon && (
+              <div className="bg-red-600 text-white text-[10px] font-black uppercase tracking-widest py-1 text-center border-b-4 border-black">
+                {plan.ribbon}
+              </div>
+            )}
+            <div className="p-8 flex-1">
+              <div className="flex justify-between items-start mb-6">
+                <div className="w-12 h-12 bg-zinc-100 border-2 border-black rounded-xl flex items-center justify-center">
+                   {plan.icon === 'Coffee' && <Coffee className="w-6 h-6" />}
+                   {plan.icon === 'Star' && <Star className="w-6 h-6" />}
+                   {plan.icon === 'Users' && <Users className="w-6 h-6" />}
+                   {plan.icon === 'Clock' && <Clock className="w-6 h-6" />}
+                </div>
+                <div className="text-right">
+                   <p className="text-2xl font-black tracking-tighter italic">{formatCurrency(plan.price)}</p>
+                   <p className="text-[10px] font-bold text-zinc-400 uppercase">{plan.days} Días</p>
+                </div>
+              </div>
+
+              <h3 className="text-xl font-black uppercase italic mb-4">{plan.name}</h3>
+              
+              <ul className="space-y-2 mb-8">
+                {plan.features?.map((f: string, i: number) => (
+                  <li key={i} className="flex items-center gap-2 text-xs font-bold text-zinc-600">
+                    <CheckCircle className="w-3 h-3 text-green-500 shrink-0" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="p-6 bg-zinc-50 border-t-4 border-black flex gap-2">
+              <button
+                onClick={() => { setSelectedPlanForEdit(plan); setIsPlanEditModalOpen(true); }}
+                className="flex-1 py-3 bg-zinc-900 text-white font-black text-[10px] uppercase border-b-4 border-zinc-950 hover:bg-black transition-all"
+              >
+                Configurar
+              </button>
+              <button
+                onClick={() => handleDeletePlan(plan.id)}
+                className="p-3 border-2 border-black hover:bg-red-50 rounded-xl transition-all"
+              >
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1012,6 +1129,7 @@ export default function AdminPage() {
           {activeTab === 'overview' && renderOverview()}
           {activeTab === 'users' && renderUsers()}
           {activeTab === 'inventory' && renderInventory()}
+          {activeTab === 'planes' && renderPlanes()}
           {activeTab === 'pqrs' && renderPQRS()}
           {activeTab === 'orders' && renderOrders()}
           {activeTab === 'audit' && <AuditLogsTab logs={auditLogsList} loading={false} onRefreshAction={refreshAllData} />}
@@ -1065,10 +1183,16 @@ export default function AdminPage() {
         ::-webkit-scrollbar-thumb:hover { background: #333; }
       `}</style>
       <UserPlanModal
-        isOpen={isPlanModalOpen}
-        onClose={() => setIsPlanModalOpen(false)}
+        isOpen={isUserPlanModalOpen}
+        onClose={() => setIsUserPlanModalOpen(false)}
         user={selectedUserForPlan}
         onSave={handleUpdateUserPlan}
+      />
+      <PlanModal
+        isOpen={isPlanEditModalOpen}
+        onClose={() => setIsPlanEditModalOpen(false)}
+        onSave={handleSavePlan}
+        plan={selectedPlanForEdit}
       />
     </div>
   );

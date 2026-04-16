@@ -42,8 +42,18 @@ export function ReceptionLoginForm({ onSuccess }: { onSuccess: () => void }) {
     return () => clearInterval(timer)
   }, [secondsLeft, isBlocked])
 
-  // Initial status check
+  // Initial status check and URL key cleanup
   useEffect(() => {
+    // 1. Limpiar la llave de la barra de direcciones de inmediato
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('key')) {
+        url.searchParams.delete('key');
+        window.history.replaceState({}, '', url.pathname);
+      }
+    }
+
+    // 2. Cargar estado de rate limit
     const checkStatus = async () => {
       const status = await getRateLimitStatus()
       setRemainingAttempts(status.remaining)
@@ -106,6 +116,12 @@ export function ReceptionLoginForm({ onSuccess }: { onSuccess: () => void }) {
 
       // EXITO: Limpiar historial de bloqueos
       await clearRateLimit()
+
+      // Limpiar la URL (quitar la ?key= de la barra de direcciones)
+      if (typeof window !== 'undefined') {
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+      }
 
       onSuccess()
     } catch (err: any) {

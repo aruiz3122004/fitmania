@@ -86,29 +86,41 @@ export default function ReceptionPage() {
       // Fetch additional logs
       setIsFetchingLogs(true)
       try {
-        // Orders
+        // Orders: Fetch all user orders and sort locally to avoid index requirement
         const ordersQuery = query(
           collection(db, 'orders'),
-          where('uid', '==', user.id),
-          orderBy('fecha', 'desc'),
-          limit(5)
+          where('uid', '==', user.id)
         )
         const ordersSnap = await getDocs(ordersQuery)
         const orders: any[] = []
         ordersSnap.forEach(d => orders.push({ id: d.id, ...d.data() }))
-        setUserOrders(orders)
+        
+        // Sort by 'fecha' descending and take top 5
+        const sortedOrders = orders.sort((a, b) => {
+          const timeA = a.fecha?.seconds || 0
+          const timeB = b.fecha?.seconds || 0
+          return timeB - timeA
+        }).slice(0, 5)
+        
+        setUserOrders(sortedOrders)
 
-        // Check-ins
+        // Check-ins: Fetch all user check-ins and sort locally
         const checkinsQuery = query(
           collection(db, 'checkIns'),
-          where('userId', '==', user.id),
-          orderBy('timestamp', 'desc'),
-          limit(5)
+          where('userId', '==', user.id)
         )
         const checkinsSnap = await getDocs(checkinsQuery)
         const checkins: any[] = []
         checkinsSnap.forEach(d => checkins.push({ id: d.id, ...d.data() }))
-        setUserCheckIns(checkins)
+        
+        // Sort by 'timestamp' descending and take top 5
+        const sortedCheckins = checkins.sort((a, b) => {
+          const timeA = a.timestamp?.seconds || 0
+          const timeB = b.timestamp?.seconds || 0
+          return timeB - timeA
+        }).slice(0, 5)
+        
+        setUserCheckIns(sortedCheckins)
 
       } catch (err) {
         console.error("Error fetching user logs:", err)

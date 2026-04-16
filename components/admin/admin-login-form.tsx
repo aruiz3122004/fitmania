@@ -47,8 +47,18 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
     return () => clearInterval(timer);
   }, [secondsLeft, isBlocked]);
 
-  // Verificar estado inicial
+  // Verificar estado inicial y limpiar llave de la URL
   useEffect(() => {
+    // 1. Limpiar la llave de la barra de direcciones de inmediato
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('key')) {
+        url.searchParams.delete('key');
+        window.history.replaceState({}, '', url.pathname);
+      }
+    }
+
+    // 2. Cargar estado de rate limit
     const checkInitialStatus = async () => {
       const status = await getRateLimitStatus();
       setRemainingAttempts(status.remaining);
@@ -110,6 +120,12 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
       
       // Limpiar rate limit histórico de fallos exitosamente
       await clearRateLimit();
+
+      // Limpiar la URL (quitar la ?key= de la barra de direcciones)
+      if (typeof window !== 'undefined') {
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+      }
 
       setTimeout(() => {
         onSuccess();

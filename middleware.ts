@@ -147,22 +147,25 @@ export async function middleware(request: NextRequest) {
   const adminSession = request.cookies.get('fitmania_session')?.value;
   const receptionSession = request.cookies.get('fitmania_reception_session')?.value;
 
-  // -------------------------------------------------------
-  // PROTECCIÓN DE PÁGINAS (ADMIN Y RECEPCIÓN)
-  // -------------------------------------------------------
+  // --- PROTECCIÓN DE PÁGINAS (ADMIN Y RECEPCIÓN INVISIBLES) ---
   
-  if (pathname === '/admin') {
+  // Normalizar el pathname para que la comparación sea robusta (sin slash final)
+  const normalizedPath = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+
+  if (normalizedPath === '/fitminisitration') {
     const key = searchParams.get('key');
     const validKey = process.env.ADMIN_GATE_KEY;
+    
     if (adminSession || (validKey && key === validKey)) {
       return NextResponse.next();
     }
     return NextResponse.rewrite(new URL('/404', request.url));
   }
 
-  if (pathname === '/recepcion') {
+  if (normalizedPath === '/fitception') {
     const key = searchParams.get('key');
     const validKey = process.env.RECEPTION_GATE_KEY;
+    
     if (receptionSession || (validKey && key === validKey)) {
       return NextResponse.next();
     }
@@ -189,8 +192,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/admin',
-    '/recepcion',
+    '/fitminisitration',
+    '/fitception',
     '/api/admin/:path*',
     '/api/recepcion/:path*',
     '/api/stripe/:path*',

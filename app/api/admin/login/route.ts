@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     response.cookies.set('fitmania_session', idToken, {
       httpOnly: true,       // No accesible desde JavaScript (protege contra XSS)
       secure: process.env.NODE_ENV === 'production', // Solo HTTPS en producción
-      sameSite: 'strict',   // Protege contra CSRF
+      sameSite: 'lax',     // Más compatible con redirecciones y navegación top-level
       path: '/',
       maxAge: 60 * 60,      // 1 hora en segundos
     });

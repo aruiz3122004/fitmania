@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, JSXElementConstructor, Key, ReactElement, ReactNode, ReactPortal } from 'react'
 import { useRouter } from 'next/navigation'
 import { SectionHeader } from '@/components/ui/section-header'
 import { Clock, Users, Star, Coffee, ArrowRight, Loader2 } from 'lucide-react'
@@ -61,10 +61,10 @@ export function Planes() {
       }} />
 
       <div className="max-w-[1300px] mx-auto px-8 relative z-10">
-        <SectionHeader 
-          label="ELIGE TU PODER" 
-          title="NUESTROS" 
-          titleAccent="PLANES" 
+        <SectionHeader
+          label="ELIGE TU PODER"
+          title="NUESTROS"
+          titleAccent="PLANES"
         />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -73,11 +73,10 @@ export function Planes() {
             return (
               <div
                 key={plan.id}
-                className={`bg-white border-3 border-secondary p-10 flex flex-col items-center text-center relative transition-all overflow-hidden group ${
-                  plan.featured 
-                    ? 'md:scale-105 shadow-[6px_6px_0_var(--red-dark)] bg-gradient-to-b from-white to-red-light border-primary hover:md:scale-105 hover:translate-y-[-8px] hover:shadow-[8px_8px_0_var(--red-dark)]' 
+                className={`bg-white border-3 border-secondary p-10 flex flex-col items-center text-center relative transition-all overflow-hidden group ${plan.featured
+                    ? 'md:scale-105 shadow-[6px_6px_0_var(--red-dark)] bg-gradient-to-b from-white to-red-light border-primary hover:md:scale-105 hover:translate-y-[-8px] hover:shadow-[8px_8px_0_var(--red-dark)]'
                     : 'shadow-comic hover:translate-y-[-8px] hover:shadow-[6px_6px_0_var(--navy)]'
-                }`}
+                  }`}
               >
                 {/* Speed lines on hover */}
                 <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{
@@ -85,9 +84,8 @@ export function Planes() {
                 }} />
 
                 {/* Ribbon */}
-                <div className={`absolute top-4 right-[-35px] px-10 py-1 text-white font-label font-bold text-[0.7rem] tracking-[2px] rotate-45 z-10 ${
-                  plan.ribbonFeatured ? 'bg-primary' : 'bg-secondary'
-                }`}>
+                <div className={`absolute top-4 right-[-35px] px-10 py-1 text-white font-label font-bold text-[0.7rem] tracking-[2px] rotate-45 z-10 ${plan.ribbonFeatured ? 'bg-primary' : 'bg-secondary'
+                  }`}>
                   {plan.ribbonFeatured && '★ '}{plan.ribbon}
                 </div>
 
@@ -122,9 +120,9 @@ export function Planes() {
 
                 {/* Features */}
                 <ul className="text-left w-full mb-8">
-                  {plan.features.map((feature, i) => (
-                    <li 
-                      key={i} 
+                  {plan.features.map((feature: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined, i: Key | null | undefined) => (
+                    <li
+                      key={i}
                       className="font-body text-[0.9rem] text-gray-700 py-2 border-b border-dashed border-gray-200 last:border-none"
                     >
                       &#10003; {feature}
@@ -135,11 +133,10 @@ export function Planes() {
                 {/* Button */}
                 <button
                   onClick={() => handlePay(plan)}
-                  className={`flex items-center gap-2 font-display text-xl tracking-[2px] text-white px-10 py-3 border-3 mt-auto transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] active:translate-x-[1px] active:translate-y-[1px] ${
-                    plan.featured 
-                      ? 'bg-primary border-red-dark shadow-comic-red hover:shadow-[5px_5px_0_var(--red-dark)] hover:bg-red-dark active:shadow-[2px_2px_0_var(--red-dark)]' 
+                  className={`flex items-center gap-2 font-display text-xl tracking-[2px] text-white px-10 py-3 border-3 mt-auto transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] active:translate-x-[1px] active:translate-y-[1px] ${plan.featured
+                      ? 'bg-primary border-red-dark shadow-comic-red hover:shadow-[5px_5px_0_var(--red-dark)] hover:bg-red-dark active:shadow-[2px_2px_0_var(--red-dark)]'
                       : 'bg-secondary border-secondary shadow-comic-sm hover:shadow-[5px_5px_0_var(--navy)] hover:bg-navy-light active:shadow-[2px_2px_0_var(--navy)]'
-                  }`}
+                    }`}
                 >
                   <span>PAGAR</span>
                   <ArrowRight className="w-5 h-5" strokeWidth={2.5} />
@@ -152,11 +149,11 @@ export function Planes() {
 
       {/* Modal */}
       {showModal && selectedPlan && (
-        <div 
+        <div
           className="fixed inset-0 bg-navy/85 flex items-center justify-center z-50 animate-[fadeIn_0.3s_ease]"
           onClick={() => setShowModal(false)}
         >
-          <div 
+          <div
             className="bg-white border-4 border-secondary shadow-[8px_8px_0_var(--navy)] p-10 text-center max-w-md w-[90%] animate-[popIn_0.4s_ease]"
             onClick={(e) => e.stopPropagation()}
           >
