@@ -155,20 +155,52 @@ export async function middleware(request: NextRequest) {
   if (normalizedPath === '/fitministration') {
     const key = searchParams.get('key');
     const validKey = process.env.ADMIN_GATE_KEY;
+    const adminGateCookie = request.cookies.get('fitmania_admin_gate')?.value;
     
-    if (adminSession || (validKey && key === validKey)) {
+    // Permitir si ya tiene sesión iniciada o si ya pasó la "gate" con cookie
+    if (adminSession || adminGateCookie === 'true') {
       return NextResponse.next();
     }
+
+    // Si trae la llave correcta, dejarlo pasar y ponerle la cookie por 1 hora
+    if (validKey && key === validKey) {
+      const resp = NextResponse.next();
+      resp.cookies.set('fitmania_admin_gate', 'true', {
+        maxAge: 3600, // 1 hora
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        sameSite: 'lax'
+      });
+      return resp;
+    }
+
     return NextResponse.rewrite(new URL('/404', request.url));
   }
 
   if (normalizedPath === '/fitception') {
     const key = searchParams.get('key');
     const validKey = process.env.RECEPTION_GATE_KEY;
+    const receptionGateCookie = request.cookies.get('fitmania_reception_gate')?.value;
     
-    if (receptionSession || (validKey && key === validKey)) {
+    // Permitir si ya tiene sesión iniciada o si ya pasó la "gate" con cookie
+    if (receptionSession || receptionGateCookie === 'true') {
       return NextResponse.next();
     }
+
+    // Si trae la llave correcta, dejarlo pasar y ponerle la cookie por 1 hora
+    if (validKey && key === validKey) {
+      const resp = NextResponse.next();
+      resp.cookies.set('fitmania_reception_gate', 'true', {
+        maxAge: 3600, // 1 hora
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        sameSite: 'lax'
+      });
+      return resp;
+    }
+
     return NextResponse.rewrite(new URL('/404', request.url));
   }
 
