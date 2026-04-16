@@ -152,7 +152,7 @@ export async function middleware(request: NextRequest) {
   // Normalizar el pathname para que la comparación sea robusta (sin slash final)
   const normalizedPath = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
 
-  if (normalizedPath === '/fitminisitration') {
+  if (normalizedPath === '/fitministration') {
     const key = searchParams.get('key');
     const validKey = process.env.ADMIN_GATE_KEY;
     
@@ -192,7 +192,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/fitminisitration',
+    '/fitministration',
     '/fitception',
     '/api/admin/:path*',
     '/api/recepcion/:path*',
