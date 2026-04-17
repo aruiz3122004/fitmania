@@ -5,9 +5,10 @@ import { Toaster, toast } from 'sonner'
 import { ReceptionLoginForm } from '@/components/recepcion/reception-login-form'
 import { db, auth } from '@/lib/firebase'
 import { collection, getDocs, doc, setDoc, query, where, orderBy, limit } from 'firebase/firestore'
-import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle } from 'lucide-react'
+import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
+import EntryHistoryTab from '@/components/recepcion/entry-history-tab'
 
 const Scanner = dynamic(() => import('@yudiel/react-qr-scanner').then((mod) => mod.Scanner), {
   ssr: false,
@@ -140,6 +141,7 @@ export default function ReceptionPage() {
     if (!scannedUser) return;
 
     try {
+      // 1. Registro en checkIns (para vista individual del usuario)
       const checkInRef = doc(collection(db, 'checkIns'))
       await setDoc(checkInRef, {
         userId: scannedUser.id,
@@ -147,6 +149,21 @@ export default function ReceptionPage() {
         timestamp: new Date(),
         authorizedBy: 'Recepcionista'
       });
+
+      // 2. Registro en entry_logs (historial empresarial vía API server-side)
+      const hasPlanActivo = scannedUser.plan && new Date(scannedUser.plan.expira.seconds * 1000) > new Date();
+      await fetch('/api/recepcion/entry-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: scannedUser.id,
+          userName: scannedUser.username || scannedUser.email,
+          userEmail: scannedUser.email,
+          hasPlanActivo: !!hasPlanActivo,
+          planNombre: scannedUser.plan?.nombre || null,
+        }),
+      });
+
       toast.success('Acceso autorizado y registrado.')
       setScannedUser(null)
       setSimulatorId('')
@@ -211,22 +228,31 @@ export default function ReceptionPage() {
       </header>
 
       {/* Tabs */}
-      <div className="flex justify-center mt-8 gap-4 px-4">
+      <div className="flex justify-center mt-8 gap-3 px-4 flex-wrap">
         <button
           onClick={() => setActiveTab('scanner')}
-          className={`flex-1 max-w-[200px] py-4 rounded-t-2xl font-black uppercase text-sm border-t-4 border-x-4 border-black transition-all ${activeTab === 'scanner' ? 'bg-white shadow-[0_-4px_0_0_rgba(22,163,74,1)]' : 'bg-green-200 text-green-800 border-b-4 hover:bg-green-300'}`}
+          className={`flex-1 max-w-[180px] py-4 rounded-t-2xl font-black uppercase text-xs sm:text-sm border-t-4 border-x-4 border-black transition-all ${activeTab === 'scanner' ? 'bg-white shadow-[0_-4px_0_0_rgba(22,163,74,1)]' : 'bg-green-200 text-green-800 border-b-4 hover:bg-green-300'}`}
         >
+          <QrCode className="w-4 h-4 mx-auto mb-1 sm:hidden" />
           Escaner QR
         </button>
         <button
           onClick={() => setActiveTab('members')}
-          className={`flex-1 max-w-[200px] py-4 rounded-t-2xl font-black uppercase text-sm border-t-4 border-x-4 border-black transition-all ${activeTab === 'members' ? 'bg-white shadow-[0_-4px_0_0_rgba(22,163,74,1)]' : 'bg-green-200 text-green-800 border-b-4 hover:bg-green-300'}`}
+          className={`flex-1 max-w-[180px] py-4 rounded-t-2xl font-black uppercase text-xs sm:text-sm border-t-4 border-x-4 border-black transition-all ${activeTab === 'members' ? 'bg-white shadow-[0_-4px_0_0_rgba(22,163,74,1)]' : 'bg-green-200 text-green-800 border-b-4 hover:bg-green-300'}`}
         >
+          <Users className="w-4 h-4 mx-auto mb-1 sm:hidden" />
           Directorio
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`flex-1 max-w-[180px] py-4 rounded-t-2xl font-black uppercase text-xs sm:text-sm border-t-4 border-x-4 border-black transition-all ${activeTab === 'history' ? 'bg-white shadow-[0_-4px_0_0_rgba(22,163,74,1)]' : 'bg-green-200 text-green-800 border-b-4 hover:bg-green-300'}`}
+        >
+          <ClipboardList className="w-4 h-4 mx-auto mb-1 sm:hidden" />
+          Historial
         </button>
       </div>
 
-      <main className="max-w-4xl mx-auto px-4">
+      <main className="max-w-7xl mx-auto px-4 sm:px-8">
 
         {/* Scanner Tab */}
         {activeTab === 'scanner' && (
@@ -395,6 +421,11 @@ export default function ReceptionPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* History Tab */}
+        {activeTab === 'history' && (
+          <EntryHistoryTab />
         )}
 
         {/* Members Directory Tab */}

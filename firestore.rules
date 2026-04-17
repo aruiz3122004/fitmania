@@ -78,6 +78,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Registro de Entradas (Historial empresarial de ingresos)
+    match /entry_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Solo el Admin SDK desde el servidor puede escribir aquí.
+    }
+
     // Auditoría de Seguridad e Inmutable
     match /audit_logs/{logId} {
       allow read: if isAdmin();
