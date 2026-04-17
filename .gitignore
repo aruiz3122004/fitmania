@@ -45,3 +45,8 @@ scripts/
 .idea/
 *.swp
 *.log
+
+*.fitmania_architecture.md
+*.fitmania_security.md
+*.fitmania_flow.md
+*.fitmania_flow.md
