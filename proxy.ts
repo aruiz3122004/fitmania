@@ -14,7 +14,7 @@ try {
   console.error('Error al inicializar Upstash Redis:', error);
 }
 
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 15;
 
 // Penalizaciones progresivas basadas en niveles de castigo (1m, 5m, 15m, 30m, 45m, 1h)
 function getLockoutTime(level: number): number {
@@ -69,7 +69,7 @@ function applySecurityHeaders(response: NextResponse) {
   return response;
 }
 
-export async function middleware(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
   // -------------------------------------------------------

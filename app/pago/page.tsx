@@ -401,6 +401,7 @@ function CheckoutForm({ amount, concept, planId, cartItems, montoFormateado }: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          amount,
           planId,
           items: cartItems.length > 0 ? cartItems : undefined,
           customerEmail: user?.email || '',
@@ -632,7 +633,7 @@ function PagoContent() {
           console.error("Error cargando plan:", err)
         }
       } else if (items.length > 0) {
-        const total = items.reduce((acc, item) => acc + (item.price * item.cantidad), 0)
+        const total = items.reduce((acc, item) => acc + (item.precio * item.cantidad), 0)
         setPlanData({ name: "Compra de Productos", price: total })
       } else if (conceptoLegacy && montoLegacy) {
         setPlanData({ name: conceptoLegacy, price: montoLegacy })

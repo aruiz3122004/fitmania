@@ -107,6 +107,9 @@ export function ReceptionLoginForm({ onSuccess }: { onSuccess: () => void }) {
       }
 
       // 3. Sesión creada satisfactoriamente
+      // IMPORTANTE: Forzamos el refresco del token para que el cliente reconozca el nuevo claim 'receptionist'
+      await userCredential.user.getIdToken(true)
+
       setUser({
         uid: userCredential.user.uid,
         email: userCredential.user.email || '',

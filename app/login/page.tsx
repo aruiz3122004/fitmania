@@ -84,8 +84,14 @@ export default function LoginPage() {
       }
 
       const credentials = await signInWithEmailAndPassword(auth, email, password)
-      const userDoc = await getDoc(doc(db, 'users', credentials.user.uid))
-      const userData = userDoc.data()
+      let userData: any = null;
+      
+      try {
+        const userDoc = await getDoc(doc(db, 'users', credentials.user.uid))
+        userData = userDoc.data()
+      } catch (e) {
+        console.warn("No se pudo leer el documento del usuario (posible problema de reglas):", e);
+      }
 
       setUser({
         uid: credentials.user.uid,

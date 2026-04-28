@@ -45,10 +45,13 @@ export async function POST(request: Request) {
       maxAge: 60 * 60, // 1 hora
     });
 
+    // Asignar Custom Claim de Recepcionista para seguridad en Firestore Rules
+    await adminAuth.setCustomUserClaims(decodedToken.uid, { receptionist: true });
+
     await recordAuditLog({
       action: 'LOGIN_RECEPTION',
       category: 'AUTH_SUCCESS',
-      details: 'Inicio de sesión de Recepción exitoso.',
+      details: 'Inicio de sesión de Recepción exitoso. Privilegios de recepcionista asignados.',
       adminEmail: decodedToken.email,
       targetId: decodedToken.uid,
       request: request,

@@ -61,7 +61,7 @@ export default function ReceptionPage() {
     return () => { if (unsubscribeFirebase) unsubscribeFirebase(); };
   }, []);
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (isRetry = false) => {
     try {
       const snap = await getDocs(collection(db, 'users'))
       const users: any[] = []
@@ -69,10 +69,22 @@ export default function ReceptionPage() {
         users.push({ id: doc.id, ...doc.data() })
       })
       setUsersList(users)
-    } catch (e) {
-      console.error(e)
-    } finally {
       setLoading(false)
+    } catch (e: any) {
+      console.error("Error al cargar usuarios:", e)
+      // Si es error de permisos y no hemos reintentado, refrescamos token y reintentamos
+      if (e.code === 'permission-denied' && !isRetry && auth.currentUser) {
+        console.log("Detectado error de permisos. Refrescando token...")
+        try {
+          await auth.currentUser.getIdToken(true)
+          return fetchUsers(true)
+        } catch (refreshErr) {
+          console.error("Error al refrescar token:", refreshErr)
+        }
+      }
+      toast.error('Error de permisos: Asegúrate de estar autorizado para recepción.')
+    } finally {
+      if (!isRetry) setLoading(false)
     }
   }
 

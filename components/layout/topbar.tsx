@@ -66,30 +66,42 @@ export function Topbar() {
         return
       }
 
-      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid))
-      const raw = userDoc.data()
-      const avatarId = raw?.avatar || 'fitman'
-      // If user has a default avatar, always resolve URL from code (not stale Firestore cache)
-      const resolvedUrl = getAvatarUrlById(avatarId)
-      const photoURL = resolvedUrl || raw?.photoURL || getAvatarUrlById('fitman')
+      try {
+        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid))
+        const raw = userDoc.data()
+        const avatarId = raw?.avatar || 'fitman'
+        const resolvedUrl = getAvatarUrlById(avatarId)
+        const photoURL = resolvedUrl || raw?.photoURL || getAvatarUrlById('fitman')
 
-      setUser({
-        uid: firebaseUser.uid,
-        username: raw?.username || firebaseUser.email?.split('@')[0] || 'Usuario',
-        email: firebaseUser.email || raw?.email || '',
-        gender: raw?.gender,
-        avatar: avatarId,
-        photoURL: photoURL,
-        peso: raw?.peso,
-        altura: raw?.altura,
-        plan: raw?.plan
-          ? {
-            ...raw.plan,
-            inicio: raw.plan.inicio?.toDate?.() || new Date(raw.plan.inicio),
-            expira: raw.plan.expira?.toDate?.() || new Date(raw.plan.expira),
-          }
-          : null,
-      })
+        setUser({
+          uid: firebaseUser.uid,
+          username: raw?.username || firebaseUser.email?.split('@')[0] || 'Usuario',
+          email: firebaseUser.email || raw?.email || '',
+          gender: raw?.gender,
+          avatar: avatarId,
+          photoURL: photoURL,
+          peso: raw?.peso,
+          altura: raw?.altura,
+          plan: raw?.plan
+            ? {
+              ...raw.plan,
+              inicio: raw.plan.inicio?.toDate?.() || new Date(raw.plan.inicio),
+              expira: raw.plan.expira?.toDate?.() || new Date(raw.plan.expira),
+            }
+            : null,
+        })
+      } catch (error) {
+        console.error("Error al cargar perfil desde Firestore:", error);
+        // Fallback: Permitir navegación básica aunque no se pueda leer el perfil extendido
+        setUser({
+          uid: firebaseUser.uid,
+          username: firebaseUser.email?.split('@')[0] || 'Usuario',
+          email: firebaseUser.email || '',
+          avatar: 'fitman',
+          photoURL: getAvatarUrlById('fitman'),
+          plan: null,
+        })
+      }
     })
 
     return () => unsubscribe()

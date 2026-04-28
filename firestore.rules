@@ -15,40 +15,25 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.admin == true;
     }
 
+    function isReceptionist() {
+      return isSignedIn() && request.auth.token.receptionist == true;
+    }
+
     match /users/{uid} {
-      allow read, update: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid);
-      allow delete: if false; // Ni el admin borra usuarios directamente desde db sin pasar por Auth.
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin() || isReceptionist());
+      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
     }
 
     match /posts/{postId} {
       allow read: if true;
-
-      allow create: if isSignedIn()
-        && request.resource.data.autor_id == request.auth.uid
-        && request.resource.data.keys().hasAll([
-          'autor_id',
-          'autor_username',
-          'autor_avatar',
-          'contenido',
-          'imagen_url',
-          'likes',
-          'comentarios',
-          'created_at'
-        ]);
-
-      // Modificación o likes
-      allow update: if isSignedIn()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comentarios']);
-
-      // El admin puede moderar posts
-      allow delete: if (isSignedIn() && resource.data.autor_id == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (resource.data.autor_id == request.auth.uid || isAdmin());
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.autor_id == request.auth.uid);
     }
 
     match /pqrs/{pqrsId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      // Admin puede actualizar estado de PQRS (ej. resuelto) o borrar
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin() || isReceptionist());
+      allow create: if isSignedIn();
       allow update, delete: if isAdmin();
     }
 
@@ -70,8 +55,9 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.uid || isAdmin());
-      allow write: if isAdmin(); // Solo el webhook (SDK Admin) o el admin real crean órdenes.
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.uid || isAdmin() || isReceptionist());
+      allow create: if isSignedIn();
+      allow update: if isAdmin();
     }
 
     match /notifications/{notifId} {
@@ -80,14 +66,27 @@ service cloud.firestore {
 
     // Registro de Entradas (Historial empresarial de ingresos)
     match /entry_logs/{logId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isReceptionist();
       allow write: if false; // Solo el Admin SDK desde el servidor puede escribir aquí.
+    }
+
+    // Registro de Check-ins (Historial individual para el dashboard de recepción)
+    match /checkIns/{checkInId} {
+      allow read: if isAdmin() || isReceptionist();
+      allow write: if isAdmin() || isReceptionist();
     }
 
     // Auditoría de Seguridad e Inmutable
     match /audit_logs/{logId} {
       allow read: if isAdmin();
       allow write: if false; // Solo el Admin SDK desde el servidor puede escribir aquí.
+    }
+
+    // Reportes de usuarios
+    match /reportes/{reporteId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
     }
   }
 }

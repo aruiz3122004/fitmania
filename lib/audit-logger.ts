@@ -1,7 +1,7 @@
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { headers } from 'next/headers';
 
-type AuditCategory = 'AUTH_SUCCESS' | 'AUTH_FAILURE' | 'ADMIN_ACTION' | 'SECURITY_BLOCK';
+type AuditCategory = 'AUTH_SUCCESS' | 'AUTH_FAILURE' | 'ADMIN_ACTION' | 'SECURITY_BLOCK' | 'PLAN_MANAGEMENT';
 
 interface AuditLogOptions {
   action: string;

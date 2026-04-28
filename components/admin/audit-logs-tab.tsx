@@ -32,9 +32,9 @@ export function AuditLogsTab({ logs, loading, onRefreshAction }: { logs: AuditLo
 
   const filteredLogs = logs.filter(log => {
     const matchesSearch = 
-      log.adminEmail.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      log.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.action.toLowerCase().includes(searchTerm.toLowerCase());
+      (log.adminEmail?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
+      (log.details?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (log.action?.toLowerCase() || '').includes(searchTerm.toLowerCase());
     
     const matchesCategory = filterCategory === 'ALL' || log.category === filterCategory;
 
@@ -140,7 +140,7 @@ export function AuditLogsTab({ logs, loading, onRefreshAction }: { logs: AuditLo
                         <div className={cn("inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 shadow-[2px_2px_0_0_rgba(0,0,0,1)]", theme.bg, theme.border)}>
                           <Icon className={cn("w-4 h-4", theme.text)} />
                           <span className={cn("font-black text-[9px] uppercase tracking-widest", theme.text)}>
-                            {log.action.replace(/_/g, ' ')}
+                            {log.action?.replace(/_/g, ' ') || 'EVENTO SIN NOMBRE'}
                           </span>
                         </div>
                       </td>
