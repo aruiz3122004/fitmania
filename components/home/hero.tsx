@@ -27,7 +27,7 @@ const slides = [
   },
   {
     id: 3,
-    image: '/Images/Gym3.jpg',
+    image: '/images/gym3.jpg',
     badge: 'Planes personalizados',
     title: 'FORJA TU',
     titleAccent: 'LEGADO',

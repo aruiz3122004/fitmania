@@ -69,7 +69,7 @@ function applySecurityHeaders(response: NextResponse) {
   return response;
 }
 
-export default async function proxy(request: NextRequest) {
+export default async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
   // -------------------------------------------------------

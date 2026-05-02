@@ -195,7 +195,7 @@ export default function ReceptionPage() {
   }
 
   if (visualState === 'login') {
-    return <ReceptionLoginForm onSuccess={() => { setVisualState('dashboard'); fetchUsers(); }} />
+    return <ReceptionLoginForm onSuccessAction={() => { setVisualState('dashboard'); fetchUsers(); }} />
   }
 
   if (visualState === 'unauthorized') {

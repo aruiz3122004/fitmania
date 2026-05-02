@@ -18,7 +18,7 @@ import {
 import { cn } from '@/lib/utils'
 import { getRateLimitStatus, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
 
-export function ReceptionLoginForm({ onSuccess }: { onSuccess: () => void }) {
+export function ReceptionLoginForm({ onSuccessAction }: { onSuccessAction: () => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -126,7 +126,7 @@ export function ReceptionLoginForm({ onSuccess }: { onSuccess: () => void }) {
         window.history.replaceState({}, '', newUrl);
       }
 
-      onSuccess()
+      onSuccessAction()
     } catch (err: any) {
       setError(err.message || 'Credenciales incorrectas o usuario sin permisos.')
       if (err.details) {
