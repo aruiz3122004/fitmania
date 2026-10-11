@@ -6,6 +6,7 @@ import {
   sendOrderReceiptEmail 
 } from '@/services/mail'
 import { getAdminFirestore } from '@/lib/firebase-admin'
+import { formatInAppTz } from '@/lib/datetime'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-03-25.dahlia',
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
   switch (event.type) {
     case 'payment_intent.succeeded': {
       const meta = paymentIntent.metadata
-      const dateStr = new Date(paymentIntent.created * 1000).toLocaleDateString('es-CO', {
+      const dateStr = formatInAppTz(new Date(paymentIntent.created * 1000), {
         day: 'numeric',
         month: 'long',
         year: 'numeric',

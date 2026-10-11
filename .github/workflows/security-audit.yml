@@ -1,0 +1,35 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Revisión semanal (lunes 12:00 UTC) ante nuevas advisories.
+    - cron: '0 12 * * 1'
+
+jobs:
+  npm-audit:
+    name: npm audit (producción)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # T-13 (auditoría A-2): el build FALLA si hay vulnerabilidades CRÍTICAS
+      # en dependencias de producción. Las altas/moderadas se reportan aparte.
+      - name: Auditoría crítica de producción
+        run: npm audit --omit=dev --audit-level=critical
+
+      # Reporte informativo (no rompe el build) con el detalle de prod.
+      - name: Reporte completo (informativo)
+        if: always()
+        run: npm audit --omit=dev || true

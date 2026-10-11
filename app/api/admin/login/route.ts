@@ -29,10 +29,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Acceso denegado: no tienes privilegios de administrador.' }, { status: 403 });
     }
 
-    // Crear la respuesta con la cookie HttpOnly segura (1 hora)
+    // Crear session cookie de Firebase (revocable y verificable server-side) en lugar
+    // de guardar el ID token crudo (T-15, auditoría A-4).
+    const sessionCookie = await adminAuth.createSessionCookie(idToken, {
+      expiresIn: 60 * 60 * 1000, // 1 hora en ms
+    });
+
     const response = NextResponse.json({ success: true, uid: decodedToken.uid }, { status: 200 });
 
-    response.cookies.set('fitmania_session', idToken, {
+    response.cookies.set('fitmania_session', sessionCookie, {
       httpOnly: true,       // No accesible desde JavaScript (protege contra XSS)
       secure: process.env.NODE_ENV === 'production', // Solo HTTPS en producción
       sameSite: 'lax',     // Más compatible con redirecciones y navegación top-level

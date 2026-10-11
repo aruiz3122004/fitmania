@@ -16,6 +16,10 @@ try {
 
 const MAX_ATTEMPTS = 15;
 
+// Aviso único por instancia si el rate limiting queda apagado (auditoría A-1).
+// Sin Upstash el sistema es fail-open: se salta TODO el bloqueo sin avisar.
+let warnedNoRedis = false;
+
 // Penalizaciones progresivas basadas en niveles de castigo (1m, 5m, 15m, 30m, 45m, 1h)
 function getLockoutTime(level: number): number {
   switch (level) {
@@ -75,8 +79,19 @@ export default async function middleware(request: NextRequest) {
   // -------------------------------------------------------
   // RATE LIMITING GLOBAL (Arquitectura Progresiva y Exacta)
   // -------------------------------------------------------
+  if (!redis && !warnedNoRedis && process.env.NODE_ENV === 'production') {
+    warnedNoRedis = true;
+    console.warn('[SECURITY] Rate limiting DESACTIVADO: faltan UPSTASH_REDIS_REST_URL/_TOKEN. Ver auditoría A-1.');
+  }
+
   if (redis) {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1';
+    // IP confiable (T-11, auditoría A-1): Vercel adjunta la IP real del cliente;
+    // NO confiar en el primer valor de x-forwarded-for (header falsificable por el atacante).
+    const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]
+      || request.headers.get('cf-connecting-ip')
+      || (request as { ip?: string }).ip
+      || request.headers.get('x-forwarded-for')?.split(',')[0]
+      || '127.0.0.1';
 
     // 1. REINICIO DE INTENTOS (Solo si login/pago fue exitoso)
     if (pathname === '/api/security/success') {
@@ -141,16 +156,20 @@ export default async function middleware(request: NextRequest) {
           await redis.del(`fw_attempts_${ip}`); // Resetear contador para re-evaluación posterior al castigo
 
           // Registrar en auditoría asíncronamente
-          try {
-            fetch(`${request.nextUrl.origin}/api/security/log-block`, {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'x-middleware-secret': process.env.UPSTASH_REDIS_REST_TOKEN || 'fitmania_fallback' 
-              },
-              body: JSON.stringify({ ip, attempts: MAX_ATTEMPTS, url: pathname })
-            }).catch(() => {}); // Fire and forget
-          } catch(e) {}
+          // B-6: usar un secreto interno propio (no reutilizar UPSTASH_REDIS_REST_TOKEN).
+          const internalSecret = process.env.INTERNAL_MIDDLEWARE_SECRET;
+          if (internalSecret) {
+            try {
+              fetch(`${request.nextUrl.origin}/api/security/log-block`, {
+                method: 'POST',
+                headers: { 
+                  'Content-Type': 'application/json',
+                  'x-middleware-secret': internalSecret
+                },
+                body: JSON.stringify({ ip, attempts: MAX_ATTEMPTS, url: pathname })
+              }).catch(() => {}); // Fire and forget
+            } catch(e) {}
+          }
 
           const resp = NextResponse.json(
             { error: 'Límite alcanzado, pasarela bloqueada.', remaining: 0, secondsLeft: lockoutTime },

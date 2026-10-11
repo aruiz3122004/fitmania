@@ -34,10 +34,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Acceso denegado: este correo no está autorizado para recepción.' }, { status: 403 });
     }
 
-    // Crear la cookie HttpOnly segura (1 hora)
+    // T-16: el claim `receptionist` se gestiona centralmente (panel admin / script),
+    // NO se auto-otorga en el login (auditoría A-5). Debe existir para acceder.
+    if (decodedToken.receptionist !== true) {
+      await recordAuditLog({
+        action: 'LOGIN_FAILED',
+        category: 'AUTH_FAILURE',
+        details: `Intento de acceso denegado a Recepción. Razón: Sin claim de recepcionista. Email: ${decodedToken.email}`,
+        adminEmail: decodedToken.email,
+        targetId: decodedToken.uid,
+        request: request,
+      });
+      return NextResponse.json({ error: 'Acceso denegado: tu cuenta no tiene el rol de recepción asignado.' }, { status: 403 });
+    }
+
+    // Crear session cookie de Firebase (revocable) en lugar del ID token crudo (T-15).
+    const sessionCookie = await adminAuth.createSessionCookie(idToken, {
+      expiresIn: 60 * 60 * 1000, // 1 hora en ms
+    });
+
     const response = NextResponse.json({ success: true, uid: decodedToken.uid }, { status: 200 });
 
-    response.cookies.set('fitmania_reception_session', idToken, {
+    response.cookies.set('fitmania_reception_session', sessionCookie, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -45,13 +63,10 @@ export async function POST(request: Request) {
       maxAge: 60 * 60, // 1 hora
     });
 
-    // Asignar Custom Claim de Recepcionista para seguridad en Firestore Rules
-    await adminAuth.setCustomUserClaims(decodedToken.uid, { receptionist: true });
-
     await recordAuditLog({
       action: 'LOGIN_RECEPTION',
       category: 'AUTH_SUCCESS',
-      details: 'Inicio de sesión de Recepción exitoso. Privilegios de recepcionista asignados.',
+      details: 'Inicio de sesión de Recepción exitoso.',
       adminEmail: decodedToken.email,
       targetId: decodedToken.uid,
       request: request,

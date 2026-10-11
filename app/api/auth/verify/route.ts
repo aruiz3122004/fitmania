@@ -30,7 +30,9 @@ export async function GET(request: Request) {
     }
 
     const adminAuth = getAdminAuth();
-    const decodedToken = await adminAuth.verifyIdToken(token);
+    // T-15: la cookie contiene una session cookie de Firebase (no un ID token).
+    // `checkRevoked=true` invalida sesiones revocadas de inmediato.
+    const decodedToken = await adminAuth.verifySessionCookie(token, true);
 
     // Verificaciones específicas por rol
     if (role === 'admin') {
@@ -44,6 +46,10 @@ export async function GET(request: Request) {
       const authorizedEmail = process.env.RECEPTION_AUTHORIZED_EMAIL;
       if (!authorizedEmail || decodedToken.email?.toLowerCase() !== authorizedEmail.toLowerCase()) {
         return NextResponse.json({ valid: false, reason: 'Email not authorized for reception' }, { status: 403 });
+      }
+      // T-16: el claim se gestiona centralmente y se valida en cada verificación.
+      if (decodedToken.receptionist !== true) {
+        return NextResponse.json({ valid: false, reason: 'No receptionist claim' }, { status: 403 });
       }
       return NextResponse.json({ valid: true, uid: decodedToken.uid, role: 'recepcion' }, { status: 200 });
     }

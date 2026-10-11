@@ -70,7 +70,7 @@
 │  Páginas públicas          Páginas privadas/ocultas        Estado global (zustand)     │
 │  · / · /planes · /tienda   · /fitministration (admin)      · useAuth (perfil)          │
 │  · /carrito · /entrenadores · /fitception (recepción)      · useCart (carrito)         │
-│  · /registro · /login · /perfil · /foro · /pqrs · /game    · useUI (menús)             │
+│  · /registro · /login · /perfil · /foro · /pqrs             · useUI (menús)             │
 │  · /pago → /pago/resultado                                 │                           │
 └───────────┬──────────────────────────────┬───────────────────────────────────────────┘
             │ (fetch / API Routes)         │ (SDK de Firebase cliente: onSnapshot en vivo)
@@ -121,7 +121,7 @@
 | 8 | **Activación de planes vía webhook server-side** | Marcar plan desde el cliente | El webhook verifica la firma de Stripe y escribe con el Admin SDK (reglas `write: false` en cliente). Nada de "autopremium". |
 | 9 | **Identidad QR = UID del usuario** | QR con hash secreto | El UID es estable y único; la recepción lee el código y consulta el estado del plan en vivo. El QR **no** contiene información sensible, solo referencia. |
 | 10 | **Cloudinary para subida de imágenes** | Firebase Storage directo | Preset firmado/semi-privado, entrega por CDN y transformaciones; Firebase Storage se reserva para avatares/posts con límites de tipo y tamaño. |
-| 11 | **Diseño "cómic"** (bordes duros, sombras de bloque, tipografía Bangers) | UI corporativa neutra | La marca del gimnasio es superheroica; la UI refuerza personalidad, diferenciación y engagement (incluso hay una página `/game`). |
+| 11 | **Diseño "cómic"** (bordes duros, sombras de bloque, tipografía Bangers) | UI corporativa neutra | La marca del gimnasio es superheroica; la UI refuerza personalidad, diferenciación y engagement. |
 | 12 | **Páginas internas con URL "secreta"** (`/fitministration`, `/fitception`) | Acceso directo desde el menú | Reducir superficie de ataque: el contenido interno no se enlaza públicamente y además exige llave + sesión. |
 
 ---
@@ -150,7 +150,6 @@
 | `/foro` | Foro | Posts de la comunidad, reportes, avatares |
 | `/pqrs` | PQRS | Peticiones/quejas/reclamos con seguimiento |
 | `/entrenadores` | Equipo | ==== sección de entrenadores del gimnasio |
-| `/game` | Minijuego | Enganche de marca (Gamificación) |
 | `/fitministration` | Panel admin | Dashboard oculto (puerta `?key=`) |
 | `/fitception` | Recepción | Panel oculto con **escáner QR** (`@yudiel/react-qr-scanner`) |
 

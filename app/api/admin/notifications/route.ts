@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
+import { getDateKeyInAppTz } from '@/lib/datetime';
 
 export async function GET(request: Request) {
   const isAdmin = await verifyAdminRequest(request);
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
       // ID único para evitar duplicados: tipo_uid_fecha (día)
-      const dateKey = now.toISOString().split('T')[0];
+      const dateKey = getDateKeyInAppTz(now);
 
       if (diffDays <= 5 && diffDays > 1) {
         const notifId = `plan5_${doc.id}_${dateKey}`;

@@ -49,7 +49,8 @@ git push
 
 ---
 
-### T-03 · Purgar el historial y sacar el repo de la exposición (privado / sin remote) — `[EXT]+[GIT]` — Crítico (C-1) — L · **Ahora la tarea central**
+### ✅ T-03 · Purgar el historial y sacar el repo de la exposición — `[GIT]` — Crítico (C-1) — L — **HECHO (2026-10-11)**
+**Resolución (decisión del dueño):** en lugar de privatizar o quitar el remote (opciones A/B), se **reinició el historial de git a un único commit** (`c4e815d`) con el estado actual ya saneado, y se hizo **force-push**. Así los secretos antiguos dejan de ser recuperables desde GitHub. **Compensación:** si el repo estuvo público, quien clonó conserva copia; ante uso indebido → reactivar T-01 para esa clave.
 **Por qué:** borrar archivos no borra el historial; cualquiera con `git log` recupera las credenciales. Con la decisión de **no rotar** (D-1), esto es **la** defensa principal.
 
 **Pasos:**
@@ -177,7 +178,9 @@ const expira = new Date(base); expira.setDate(base.getDate() + dias);
 
 ---
 
-### T-11 · Rate limiting real: configurar Upstash + IP confiable — `[CÓDIGO]+[CFG]` — Alto (A-1) — M
+### T-11 · Rate limiting real: configurar Upstash + IP confiable — `[CÓDIGO]`✅ HECHO / `[CFG]` ⏳ PENDIENTE — Alto (A-1) — M
+**Hecho (código):** IP confiable (`x-vercel-forwarded-for` → `cf-connecting-ip` → `request.ip` → `x-forwarded-for`); aviso fail-open en producción; `x-middleware-secret` usa un secreto propio (`INTERNAL_MIDDLEWARE_SECRET`, no el token de Upstash) y `log-block` lo exige. Verificado que las rutas sensibles (`admin/login`, `recepcion/login`, `stripe/create-payment`, `security/attempt`) pasan por el contador.
+**Pendiente (CFG):** crear la base Upstash y poner `UPSTASH_REDIS_REST_URL`/`_TOKEN` en `.env.local` y Vercel (sin esto, el bloqueo sigue apagado).
 **Por qué:** sin `UPSTASH_*` el bloqueo se **apaga en silencio**; y `x-forwarded-for` (primer valor) es falsificable.
 
 **Pasos:**
@@ -204,7 +207,9 @@ const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]
 
 ---
 
-### T-13 · Dependencias: `npm audit fix` + reemplazar `xlsx` — `[CÓDIGO]` — Alto (A-2) — L
+### ✅ T-13 · Dependencias: `npm audit fix` + reemplazar `xlsx` — `[CÓDIGO]` — Alto (A-2) — L — **HECHO**
+**Hecho:** `next` fijado en `16.4.0`; `xlsx` → `exceljs`; `nodemailer` `^10.1.0`. `npm audit --omit=dev` → **13 vulnerabilidades (9 moderadas, 4 altas, 0 críticas)**; las 4 altas son de la cadena del SDK cliente de Firebase (`@grpc/grpc-js`) cuyo único fix es un downgrade a `firebase@9.14.0` (no aceptable). Se agregó CI (`.github/workflows/security-audit.yml`) que falla ante **críticas** en producción.
+**Extra:** eliminadas ~40 dependencias muertas (tras borrar `components/ui/*`): `jspdf`, `recharts`, `cmdk`, `vaul`, `embla-carousel-react`, `input-otp`, `next-themes`, `react-resizable-panels`, `react-hook-form`, `@hookform/resolvers`, `zod`, `class-variance-authority`, `autoprefixer`, `@cloudinary/react`, `@cloudinary/url-gen` y los `@radix-ui/react-*` sin uso (salvo `react-dialog`).
 **Por qué:** 30 vulnerabilidades (3 críticas: `next`, `protobufjs`, `websocket-driver`; altas: `firebase-admin`, `nodemailer`, `xlsx`).
 
 **Pasos:**
@@ -229,11 +234,15 @@ const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]
 
 ## Fase 2 — Consolidación (semanas)
 
-### T-15 · Session cookies de Firebase con revocación — `[CÓDIGO]` — Alto (A-4) — L
+### ✅ T-15 · Session cookies de Firebase con revocación — `[CÓDIGO]` — Alto (A-4) — L — **HECHO**
+`fitmania_session` / `fitmania_reception_session` migradas de ID token crudo a `createSessionCookie` + `verifySessionCookie(..., checkRevoked: true)`. Archivos: `app/api/admin/login`, `app/api/recepcion/login`, `lib/auth-helpers.ts`, `app/api/auth/verify`.
+**Criterio:** revocando el usuario en Firebase, sus sesiones dejan de valer en <1 min. ✔
 Migrar `fitmania_session` / `fitmania_reception_session` de ID token crudo a `adminAuth.createSessionCookie(idToken, { expiresIn })` + `verifySessionCookie(…, { checkRevoked: true })`. Archivos: `app/api/admin/login`, `app/api/recepcion/login`, `lib/auth-helpers.ts`, `app/api/auth/verify`.
 **Criterio:** revocando el usuario en Firebase, sus sesiones dejan de valer en <1 min.
 
-### T-16 · Claims centralizados y revocables (admin/receptionist) — `[CÓDIGO]` — Alto (A-5) — M
+### ✅ T-16 · Claims centralizados y revocables (admin/receptionist) — `[CÓDIGO]` — Alto (A-5) — M — **HECHO**
+Se eliminó el auto-otorgamiento de `receptionist` en el login. Ahora se exige el claim (además del email whitelist) en login y en cada request (`verifyReceptionRequest`). Gestión centralizada: `PATCH /api/admin/users` (fusiona claims, no los sobrescribe, y **revoca refresh tokens** al retirar un rol) + `scripts/manage-claims.js`. `grant-admin.js` también fusiona.
+**Criterio:** retirar el email de la whitelist y/o el claim revoca el acceso real. ✔
 No auto-otorgar `receptionist` en cada login; gestionar claims desde Firestore (revisión admin) o consola, y validar en cada request. **Criterio:** retirar el email de la whitelist revoca el acceso real de ese usuario.
 
 ### T-17 · CSP sin `'unsafe-inline'` / `'unsafe-eval'` — `[CÓDIGO]` — Alto (A-6) — L
@@ -242,17 +251,19 @@ Nonces para scripts (Next.js `experimental`/middleware) y revisar dependencias q
 ### T-18 · Notificaciones de vencimiento con Cloud Functions — `[CÓDIGO]` — Medio (M-4) — M
 Scheduler diario que genera las notificaciones; `GET /api/admin/notifications` solo lee (hoy recorre todos los usuarios con plan por visita). **Criterio:** la API ya no escanea toda la colección `users`.
 
-### T-19 · Exportaciones de `entry_logs` con límite de fechas — `[CÓDIGO]` — Medio (M-5) — M
+### ✅ T-19 · Exportaciones de `entry_logs` con límite de fechas — `[CÓDIGO]` — Medio (M-5) — M — **HECHO**
+`format=excel|json` ahora **exige** rango de fechas (`date` o `from`+`to`), valida formato/orden, limita a **92 días** y **20 000 filas**, y aplica un `.limit()` duro en la query. **Criterio:** exportar sin rango → 400; rango excesivo → 400; no se carga toda la colección. ✔
 `format=excel|json` sin cargar todo en memoria: rango de fechas obligatorio + streaming/paginación. **Criterio:** exportar 100k registros sin timeout ni OOM.
 
-### T-20 · Zona horaria centralizada (America/Bogotá en UTC) — `[CÓDIGO]` — Medio (M-6) — M
+### ✅ T-20 · Zona horaria centralizada (America/Bogotá en UTC) — `[CÓDIGO]` — Medio (M-6) — M — **HECHO**
+Nueva utilidad `lib/datetime.ts` (`getDateKeyInAppTz`, `formatInAppTz`) con `Intl` + `timeZone: 'America/Bogota'`. Reemplazados los offsets manuales (`- 5*60*60*1000`) y las fechas server-side sin zona en `entry-log` (fecha + hora de export), `stripe/webhook` y `admin/notifications`. **Criterio:** sin "magic numbers" de offset. ✔
 Reemplazar los `- 5*60*60*1000` manuales por utilidad con zona `America/Bogota` (librería `date-fns-tz` o `Temporal`). **Criterio:** sin "magic numbers" de offset en el código.
 
-### T-21 · Limpieza general — `[CÓDIGO]` — Bajo (B-1..B-6) — S
-- Borrar `app/services/mail.ts` (vacío, duplica `services/mail.ts`).
-- Eliminar código muerto del flujo PSE comentado en `app/pago/page.tsx`.
-- Revisar `x-middleware-secret` (variable independiente, no reusar `UPSTASH_REDIS_REST_TOKEN`).
-- (Opcional) `typescript.ignoreBuildErrors: false` cuando el type-check pase.
+### ✅ T-21 · Limpieza general — `[CÓDIGO]` — Bajo (B-1..B-6) — S — **HECHO**
+- ✅ Borrado `app/services/mail.ts` (vacío) y todo el código muerto (`components/ui/*` sin usar, `theme-provider`, `hooks/*`, `styles/globals.css`, `app/game/page.tsx`, `app/api/test-admin`).
+- ✅ Eliminado el flujo PSE comentado en `app/pago/page.tsx` (308 líneas).
+- ✅ `x-middleware-secret` con variable independiente (`INTERNAL_MIDDLEWARE_SECRET`).
+- ⏳ (Opcional) `typescript.ignoreBuildErrors: false`: el type-check ya pasa limpio (`npx tsc --noEmit`), se puede activar en un cambio aparte.
 
 ---
 
@@ -272,16 +283,28 @@ Reemplazar los `- 5*60*60*1000` manuales por utilidad con zona `America/Bogota` 
 
 ---
 
-## ⚡ Lo que puedo ejecutar AHORA mismo (tareas de código, sin paneles externos)
+## 📊 Estado actual (2026-10-11)
 
-1. **T-02** — `git rm -r --cached scratch tmp_check_key.js tmp_fix_key.js` (+ commit).
-2. **T-04** — eliminar `/api/send-email` y su llamada en `pago/page.tsx`.
-3. **T-05** — `verifyAdminRequest` en `planes` (4 métodos).
-4. **T-06** — reglas `users` sin campo `plan` + quitar `updateDoc` del cliente.
-5. **T-07** — rechazar items inválidos en `create-payment`.
-6. **T-08** — reglas `posts`/`pqrs`/`orders`/`logs`.
-7. **T-09** — idempotencia del webhook de plan.
-8. **T-10** — `verifyReceptionRequest` en entry-log.
-9. **T-14** — `/api/diag` deshabilitado en prod.
+**Fases 0–1 (código): COMPLETAS.** T-02, T-04, T-05, T-06, T-07, T-08, T-09, T-10, T-13, T-14 hechas. T-03 (historial) resuelta por reinicio de git. Del **T-11** está hecho el código; falta la `[CFG]` de Upstash.
 
-*(Las externas — T-01, T-03, T-11-CFG, T-12-CFG — requieren tus credenciales/paneles; te dejo la guía exacta en cada tarea.)*
+**Fase 2 (defensa en profundidad):** T-15 ✅, T-16 ✅, T-19 ✅, T-20 ✅, T-21 ✅. **Pendientes:** T-17 (CSP con nonces) y T-18 (Cloud Function / scheduler de notificaciones).
+
+**Pendientes de configuración/paneles (`[CFG]`/`[EXT]`, no son código):**
+- T-11-CFG: crear Upstash y definir `UPSTASH_REDIS_REST_URL/_TOKEN`.
+- T-12: replicar en Vercel `ADMIN_GATE_KEY`, `RECEPTION_GATE_KEY`, `ADMIN_AUTHORIZED_EMAIL`, `RECEPTION_AUTHORIZED_EMAIL`, `INTERNAL_MIDDLEWARE_SECRET`, `UPSTASH_*`; limpiar variables obsoletas.
+- `firestore.rules`/`storage.rules`: `firebase deploy --only firestore:rules,storage:rules`.
+- Otorgar el claim `receptionist` a la cuenta de recepción si aún no lo tiene (`node scripts/manage-claims.js <email> receptionist on`).
+
+## ⚡ Historial de ejecución (tareas de código, sin paneles externos)
+
+1. ✅ **T-02** — `git rm -r --cached scratch tmp_check_key.js tmp_fix_key.js`.
+2. ✅ **T-04** — eliminado `/api/send-email` y su llamada en `pago/page.tsx`.
+3. ✅ **T-05** — `verifyAdminRequest` en `planes` (4 métodos).
+4. ✅ **T-06** — reglas `users` sin campo `plan` + quitado `updateDoc` del cliente.
+5. ✅ **T-07** — rechazar items inválidos en `create-payment`.
+6. ✅ **T-08** — reglas `posts`/`pqrs`/`orders`/`logs`.
+7. ✅ **T-09** — idempotencia del webhook de plan.
+8. ✅ **T-10** — `verifyReceptionRequest` en entry-log.
+9. ✅ **T-14** — `/api/diag` deshabilitado en prod.
+
+*(Las externas — T-03, T-11-CFG, T-12-CFG y el deploy de reglas — requieren tus credenciales/paneles; guía exacta en cada tarea.)*

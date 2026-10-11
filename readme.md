@@ -1,6 +1,6 @@
 # FITMANIA 💪 — Sistema de Gimnasio
 
-> **Tu Pasión. Tu Fuerza.** Plataforma web completa para el gimnasio FITMANIA: venta de planes de membresía, tienda de suplementos/snacks/ropa, foro comunitario, sistema PQRS, panel de administración, estación de recepción con control de acceso por código QR y un mini-juego.
+> **Tu Pasión. Tu Fuerza.** Plataforma web completa para el gimnasio FITMANIA: venta de planes de membresía, tienda de suplementos/snacks/ropa, foro comunitario, sistema PQRS, panel de administración y estación de recepción con control de acceso por código QR.
 
 Aplicación construida con **Next.js (App Router)** + **Firebase** + **Stripe**, desplegada en **Vercel**.
 
@@ -19,13 +19,12 @@ Aplicación construida con **Next.js (App Router)** + **Firebase** + **Stripe**,
 9. [Tienda y carrito](#9-tienda-y-carrito)
 10. [Foro comunitario](#10-foro-comunitario)
 11. [Sistema PQRS](#11-sistema-pqrs)
-12. [Juego (Game)](#12-juego-game)
-13. [Modelo de datos en Firestore](#13-modelo-de-datos-en-firestore)
-14. [Reglas de seguridad](#14-reglas-de-seguridad)
-15. [Variables de entorno](#15-variables-de-entorno)
-16. [Scripts y datos de prueba](#16-scripts-y-datos-de-prueba)
-17. [Instalación y ejecución](#17-instalación-y-ejecución)
-18. [Notas técnicas y despliegue](#18-notas-técnicas-y-despliegue)
+12. [Modelo de datos en Firestore](#12-modelo-de-datos-en-firestore)
+13. [Reglas de seguridad](#13-reglas-de-seguridad)
+14. [Variables de entorno](#14-variables-de-entorno)
+15. [Scripts y datos de prueba](#15-scripts-y-datos-de-prueba)
+16. [Instalación y ejecución](#16-instalación-y-ejecución)
+17. [Notas técnicas y despliegue](#17-notas-técnicas-y-despliegue)
 
 ---
 
@@ -39,7 +38,7 @@ FITMANIA es un **monolito Next.js** que combina:
 - **Panel Admin**: dashboard con pestañas de resumen, usuarios, inventario, PQRS y compras, más exportación de datos y campana de notificaciones.
 - **Panel Recepción**: control de ingresos físicos escaneando el código QR del miembro (búsqueda por UID) o simulando el escaneo, con registro de *check-ins*, historial de compras y directorio de miembros activos.
 - **Comunidad**: foro con publicaciones, likes, comentarios y subida de imágenes.
-- **Extras**: mini-juego de plataformas en canvas y avatares estilo cómic.
+- **Extras**: avatares estilo cómic.
 
 La UI usa un **estilo cómic/superhéroe** (colores rojo/azul/amarillo, bordes gruesos negros, tipografías Bangers/Epilogue/Plus Jakarta/Space Grotesk) y componentes **shadcn/ui** con Tailwind CSS v4.
 
@@ -49,7 +48,7 @@ La UI usa un **estilo cómic/superhéroe** (colores rojo/azul/amarillo, bordes g
 
 | Capa | Tecnología |
 |---|---|
-| Framework | Next.js **16.2.0** (App Router, React 19) |
+| Framework | Next.js **16.4.0** (App Router, React 19) |
 | Lenguaje | TypeScript 5.7 |
 | Estilos | Tailwind CSS v4 + shadcn/ui (Radix UI) + `tw-animate-css` |
 | Estado global | zustand 5 (carrito, sesión, UI) |
@@ -59,7 +58,7 @@ La UI usa un **estilo cómic/superhéroe** (colores rojo/azul/amarillo, bordes g
 | Correos | nodemailer (Gmail SMTP) |
 | Imágenes | Cloudinary (subida de avatares/perfil) |
 | QR | `@yudiel/react-qr-scanner` + `react-qr-code` |
-| PDFs/export | jspdf + jspdf-autotable (exportación admin) |
+| Export a Excel | exceljs (exportación de ingresos de recepción) |
 | Analytics | `@vercel/analytics` |
 | Deployment | Vercel (`.vercel` presente) + Firebase (proyecto `fitmania-e1748`) |
 
@@ -73,28 +72,37 @@ fitmania/
 │   ├── layout.tsx                # Layout raíz: fuentes, AuthProvider, Analytics
 │   ├── page.tsx                  # Home (Topbar, Hero, Planes, Productos, Entrenadores, Footer)
 │   ├── globals.css
-│   ├── admin/page.tsx            # Panel de administración
+│   ├── context/AuthContext.tsx   # AuthProvider (onAuthStateChanged de Firebase)
 │   ├── api/                      # API Routes
 │   │   ├── admin/
-│   │   │   ├── auth/route.ts         # POST: asignar claim admin (token secreto + uid)
-│   │   │   ├── stats/route.ts        # GET: total usuarios/admins/PQRS
-│   │   │   ├── users/route.ts        # GET/PATCH/DELETE: CRUD usuarios
-│   │   │   ├── products/route.ts     # GET/POST/PATCH/DELETE: CRUD productos
-│   │   │   ├── orders/route.ts       # GET: órdenes no archivadas (últimas 500)
-│   │   │   ├── pqrs/route.ts         # GET: listar PQRS
-│   │   │   ├── pqrs/respond/route.ts # POST: responder PQRS + email + estado
-│   │   │   ├── notifications/route.ts# GET/PATCH/DELETE: notificaciones + auto-gen planes a vencer
-│   │   │   └── archive-sales/route.ts# POST: archivar ventas (batch update)
-│   │   ├── send-email/route.ts       # POST: envía correos de pago (legacy/inline)
-│   │   ├── stripe/
-│   │   │   ├── create-payment/route.ts# POST: crea PaymentIntent en COP
-│   │   │   └── webhook/route.ts       # POST: evento Stripe → stock, órdenes, planes, emails
-│   │   └── test-admin/route.ts        # GET: diagnóstico de Firebase Admin
+│   │   │   ├── login/route.ts         # POST: crea session cookie (ID token + claim admin)
+│   │   │   ├── logout/route.ts        # POST: borra la cookie de sesión
+│   │   │   ├── stats/route.ts         # GET: total usuarios/admins/PQRS
+│   │   │   ├── users/route.ts         # GET/PATCH/DELETE: CRUD usuarios + claims (admin/receptionist)
+│   │   │   ├── products/route.ts      # GET/POST/PATCH/DELETE: CRUD productos
+│   │   │   ├── orders/route.ts        # GET: órdenes no archivadas
+│   │   │   ├── logs/route.ts          # GET: auditoría / rate limiting
+│   │   │   ├── pqrs/route.ts          # GET: listar PQRS
+│   │   │   ├── pqrs/respond/route.ts  # POST: responder PQRS + email + estado
+│   │   │   ├── notifications/route.ts # GET/PATCH/DELETE: notificaciones (auto-gen planes a vencer)
+│   │   │   └── archive-sales/route.ts # POST: archivar ventas (batch update)
+│   │   ├── auth/verify/route.ts       # GET: valida session cookie (admin/recepción)
+│   │   ├── diag/route.ts              # GET: diagnóstico Admin SDK (404 en producción)
+│   │   ├── recepcion/
+│   │   │   ├── login/route.ts         # POST: session cookie recepción (email + claim receptionist)
+│   │   │   ├── logout/route.ts        # POST: borra la cookie de recepción
+│   │   │   └── entry-log/route.ts     # GET/POST: historial de ingresos + export Excel/JSON
+│   │   ├── security/
+│   │   │   ├── check/route.ts         # GET: estado de rate limit
+│   │   │   └── log-block/route.ts     # POST: registra bloqueos (secreto interno)
+│   │   └── stripe/
+│   │       ├── create-payment/route.ts# POST: crea PaymentIntent en COP
+│   │       └── webhook/route.ts       # POST: evento Stripe → stock, órdenes, planes, emails
 │   ├── carrito/page.tsx           # Carrito de compras
-│   ├── context/AuthContext.tsx    # AuthProvider (onAuthStateChanged de Firebase)
 │   ├── entrenadores/page.tsx      # Entrenadores
+│   ├── fitception/page.tsx        # Panel de recepción — oculto (QR check-in)
+│   ├── fitministration/page.tsx   # Panel de administración — oculto
 │   ├── foro/page.tsx              # Foro con noticias + posts
-│   ├── game/page.tsx              # Mini-juego canvas
 │   ├── login/page.tsx             # Inicio de sesión
 │   ├── pago/
 │   │   ├── page.tsx               # Checkout Stripe (CardElement) — /pago?concepto&monto
@@ -102,23 +110,21 @@ fitmania/
 │   ├── perfil/page.tsx            # Perfil: avatar, datos, acompañante del plan
 │   ├── planes/page.tsx            # Página de planes
 │   ├── pqrs/page.tsx              # Formulario PQRS
-│   ├── recepcion/page.tsx         # Panel de recepción (QR check-in)
 │   ├── registro/page.tsx          # Registro de usuarios
-│   ├── services/mail.ts           # (placeholder vacío, duplicado)
 │   └── tienda/page.tsx            # Tienda
 ├── components/
-│   ├── admin/
-│   │   ├── admin-login-form.tsx   # Login admin: email+password+token
-│   │   └── product-modal.tsx      # Modal crear/editar producto
+│   ├── admin/                     # admin-login-form, product-modal, plan-modal, audit-logs-tab
 │   ├── home/                      # hero, planes, productos, entrenadores
 │   ├── layout/                    # topbar, footer, user-dropdown
-│   ├── recepcion/reception-login-form.tsx  # Login recepción (triple capa)
-│   ├── ui/                        # shadcn/ui + fit-avatar + comic-modal
-│   └── theme-provider.tsx
-├── hooks/
+│   ├── recepcion/                 # reception-login-form, entry-history-tab
+│   └── ui/                        # fit-avatar, comic-modal, section-header, dialog
 ├── lib/
 │   ├── firebase.ts                # Cliente Firebase (browser)
 │   ├── firebase-admin.ts          # Admin SDK lazy (server)
+│   ├── auth-helpers.ts            # verifyAdminRequest / verifyReceptionRequest
+│   ├── audit-logger.ts            # Registro de auditoría
+│   ├── datetime.ts                # Fechas en America/Bogota (T-20)
+│   ├── rate-limit-client.ts       # Helpers de rate limit (cliente)
 │   ├── store.ts                   # zustand: carrito, auth, UI
 │   ├── avatar-utils.ts            # Avatares (getAvatarUrlById)
 │   └── utils.ts                   # cn() etc.
@@ -126,10 +132,12 @@ fitmania/
 │   ├── images/                    # gym1/2/3.jpg (hero/foro)
 │   └── Imagenes/                  # productos, avatares, snacks, ropa
 ├── scripts/
-│   └── simulate_sale.js           # Simula compra con Admin SDK (ruta local fija)
+│   ├── grant-admin.js             # Bootstrap: claim admin:true
+│   ├── manage-claims.js           # Gestiona claims admin/receptionist (on/off)
+│   └── simulate_sale.js           # Simula compra con Admin SDK
 ├── services/
 │   ├── cloudinary.ts              # uploadToCloudinary()
-│   └── mail.ts                    # Plantillas de correo (nodemada/Gmail)
+│   └── mail.ts                    # Plantillas de correo (nodemailer/Gmail)
 ├── firestore.rules                # Reglas de seguridad Firestore
 ├── storage.rules                  # Reglas de seguridad Storage
 ├── firebase.json / .firebaserc    # Config Firebase (proyecto fitmania-e1748)
@@ -158,7 +166,6 @@ fitmania/
 | `/pqrs` | `app/pqrs/page.tsx` | Formulario de Peticiones/Quejas/Reclamos/Sugerencias |
 | `/entrenadores` | `app/entrenadores/page.tsx` | Equipo de entrenadores |
 | `/perfil` | `app/perfil/page.tsx` | Datos del usuario, avatar, acompañante del plan |
-| `/game` | `app/game/page.tsx` | Mini-juego de plataformas (canvas) |
 | `/fitministration` | `app/fitministration/page.tsx` | Panel admin — **oculto** (requiere llave `?key=` + login con claim `admin`) |
 | `/fitception` | `app/fitception/page.tsx` | Estación de recepción — **oculta** (requiere llave `?key=` + login con email autorizado) |
 
@@ -241,12 +248,10 @@ const paymentIntent = await stripe.paymentIntents.create({
 2. `CheckoutForm` recibe `concepto` y `monto` desde `useSearchParams`, y el carrito desde el store.
 3. Llama a `create-payment` y con el `clientSecret` ejecuta `stripe.confirmCardPayment` con el `CardElement`.
 4. **Si triunfa** (`paymentIntent.status === 'succeeded'`):
-   - Llama a `/api/send-email` con `type: 'success'` (correo de confirmación o recibo si hay items).
    - Limpia el carrito.
-   - **Solo si el concepto incluye** `plan`, `mensualidad`, `parejas` o `dos en uno`, actualiza en Firestore `users/{uid}.plan` con `{ nombre, precio, dias_total, inicio, expira }` (duración según reglas: parejas=40, dos en uno=60, resto=30). Esto evita corromper la membresía con compras de la tienda.
-5. Muestra pantalla de éxito o error inline.
-
-> El archivo conserva un bloque antiguo (comentado) de PSE con `BANCOS_PSE`; la lista de bancos aún vive en el webhook para identificar el origen del pago en emails y órdenes.
+   - Muestra pantalla de éxito.
+   - ⚠️ **No escribe el plan en Firestore**: la activación/renovación la hace **solo el webhook** (T-06). Antes el cliente actualizaba `users/{uid}.plan` directamente y el endpoint `/api/send-email` enviaba el correo (ambos eliminados).
+5. El correo de confirmación/recibo lo envía el **webhook** (firmado por Stripe), no el cliente.
 
 ### 6.5 Webhook de Stripe — `POST /api/stripe/webhook`
 Es el **procesador autoritativo** de pagos. Verifica la firma con `stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET)`.
@@ -288,7 +293,7 @@ Si pasa ambas capas, el servidor crea una **cookie `HttpOnly`** (`fitmania_sessi
 
 ### Dashboard (`app/fitministration/page.tsx`)
 Pestañas:
-- **Resumen (overview)**: estadísticas vía `GET /api/admin/stats` — total usuarios, admins, PQRS, y listado de usuarios; montos/formato COP; exportación **CSV/JSON** (jspdf para PDF).
+- **Resumen (overview)**: estadísticas vía `GET /api/admin/stats` — total usuarios, admins, PQRS, y listado de usuarios; montos/formato COP; exportación **CSV/JSON**.
 - **Usuarios (users)**: `GET /api/admin/users` combina Firebase Auth (`listUsers`) con Firestore; permite editar plan, otorgar/quitar admin y eliminar (borra de Auth **y** de Firestore).
 - **Inventario (inventory)**: CRUD de productos contra `GET/POST/PATCH/DELETE /api/admin/products` con modal (`product-modal.tsx`).
 - **PQRS**: listado y vista de detalle; responder con `POST /api/admin/pqrs/respond` → envía `sendPqrsReplyEmail` y marca `estado: 'resuelto'` con `respuesta_admin` y `fecha_respuesta`.
@@ -353,7 +358,7 @@ La sesión se guarda en la cookie `HttpOnly` `fitmania_reception_session` (1 h).
   - **Likes**: `likes` es un array de UIDs; se actualiza con `arrayUnion`/`arrayRemove` → `toggleLike`.
   - **Comentarios**: `comentarios` array; se agregan con `arrayUnion` (con id, autor, contenido, fecha) y pueden editarse/eliminarse (filtro del array).
   - **Reportar**: `addDoc` a `reportes`.
-- Las reglas de Firestore restringen la creación (autor_id == auth.uid, campos requeridos) y las actualizaciones solo a los campos `likes`/`comentarios` (ver §14).
+- Las reglas de Firestore restringen la creación (autor_id == auth.uid, campos requeridos) y las actualizaciones solo a los campos `likes`/`comentarios` (ver §13).
 
 ---
 
@@ -370,15 +375,7 @@ La sesión se guarda en la cookie `HttpOnly` `fitmania_reception_session` (1 h).
 
 ---
 
-## 12. Juego (Game)
-
-`/game` (`app/game/page.tsx`): mini-juego de plataformas 2D sobre **canvas HTML5** (sin librería):
-- Jugador con gravedad, salto y movimiento horizontal (teclado).
-- Plataformas con nombres de zonas (Cliff, Valley, Waterfall, Coral, Forest, Glacier), obstáculos, coleccionables e interactivos (señales de nivel) — quedó como prototipo/sección de entretenimiento.
-
----
-
-## 13. Modelo de datos en Firestore
+## 12. Modelo de datos en Firestore
 
 Proyecto Firebase: **`fitmania-e1748`** (`.firebaserc`).
 
@@ -396,7 +393,7 @@ Proyecto Firebase: **`fitmania-e1748`** (`.firebaserc`).
 
 ---
 
-## 14. Reglas de seguridad
+## 13. Reglas de seguridad
 
 ### Firestore (`firestore.rules`, rules_version '2')
 - Funciones auxiliares: `isSignedIn()`, `isOwner(uid)`, `isAdmin()` (`request.auth.token.admin == true`).
@@ -420,7 +417,7 @@ Proyecto Firebase: **`fitmania-e1748`** (`.firebaserc`).
 
 ---
 
-## 15. Variables de entorno
+## 14. Variables de entorno
 
 Archivo: **`.env.local`** en `fitmania/fitmania/` (¡nunca subir a Git!). Nombres usados por el código:
 
@@ -460,6 +457,9 @@ RECEPTION_AUTHORIZED_EMAIL=      # obligatorio para /fitception
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 
+# Secreto interno del middleware (protege /api/security/log-block; NO reusar el token de Upstash)
+INTERNAL_MIDDLEWARE_SECRET=
+
 # Cloudinary
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=
@@ -469,21 +469,21 @@ La PRIVATE_KEY suele traer `\n` literales: `lib/firebase-admin.ts` los convierte
 
 ---
 
-## 16. Scripts y datos de prueba
+## 15. Scripts y datos de prueba
 
 | Script | Qué hace |
 |---|---|
 | `init_products.js` (raíz) | Pobla la colección `products` con los 12 productos base (suplementos, snacks, ropa) leyendo credenciales de `.env.local`. |
-| `scripts/grant-admin.js` | **Bootstrap del panel admin**: asigna el custom claim `admin:true` a un email/UID (`node scripts/grant-admin.js <email>`). Se usa una sola vez para habilitar el primer login de `/fitministration`. |
+| `scripts/grant-admin.js` | **Bootstrap del panel admin**: asigna el custom claim `admin:true` a un email/UID (`node scripts/grant-admin.js <email>`). Se usa una sola vez para habilitar el primer login de `/fitministration`. Fusiona con los claims existentes. |
+| `scripts/manage-claims.js` | **Gestión de roles**: otorga/retira `admin` y `receptionist` (`node scripts/manage-claims.js <email\|uid> <admin\|receptionist> <on\|off>`). Al retirar un rol revoca los refresh tokens (invalida sesiones). Fusión de claims. |
 | `scripts/simulate_sale.js` | Simula una venta completa con el Admin SDK: usuario+producto, descuenta stock, crea orden y notificaciones y activa un plan. ⚠️ **Tiene ruta fija** al JSON de la cuenta de servicio (`C:\Users\...\fitmania-e1748-firebase-adminsdk-*.json`) — ajustarla o migrarla a `.env.local`. |
 | `verify_flow.js` (raíz) | Prueba el flujo de compra masiva + alerta de stock bajo (compra 14 unidades de `creatina`, genera orden y notificación `low_stock`). |
-| `app/api/test-admin/route.ts` | Diagnóstico por HTTP: lista las colecciones de Firestore para confirmar que el Admin SDK está bien configurado. |
 
 Para desplegar reglas: `firebase deploy --only firestore:rules,storage:rules` (proyecto `fitmania-e1748`).
 
 ---
 
-## 17. Instalación y ejecución
+## 16. Instalación y ejecución
 
 ```bash
 # 1. Posicionarse en la carpeta del proyecto (la que tiene package.json)
@@ -492,7 +492,7 @@ cd fitmania/fitmania
 # 2. Instalar dependencias
 npm install
 
-# 3. Crear y llenar .env.local (ver §15)
+# 3. Crear y llenar .env.local (ver §14)
 
 # 4. Levantar en desarrollo
 npm run dev        # → http://localhost:3000
@@ -515,7 +515,7 @@ Scripts de `package.json`:
 
 ---
 
-## 18. Notas técnicas y despliegue
+## 17. Notas técnicas y despliegue
 
 ### Configuración de Next.js (`next.config.mjs`)
 ```js
@@ -526,26 +526,29 @@ Scripts de `package.json`:
 
 ### Flujo doble de confirmación de pago
 El pago se confirma **dos veces**:
-1. Cliente: `confirmCardPayment` + actualización directa del plan en Firestore para dar respuesta inmediata en UI (solo para conceptos de plan).
-2. Servidor: **webhook Stripe** (`payment_intent.succeeded`) como fuente de verdad — descuenta stock, crea la orden y reactiva el plan. Es redundante a propósito para tolerar fallos.
+1. Cliente: `confirmCardPayment` para dar respuesta inmediata en la UI (solo para conceptos de plan).
+2. Servidor: **webhook Stripe** (`payment_intent.succeeded`) como **única fuente de verdad** — descuenta stock, crea la orden y activa/renueva el plan de forma idempotente.
+
+> El cliente **ya no escribe** el campo `plan` en Firestore (T-06): solo el webhook (Admin SDK) lo hace.
 
 ### Seguridad del admin
 - Acceso en dos capas: **puerta de llave** (`?key=ADMIN_GATE_KEY` en el middleware) + **login Firebase** que exige el custom claim `admin:true` (y `ADMIN_AUTHORIZED_EMAIL` si está definida).
-- El claim `admin:true` se asigna con `node scripts/grant-admin.js <email>` (solo se usa para el primer admin).
-- Todas las rutas `/api/admin/*` re-validan la sesión con `verifyAdminRequest` (cookie `HttpOnly` `fitmania_session` + claim `admin`), salvo `/api/admin/planes` (⚠ `auditoría.md` C-4).
+- El claim `admin:true` se asigna con `node scripts/grant-admin.js <email>` o `node scripts/manage-claims.js <email> admin on`.
+- La sesión usa **session cookies de Firebase** (`createSessionCookie` + `verifySessionCookie(..., checkRevoked)`) → revocables (T-15). La cookie es `HttpOnly` `fitmania_session` (1 h).
+- **Todas** las rutas `/api/admin/*` re-validan la sesión con `verifyAdminRequest` (incluida `/api/admin/planes`, T-05).
 - Las reglas de Firestore bloquean cualquier intento de escritura no admin en `products`, `orders` y `notifications`.
 
 ### Seguridad de recepción
-- Doble capa: **puerta de llave** (`?key=RECEPTION_GATE_KEY` en el middleware) + **login Firebase** que exige que el correo coincida con `RECEPTION_AUTHORIZED_EMAIL`.
-- Al loguearse se asigna automáticamente el claim `receptionist:true`; la sesión vive en la cookie `HttpOnly` `fitmania_reception_session` (1 h).
+- Doble capa: **puerta de llave** (`?key=RECEPTION_GATE_KEY` en el middleware) + **login Firebase** que exige que el correo coincida con `RECEPTION_AUTHORIZED_EMAIL` **y** que la cuenta tenga el claim `receptionist:true`.
+- El claim `receptionist` **ya no se auto-otorga** en el login (T-16): se gestiona centralmente (panel admin o `node scripts/manage-claims.js <email> receptionist on`). Al retirarlo se revocan las sesiones del usuario.
+- La sesión vive en la cookie `HttpOnly` `fitmania_reception_session` (session cookie de Firebase, 1 h, revocable).
 
 ### Despliegue
 - La app vive desplegada en **Vercel** (`.vercel`).
 - Firebase (Auth, Firestore, Storage, rules) en el proyecto **`fitmania-e1748`**.
-- Para nuevos entornos, configurar las variables de §15 en el dashboard de Vercel.
+- Para nuevos entornos, configurar las variables de §14 en el dashboard de Vercel.
 
 ### Archivos auxiliares
-- `app/services/mail.ts`: placeholder vacío (duplicado); la implementación real está en `services/mail.ts`.
 - `deep_diag.js`, `fix_env.js`, `tmp_check_key.js`, `tmp_fix_key.js`: utilidades de diagnóstico temporales en la raíz (no forman parte del flujo de la app).
 
 ---

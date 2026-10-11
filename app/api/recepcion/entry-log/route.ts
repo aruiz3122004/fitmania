@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Query } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyReceptionRequest } from '@/lib/auth-helpers';
-import * as XLSX from 'xlsx';
+import { getDateKeyInAppTz, formatInAppTz } from '@/lib/datetime';
+import ExcelJS from 'exceljs';
+
+// T-19: límites de exportación para no agotar memoria/tiempo en la función serverless.
+const MAX_EXPORT_DAYS = 92;    // ~3 meses por exportación
+const MAX_EXPORT_ROWS = 20000; // tope de filas por exportación
 
 // ─── POST: Registrar una nueva entrada ───
 export async function POST(request: NextRequest) {
@@ -20,10 +26,8 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date();
-    // Formato YYYY-MM-DD en zona local (Colombia UTC-5)
-    const offsetMs = 5 * 60 * 60 * 1000;
-    const localDate = new Date(now.getTime() - offsetMs);
-    const dateStr = localDate.toISOString().split('T')[0];
+    // Formato YYYY-MM-DD en la zona horaria de la app (T-20: sin offsets manuales)
+    const dateStr = getDateKeyInAppTz(now);
 
     const firestore = getAdminFirestore();
     const entryRef = firestore.collection('entry_logs').doc();
@@ -61,6 +65,36 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
     const pageSize = Math.max(1, Math.min(200, parseInt(searchParams.get('pageSize') || '5')));
     const format = searchParams.get('format'); // 'json' | 'excel'
+    const from = searchParams.get('from'); // YYYY-MM-DD (rango, T-19)
+    const to = searchParams.get('to');     // YYYY-MM-DD (rango, T-19)
+    const isExport = format === 'json' || format === 'excel';
+
+    // T-19: la exportación NO debe cargar toda la colección en memoria.
+    // Se exige un rango acotado: un día (`date`) o `from` + `to`.
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+    if (isExport) {
+      if (!date && !(from && to)) {
+        return NextResponse.json(
+          { error: 'La exportación requiere un rango de fechas: usa `date` (un día) o `from` + `to`.' },
+          { status: 400 }
+        );
+      }
+      if (from && to) {
+        if (!DATE_RE.test(from) || !DATE_RE.test(to) || from > to) {
+          return NextResponse.json(
+            { error: 'Rango de fechas inválido (formato YYYY-MM-DD y from <= to).' },
+            { status: 400 }
+          );
+        }
+        const rangeDays = (new Date(to).getTime() - new Date(from).getTime()) / 86400000;
+        if (rangeDays > MAX_EXPORT_DAYS) {
+          return NextResponse.json(
+            { error: `El rango máximo de exportación es ${MAX_EXPORT_DAYS} días.` },
+            { status: 400 }
+          );
+        }
+      }
+    }
 
     const firestore = getAdminFirestore();
 
@@ -93,17 +127,17 @@ export async function GET(request: NextRequest) {
     // ─── Construir query sin índice compuesto ───
     // Usamos solo where('date') sin orderBy en campo distinto para evitar
     // que Firestore exija un índice compuesto. Luego ordenamos en memoria.
-    let querySnap;
+    // T-19: en exportaciones se aplica un .limit() duro para no cargar de más.
+    let query: Query = firestore.collection('entry_logs');
     if (date) {
-      querySnap = await firestore
-        .collection('entry_logs')
-        .where('date', '==', date)
-        .get();
-    } else {
-      querySnap = await firestore
-        .collection('entry_logs')
-        .get();
+      query = query.where('date', '==', date);
+    } else if (from && to) {
+      query = query.where('date', '>=', from).where('date', '<=', to);
     }
+    if (isExport) {
+      query = query.limit(MAX_EXPORT_ROWS + 1);
+    }
+    const querySnap = await query.get();
 
     // Mapear todos los docs y ordenar por timestamp descendente en memoria
     const allDocs = querySnap.docs.map((doc) => {
@@ -122,8 +156,16 @@ export async function GET(request: NextRequest) {
       };
     }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
+    // T-19: tope de filas para exportación (evita payloads/OOM gigantes).
+    if (isExport && allDocs.length > MAX_EXPORT_ROWS) {
+      return NextResponse.json(
+        { error: `Demasiados registros (más de ${MAX_EXPORT_ROWS}). Acota el rango de fechas.` },
+        { status: 413 }
+      );
+    }
+
     // ─── Exportación completa (sin paginación) ───
-    if (format === 'json' || format === 'excel') {
+    if (isExport) {
       const allEntries = allDocs.map((e) => ({
         id: e.id,
         userName: e.userName,
@@ -131,7 +173,7 @@ export async function GET(request: NextRequest) {
         hasPlanActivo: e.hasPlanActivo,
         planNombre: e.planNombre || 'N/A',
         fecha: e.date,
-        hora: e.timestamp.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        hora: formatInAppTz(e.timestamp, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
       }));
 
       if (format === 'json') {
@@ -144,7 +186,7 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Excel (xlsx)
+      // Excel (exceljs — reemplaza xlsx, que está abandonado y con CVEs sin fix)
       const wsData = [
         ['Nombre', 'Correo', 'Plan Activo', 'Plan', 'Fecha', 'Hora'],
         ...allEntries.map((e) => [
@@ -156,13 +198,13 @@ export async function GET(request: NextRequest) {
           e.hora,
         ]),
       ];
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet(wsData);
-      ws['!cols'] = [
-        { wch: 25 }, { wch: 30 }, { wch: 12 }, { wch: 20 }, { wch: 12 }, { wch: 10 },
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Entradas');
+      worksheet.columns = [
+        { width: 25 }, { width: 30 }, { width: 12 }, { width: 20 }, { width: 12 }, { width: 10 },
       ];
-      XLSX.utils.book_append_sheet(wb, ws, 'Entradas');
-      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      worksheet.addRows(wsData);
+      const buf = await workbook.xlsx.writeBuffer();
 
       return new NextResponse(buf, {
         status: 200,

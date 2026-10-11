@@ -31,6 +31,7 @@ export async function GET(request: Request) {
         creationTime: user.metadata.creationTime,
         lastSignInTime: user.metadata.lastSignInTime,
         admin: user.customClaims?.admin || false,
+        receptionist: user.customClaims?.receptionist || false,
         plan: fsData.plan || null,
         // Incluir otros datos relevantes de firestore si existen
         ...fsData
@@ -48,15 +49,27 @@ export async function PATCH(request: Request) {
   if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   try {
-    const { uid, plan, admin: setAdmin } = await request.json();
+    const { uid, plan, admin: setAdmin, receptionist: setReceptionist } = await request.json();
     if (!uid) return NextResponse.json({ error: 'UID requerido' }, { status: 400 });
 
     const auth = getAdminAuth();
     const db = getAdminFirestore();
 
-    // Actualizar claims de administrador si se solicita
-    if (setAdmin !== undefined) {
-      await auth.setCustomUserClaims(uid, { admin: !!setAdmin });
+    // T-16: gestión centralizada y revocable de claims. Se FUSIONAN con los claims
+    // actuales para no borrar el otro rol (evita el "clobbering" de claims).
+    let claimsChanged = false;
+    if (setAdmin !== undefined || setReceptionist !== undefined) {
+      const currentClaims = (await auth.getUser(uid)).customClaims || {};
+      const claims: Record<string, any> = { ...currentClaims };
+      if (setAdmin !== undefined) claims.admin = !!setAdmin;
+      if (setReceptionist !== undefined) claims.receptionist = !!setReceptionist;
+      await auth.setCustomUserClaims(uid, claims);
+      claimsChanged = true;
+      // Al retirar privilegios, revocar refresh tokens → invalida sesiones vigentes
+      // (verifySessionCookie con checkRevoked las rechaza de inmediato).
+      if (setAdmin === false || setReceptionist === false) {
+        await auth.revokeRefreshTokens(uid);
+      }
     }
 
     // Actualizar campos en Firestore (especialmente el plan)
@@ -74,12 +87,14 @@ export async function PATCH(request: Request) {
 
     if (Object.keys(updates).length > 0) {
       await db.collection('users').doc(uid).update(updates);
-      
+    }
+
+    if (Object.keys(updates).length > 0 || claimsChanged) {
       // Audit Log
       await recordAuditLog({
         action: 'UPDATE_USER',
         category: 'ADMIN_ACTION',
-        details: `Socio [${uid}] actualizado: ${plan !== undefined ? (plan ? 'Modificó plan' : 'Removió plan') : ''} ${setAdmin !== undefined ? (setAdmin ? 'Elevado a ADMIN' : 'Bajado a SOCIO') : ''}`,
+        details: `Socio [${uid}] actualizado: ${plan !== undefined ? (plan ? 'Modificó plan' : 'Removió plan') : ''} ${setAdmin !== undefined ? (setAdmin ? 'Elevado a ADMIN' : 'Bajado a SOCIO') : ''} ${setReceptionist !== undefined ? (setReceptionist ? 'Otorgó RECEPCIÓN' : 'Retiró RECEPCIÓN') : ''}`.trim(),
         adminEmail: isAdmin.email,
         targetId: uid,
         request,

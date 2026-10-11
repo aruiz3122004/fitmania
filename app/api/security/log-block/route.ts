@@ -4,9 +4,12 @@ import { recordAuditLog } from '@/lib/audit-logger';
 export async function POST(request: Request) {
   try {
     const internalSecret = request.headers.get('x-middleware-secret');
+    const expectedSecret = process.env.INTERNAL_MIDDLEWARE_SECRET;
     
-    // Proteger este endpoint para que solo el middleware propio pueda invocarlo
-    if (internalSecret !== (process.env.UPSTASH_REDIS_REST_TOKEN || 'fitmania_fallback')) {
+    // Proteger este endpoint para que solo el middleware propio pueda invocarlo.
+    // B-6: secreto independiente (no reutilizar UPSTASH_REDIS_REST_TOKEN) y
+    // rechazar si el secreto no está configurado (evita que '' === '' pase).
+    if (!expectedSecret || internalSecret !== expectedSecret) {
         return NextResponse.json({ error: 'Acceso Denegado' }, { status: 403 });
     }
 
