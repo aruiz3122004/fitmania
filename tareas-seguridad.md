@@ -237,27 +237,26 @@ const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]
 ### ✅ T-15 · Session cookies de Firebase con revocación — `[CÓDIGO]` — Alto (A-4) — L — **HECHO**
 `fitmania_session` / `fitmania_reception_session` migradas de ID token crudo a `createSessionCookie` + `verifySessionCookie(..., checkRevoked: true)`. Archivos: `app/api/admin/login`, `app/api/recepcion/login`, `lib/auth-helpers.ts`, `app/api/auth/verify`.
 **Criterio:** revocando el usuario en Firebase, sus sesiones dejan de valer en <1 min. ✔
-Migrar `fitmania_session` / `fitmania_reception_session` de ID token crudo a `adminAuth.createSessionCookie(idToken, { expiresIn })` + `verifySessionCookie(…, { checkRevoked: true })`. Archivos: `app/api/admin/login`, `app/api/recepcion/login`, `lib/auth-helpers.ts`, `app/api/auth/verify`.
-**Criterio:** revocando el usuario en Firebase, sus sesiones dejan de valer en <1 min.
 
 ### ✅ T-16 · Claims centralizados y revocables (admin/receptionist) — `[CÓDIGO]` — Alto (A-5) — M — **HECHO**
 Se eliminó el auto-otorgamiento de `receptionist` en el login. Ahora se exige el claim (además del email whitelist) en login y en cada request (`verifyReceptionRequest`). Gestión centralizada: `PATCH /api/admin/users` (fusiona claims, no los sobrescribe, y **revoca refresh tokens** al retirar un rol) + `scripts/manage-claims.js`. `grant-admin.js` también fusiona.
 **Criterio:** retirar el email de la whitelist y/o el claim revoca el acceso real. ✔
-No auto-otorgar `receptionist` en cada login; gestionar claims desde Firestore (revisión admin) o consola, y validar en cada request. **Criterio:** retirar el email de la whitelist revoca el acceso real de ese usuario.
 
-### T-17 · CSP sin `'unsafe-inline'` / `'unsafe-eval'` — `[CÓDIGO]` — Alto (A-6) — L
-Nonces para scripts (Next.js `experimental`/middleware) y revisar dependencias que requieran eval. **Criterio:** la app opera correctamente con CSP estricta (probar checkout Stripe completo en dev).
+### ✅ T-17 · CSP sin `'unsafe-inline'` / `'unsafe-eval'` — `[CÓDIGO]` — Alto (A-6) — L — **HECHO**
+CSP con **nonce por request** generado en `middleware.ts` (Web Crypto) y propagado en la request (para que Next lo añada a sus `<script>` durante el SSR) y en la respuesta. En **producción** `script-src` = `'self' 'nonce-…' 'strict-dynamic'` (sin `unsafe-inline`/`unsafe-eval`); en desarrollo se conservan `unsafe-eval`/`unsafe-inline` para el HMR. `style-src` mantiene `'unsafe-inline'` (la app usa atributos `style=` y un `<style>` inline; un nonce en `style-src` haría ignorar `unsafe-inline`). Se añade `object-src 'none'` y `base-uri 'self'`. Como el nonce exige SSR dinámico, se puso `export const dynamic = 'force-dynamic'` en `app/layout.tsx`.
+**Verificado (producción local, `next start`):** header CSP con nonce y 15/15 scripts de Next con `nonce`; home/login/planes/carrito/foro cargan **sin violaciones de CSP**; **Stripe.js y su iframe cargan** (permitidos por `strict-dynamic` / `frame-src`).
+> ⚠️ Prueba pendiente del usuario: **checkout completo de Stripe** en producción (crear PaymentIntent + pagar) y login real con Firebase.
 
-### T-18 · Notificaciones de vencimiento con Cloud Functions — `[CÓDIGO]` — Medio (M-4) — M
-Scheduler diario que genera las notificaciones; `GET /api/admin/notifications` solo lee (hoy recorre todos los usuarios con plan por visita). **Criterio:** la API ya no escanea toda la colección `users`.
+### ✅ T-18 · Notificaciones de vencimiento con job programado — `[CÓDIGO]` — Medio (M-4) — M — **HECHO**
+Se extrajo la generación a `lib/notifications.ts` y la ejecuta un **job programado**: `GET /api/cron/notifications` (protegido con `Authorization: Bearer <CRON_SECRET>`, 401 si falta) disparado por **Vercel Cron** (`vercel.json`, diario 12:00 UTC). El `GET /api/admin/notifications` quedó **solo lectura** (ya no recorre `users`).
+*(Se eligió Vercel Cron + ruta interna en vez de Cloud Functions para no requerir plan Blaze ni infraestructura nueva.)*
+**Criterio:** la API del panel ya no escanea toda la colección `users`. ✔
 
 ### ✅ T-19 · Exportaciones de `entry_logs` con límite de fechas — `[CÓDIGO]` — Medio (M-5) — M — **HECHO**
 `format=excel|json` ahora **exige** rango de fechas (`date` o `from`+`to`), valida formato/orden, limita a **92 días** y **20 000 filas**, y aplica un `.limit()` duro en la query. **Criterio:** exportar sin rango → 400; rango excesivo → 400; no se carga toda la colección. ✔
-`format=excel|json` sin cargar todo en memoria: rango de fechas obligatorio + streaming/paginación. **Criterio:** exportar 100k registros sin timeout ni OOM.
 
 ### ✅ T-20 · Zona horaria centralizada (America/Bogotá en UTC) — `[CÓDIGO]` — Medio (M-6) — M — **HECHO**
 Nueva utilidad `lib/datetime.ts` (`getDateKeyInAppTz`, `formatInAppTz`) con `Intl` + `timeZone: 'America/Bogota'`. Reemplazados los offsets manuales (`- 5*60*60*1000`) y las fechas server-side sin zona en `entry-log` (fecha + hora de export), `stripe/webhook` y `admin/notifications`. **Criterio:** sin "magic numbers" de offset. ✔
-Reemplazar los `- 5*60*60*1000` manuales por utilidad con zona `America/Bogota` (librería `date-fns-tz` o `Temporal`). **Criterio:** sin "magic numbers" de offset en el código.
 
 ### ✅ T-21 · Limpieza general — `[CÓDIGO]` — Bajo (B-1..B-6) — S — **HECHO**
 - ✅ Borrado `app/services/mail.ts` (vacío) y todo el código muerto (`components/ui/*` sin usar, `theme-provider`, `hooks/*`, `styles/globals.css`, `app/game/page.tsx`, `app/api/test-admin`).
@@ -287,11 +286,13 @@ Reemplazar los `- 5*60*60*1000` manuales por utilidad con zona `America/Bogota` 
 
 **Fases 0–1 (código): COMPLETAS.** T-02, T-04, T-05, T-06, T-07, T-08, T-09, T-10, T-13, T-14 hechas. T-03 (historial) resuelta por reinicio de git. Del **T-11** está hecho el código; falta la `[CFG]` de Upstash.
 
-**Fase 2 (defensa en profundidad):** T-15 ✅, T-16 ✅, T-19 ✅, T-20 ✅, T-21 ✅. **Pendientes:** T-17 (CSP con nonces) y T-18 (Cloud Function / scheduler de notificaciones).
+**Fase 2 (defensa en profundidad): COMPLETA por código.** T-15 ✅, T-16 ✅, T-17 ✅, T-18 ✅, T-19 ✅, T-20 ✅, T-21 ✅.
 
 **Pendientes de configuración/paneles (`[CFG]`/`[EXT]`, no son código):**
 - T-11-CFG: crear Upstash y definir `UPSTASH_REDIS_REST_URL/_TOKEN`.
-- T-12: replicar en Vercel `ADMIN_GATE_KEY`, `RECEPTION_GATE_KEY`, `ADMIN_AUTHORIZED_EMAIL`, `RECEPTION_AUTHORIZED_EMAIL`, `INTERNAL_MIDDLEWARE_SECRET`, `UPSTASH_*`; limpiar variables obsoletas.
+- T-12: replicar en Vercel `ADMIN_GATE_KEY`, `RECEPTION_GATE_KEY`, `ADMIN_AUTHORIZED_EMAIL`, `RECEPTION_AUTHORIZED_EMAIL`, `INTERNAL_MIDDLEWARE_SECRET`, `CRON_SECRET`, `UPSTASH_*`; limpiar variables obsoletas.
+- T-17: probar **checkout completo de Stripe** y login real (Firebase) ya en producción.
+- T-18: al desplegar, Vercel detecta `vercel.json` y activa el cron diario; definir `CRON_SECRET` para que la ruta no responda 401.
 - `firestore.rules`/`storage.rules`: `firebase deploy --only firestore:rules,storage:rules`.
 - Otorgar el claim `receptionist` a la cuenta de recepción si aún no lo tiene (`node scripts/manage-claims.js <email> receptionist on`).
 
@@ -306,5 +307,13 @@ Reemplazar los `- 5*60*60*1000` manuales por utilidad con zona `America/Bogota` 
 7. ✅ **T-09** — idempotencia del webhook de plan.
 8. ✅ **T-10** — `verifyReceptionRequest` en entry-log.
 9. ✅ **T-14** — `/api/diag` deshabilitado en prod.
+10. ✅ **T-13** — `next@16.4.0`, `xlsx`→`exceljs`, `npm audit fix`, CI de `npm audit`.
+11. ✅ **T-21** — código muerto + flujo PSE + ~40 deps muertas eliminadas.
+12. ✅ **T-20** — `lib/datetime.ts` (America/Bogota).
+13. ✅ **T-19** — export de `entry_logs` con rango/topes.
+14. ✅ **T-15** — session cookies de Firebase revocables.
+15. ✅ **T-16** — claims centralizados (`admin/users` + `manage-claims.js`).
+16. ✅ **T-17** — CSP estricta con nonces (`middleware.ts` + `force-dynamic`).
+17. ✅ **T-18** — notificaciones vía Vercel Cron (`/api/cron/notifications`) + GET solo lectura.
 
 *(Las externas — T-03, T-11-CFG, T-12-CFG y el deploy de reglas — requieren tus credenciales/paneles; guía exacta en cada tarea.)*

@@ -37,6 +37,7 @@ scratch/
 !tsconfig.json
 !components.json
 !firebase.json
+!vercel.json
 
 # Firebase Admin SDK specific
 *adminsdk*.json

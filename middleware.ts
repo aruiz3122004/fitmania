@@ -33,39 +33,57 @@ function getLockoutTime(level: number): number {
 }
 
 // -------------------------------------------------------
-// CONFIGURACIÓN DE SEGURIDAD PROACTIVA (CSP)
+// NONCE + CSP (T-17)
 // -------------------------------------------------------
-function applySecurityHeaders(response: NextResponse) {
+// CSP restrictiva basada en NONCE por request. El nonce se genera con Web Crypto
+// (runtime Edge) y se propaga:
+//   1. En la RESPUESTA (para que el navegador aplique la política).
+//   2. En la REQUEST (para que Next.js lo añada a sus propios <script> en el SSR).
+// Nota: el nonce exige renderizado dinámico (ver `export const dynamic` en el
+// layout raíz); las páginas estáticas no reciben nonce en build.
+function generateNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function buildCsp(nonce: string): string {
   const isProd = process.env.NODE_ENV === 'production';
-  
-  // CSP: Content Security Policy robusta para soportar Stripe, Firebase, Cloudinary y Google Fonts
-  const cspHeader = `
+
+  // Producción: 'nonce' + 'strict-dynamic' (sin 'unsafe-inline' ni 'unsafe-eval').
+  // Desarrollo: Next/webpack requieren 'unsafe-eval' e inline para el HMR.
+  const scriptSrc = isProd
+    ? `'self' 'nonce-${nonce}' 'strict-dynamic' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com`
+    : `'self' 'nonce-${nonce}' 'unsafe-eval' 'unsafe-inline' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com`;
+
+  // style-src conserva 'unsafe-inline': la app usa atributos `style=` de React y
+  // un <style> inline; en CSP3 un nonce en style-src haría ignorar 'unsafe-inline'.
+  return `
     default-src 'self';
-    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com;
+    script-src ${scriptSrc};
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     img-src 'self' blob: data: https://res.cloudinary.com https://*.googleusercontent.com https://*.stripe.com https://*.firebaseapp.com;
     connect-src 'self' https://*.stripe.com https://*.googleapis.com https://*.firebaseio.com https://res.cloudinary.com https://va.vercel-scripts.com;
     frame-src 'self' https://*.stripe.com https://*.firebaseapp.com;
     font-src 'self' data: https://fonts.gstatic.com;
     worker-src 'self' blob:;
+    object-src 'none';
+    base-uri 'self';
     upgrade-insecure-requests;
   `.replace(/\s{2,}/g, ' ').trim();
+}
 
+function applySecurityHeaders(response: NextResponse, csp: string) {
+  const isProd = process.env.NODE_ENV === 'production';
   const headers = response.headers;
-  
-  // Inyectar CSP
-  headers.set('Content-Security-Policy', cspHeader);
-  
-  // Prevenir Clickjacking (solo permitir el mismo origen si fuera necesario, o denegar por completo)
+
+  headers.set('Content-Security-Policy', csp);
   headers.set('X-Frame-Options', 'DENY');
-  
-  // Prevenir sniffing de tipos de contenido
   headers.set('X-Content-Type-Options', 'nosniff');
-  
-  // Referrer Policy para privacidad
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  
-  // HSTS (HTTP Strict Transport Security) - Solo en producción
+
   if (isProd) {
     headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
@@ -73,8 +91,28 @@ function applySecurityHeaders(response: NextResponse) {
   return response;
 }
 
+// Deja pasar y propaga el nonce a Next.js (necesario para el SSR de páginas).
+function nextWithNonce(request: NextRequest, nonce: string, csp: string) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('Content-Security-Policy', csp);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  return applySecurityHeaders(response, csp);
+}
+
+// Rewrite (p. ej. a /404) propagando el nonce.
+function rewriteWithNonce(request: NextRequest, destination: URL, nonce: string, csp: string) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('Content-Security-Policy', csp);
+  const response = NextResponse.rewrite(destination, { request: { headers: requestHeaders } });
+  return applySecurityHeaders(response, csp);
+}
+
 export default async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
+  const nonce = generateNonce();
+  const csp = buildCsp(nonce);
 
   // -------------------------------------------------------
   // RATE LIMITING GLOBAL (Arquitectura Progresiva y Exacta)
@@ -97,10 +135,10 @@ export default async function middleware(request: NextRequest) {
     if (pathname === '/api/security/success') {
       try {
         await redis.del(`fw_attempts_${ip}`, `fw_lockout_${ip}`, `fw_level_${ip}`);
-        return applySecurityHeaders(NextResponse.json({ success: true, message: 'Intentos restaurados' }));
+        return applySecurityHeaders(NextResponse.json({ success: true, message: 'Intentos restaurados' }), csp);
       } catch (e) {
         console.error('Error limpiando rate limit:', e);
-        return applySecurityHeaders(NextResponse.json({ success: true })); // Fallback
+        return applySecurityHeaders(NextResponse.json({ success: true }), csp); // Fallback
       }
     }
 
@@ -118,7 +156,7 @@ export default async function middleware(request: NextRequest) {
       try {
         // A. Verificar si el usuario está bajo una condena actual
         const lockoutTtl = await redis.ttl(`fw_lockout_${ip}`);
-        
+
         if (lockoutTtl > 0) {
           // Usuario bloqueado
           const resp = NextResponse.json(
@@ -128,7 +166,7 @@ export default async function middleware(request: NextRequest) {
           resp.headers.set('X-RateLimit-Limit', MAX_ATTEMPTS.toString());
           resp.headers.set('X-RateLimit-Remaining', '0');
           resp.headers.set('X-RateLimit-SecondsLeft', lockoutTtl.toString());
-          return applySecurityHeaders(resp);
+          return applySecurityHeaders(resp, csp);
         }
 
         // B. Lectura inofensiva de estado (Renderizado inicial de la página)
@@ -137,20 +175,20 @@ export default async function middleware(request: NextRequest) {
           return applySecurityHeaders(NextResponse.json({
             success: true,
             remaining: Math.max(0, MAX_ATTEMPTS - currentAttempts),
-          }));
+          }), csp);
         }
 
         // C. Ejecutar Intento Explicito (Pulsó ENTRAR o PAGAR)
         const attempts = await redis.incr(`fw_attempts_${ip}`);
-        
-        // Limpiador básico: si es primer error asilar intentos tras 1 hora si el usuario desiste 
+
+        // Limpiador básico: si es primer error asilar intentos tras 1 hora si el usuario desiste
         if (attempts === 1) await redis.expire(`fw_attempts_${ip}`, 3600);
 
         if (attempts > MAX_ATTEMPTS) {
           // Ha superado el limite: asginar nivel de penalización
           const level = await redis.incr(`fw_level_${ip}`);
           if (level === 1) await redis.expire(`fw_level_${ip}`, 86400); // Récord base 24h
-          
+
           const lockoutTime = getLockoutTime(level);
           await redis.setex(`fw_lockout_${ip}`, lockoutTime, 'blocked'); // Activar cuenta regresiva
           await redis.del(`fw_attempts_${ip}`); // Resetear contador para re-evaluación posterior al castigo
@@ -162,7 +200,7 @@ export default async function middleware(request: NextRequest) {
             try {
               fetch(`${request.nextUrl.origin}/api/security/log-block`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                   'Content-Type': 'application/json',
                   'x-middleware-secret': internalSecret
                 },
@@ -178,27 +216,27 @@ export default async function middleware(request: NextRequest) {
           resp.headers.set('X-RateLimit-Limit', MAX_ATTEMPTS.toString());
           resp.headers.set('X-RateLimit-Remaining', '0');
           resp.headers.set('X-RateLimit-SecondsLeft', lockoutTime.toString());
-          return applySecurityHeaders(resp);
+          return applySecurityHeaders(resp, csp);
         }
 
         // D. Intento válido procesado (aún le quedan oportunidades)
         const remaining = Math.max(0, MAX_ATTEMPTS - attempts);
-        
+
         if (pathname === '/api/security/attempt') {
           // Interceptamos su llegada porque su único trabajo era alertar al middleware del click
-          return applySecurityHeaders(NextResponse.json({ success: true, remaining }));
+          return applySecurityHeaders(NextResponse.json({ success: true, remaining }), csp);
         } else {
           // Si es un API Route propio (Stripe, Admin), lo dejamos pasar e inyectamos los headers
           const response = NextResponse.next();
           response.headers.set('X-RateLimit-Limit', MAX_ATTEMPTS.toString());
           response.headers.set('X-RateLimit-Remaining', remaining.toString());
-          return applySecurityHeaders(response);
+          return applySecurityHeaders(response, csp);
         }
 
       } catch (e) {
         console.error('Error procesando intentos con Redis:', e);
         // Fail-open si redis falla catastroficamente
-        return applySecurityHeaders(NextResponse.next());
+        return applySecurityHeaders(NextResponse.next(), csp);
       }
     }
   }
@@ -208,7 +246,7 @@ export default async function middleware(request: NextRequest) {
   const receptionSession = request.cookies.get('fitmania_reception_session')?.value;
 
   // --- PROTECCIÓN DE PÁGINAS (ADMIN Y RECEPCIÓN INVISIBLES) ---
-  
+
   // Normalizar el pathname para que la comparación sea robusta (sin slash final)
   const normalizedPath = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
 
@@ -216,15 +254,15 @@ export default async function middleware(request: NextRequest) {
     const key = searchParams.get('key');
     const validKey = process.env.ADMIN_GATE_KEY;
     const adminGateCookie = request.cookies.get('fitmania_admin_gate')?.value;
-    
+
     // Permitir si ya tiene sesión iniciada o si ya pasó la "gate" con cookie
     if (adminSession || adminGateCookie === 'true') {
-      return applySecurityHeaders(NextResponse.next());
+      return nextWithNonce(request, nonce, csp);
     }
 
     // Si trae la llave correcta, dejarlo pasar y ponerle la cookie por 1 hora
     if (validKey && key === validKey) {
-      const resp = NextResponse.next();
+      const resp = nextWithNonce(request, nonce, csp);
       resp.cookies.set('fitmania_admin_gate', 'true', {
         maxAge: 3600, // 1 hora
         httpOnly: true,
@@ -232,25 +270,25 @@ export default async function middleware(request: NextRequest) {
         path: '/',
         sameSite: 'lax'
       });
-      return applySecurityHeaders(resp);
+      return resp;
     }
 
-    return applySecurityHeaders(NextResponse.rewrite(new URL('/404', request.url)));
+    return rewriteWithNonce(request, new URL('/404', request.url), nonce, csp);
   }
 
   if (normalizedPath === '/fitception') {
     const key = searchParams.get('key');
     const validKey = process.env.RECEPTION_GATE_KEY;
     const receptionGateCookie = request.cookies.get('fitmania_reception_gate')?.value;
-    
+
     // Permitir si ya tiene sesión iniciada o si ya pasó la "gate" con cookie
     if (receptionSession || receptionGateCookie === 'true') {
-      return applySecurityHeaders(NextResponse.next());
+      return nextWithNonce(request, nonce, csp);
     }
 
     // Si trae la llave correcta, dejarlo pasar y ponerle la cookie por 1 hora
     if (validKey && key === validKey) {
-      const resp = NextResponse.next();
+      const resp = nextWithNonce(request, nonce, csp);
       resp.cookies.set('fitmania_reception_gate', 'true', {
         maxAge: 3600, // 1 hora
         httpOnly: true,
@@ -258,29 +296,29 @@ export default async function middleware(request: NextRequest) {
         path: '/',
         sameSite: 'lax'
       });
-      return applySecurityHeaders(resp);
+      return resp;
     }
 
-    return applySecurityHeaders(NextResponse.rewrite(new URL('/404', request.url)));
+    return rewriteWithNonce(request, new URL('/404', request.url), nonce, csp);
   }
 
   // -------------------------------------------------------
   // SEGURIDAD DE APIS (Sesiones)
   // -------------------------------------------------------
-  const isAdminApi = pathname.startsWith('/api/admin/') && 
+  const isAdminApi = pathname.startsWith('/api/admin/') &&
                      !pathname.startsWith('/api/admin/login');
   if (isAdminApi && !adminSession) {
-    return applySecurityHeaders(NextResponse.json({ error: 'No autorizado' }, { status: 401 }));
+    return applySecurityHeaders(NextResponse.json({ error: 'No autorizado' }, { status: 401 }), csp);
   }
 
-  const isRecepcionApi = pathname.startsWith('/api/recepcion/') && 
+  const isRecepcionApi = pathname.startsWith('/api/recepcion/') &&
                          !pathname.startsWith('/api/recepcion/login');
   if (isRecepcionApi && !receptionSession) {
-    return applySecurityHeaders(NextResponse.json({ error: 'No autorizado' }, { status: 401 }));
+    return applySecurityHeaders(NextResponse.json({ error: 'No autorizado' }, { status: 401 }), csp);
   }
 
   // Devolver respuesta final con todas las cabeceras de seguridad aplicadas
-  return applySecurityHeaders(NextResponse.next());
+  return nextWithNonce(request, nonce, csp);
 }
 
 export const config = {

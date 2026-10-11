@@ -87,6 +87,7 @@ fitmania/
 │   │   │   ├── notifications/route.ts # GET/PATCH/DELETE: notificaciones (auto-gen planes a vencer)
 │   │   │   └── archive-sales/route.ts # POST: archivar ventas (batch update)
 │   │   ├── auth/verify/route.ts       # GET: valida session cookie (admin/recepción)
+│   │   ├── cron/notifications/route.ts# GET: job de Vercel Cron (genera avisos de vencimiento)
 │   │   ├── diag/route.ts              # GET: diagnóstico Admin SDK (404 en producción)
 │   │   ├── recepcion/
 │   │   │   ├── login/route.ts         # POST: session cookie recepción (email + claim receptionist)
@@ -124,6 +125,7 @@ fitmania/
 │   ├── auth-helpers.ts            # verifyAdminRequest / verifyReceptionRequest
 │   ├── audit-logger.ts            # Registro de auditoría
 │   ├── datetime.ts                # Fechas en America/Bogota (T-20)
+│   ├── notifications.ts           # Generación de avisos de plan por vencer (T-18)
 │   ├── rate-limit-client.ts       # Helpers de rate limit (cliente)
 │   ├── store.ts                   # zustand: carrito, auth, UI
 │   ├── avatar-utils.ts            # Avatares (getAvatarUrlById)
@@ -143,6 +145,7 @@ fitmania/
 ├── firebase.json / .firebaserc    # Config Firebase (proyecto fitmania-e1748)
 ├── init_products.js               # Seed de productos (raíz)
 ├── verify_flow.js                 # Test de stock/orden (raíz)
+├── vercel.json                    # Config de Vercel (cron de /api/cron/notifications)
 └── next.config.mjs                # ignoreBuildErrors, images.unoptimized
 ```
 
@@ -460,6 +463,9 @@ UPSTASH_REDIS_REST_TOKEN=
 # Secreto interno del middleware (protege /api/security/log-block; NO reusar el token de Upstash)
 INTERNAL_MIDDLEWARE_SECRET=
 
+# Secreto del cron de Vercel (protege /api/cron/notifications; Vercel lo envía como Bearer)
+CRON_SECRET=
+
 # Cloudinary
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=
@@ -542,6 +548,15 @@ El pago se confirma **dos veces**:
 - Doble capa: **puerta de llave** (`?key=RECEPTION_GATE_KEY` en el middleware) + **login Firebase** que exige que el correo coincida con `RECEPTION_AUTHORIZED_EMAIL` **y** que la cuenta tenga el claim `receptionist:true`.
 - El claim `receptionist` **ya no se auto-otorga** en el login (T-16): se gestiona centralmente (panel admin o `node scripts/manage-claims.js <email> receptionist on`). Al retirarlo se revocan las sesiones del usuario.
 - La sesión vive en la cookie `HttpOnly` `fitmania_reception_session` (session cookie de Firebase, 1 h, revocable).
+
+### Cabeceras de seguridad y CSP (T-17)
+- `middleware.ts` aplica **CSP con nonce por request**, más `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` y HSTS (solo producción).
+- En **producción** `script-src` usa `'self' 'nonce-…' 'strict-dynamic'` (sin `'unsafe-inline'`/`'unsafe-eval'`); en **desarrollo** se mantienen `'unsafe-eval'`/`'unsafe-inline'` para el HMR. `style-src` conserva `'unsafe-inline'` (la UI usa estilos inline).
+- El nonce exige **renderizado dinámico**: `app/layout.tsx` exporta `dynamic = 'force-dynamic'`, por lo que todas las rutas son `ƒ` (server-rendered on demand).
+
+### Notificaciones programadas (T-18)
+- La generación de avisos de "plan por vencer" vive en `lib/notifications.ts` y la dispara **Vercel Cron** (`vercel.json`, diario `0 12 * * *` → `/api/cron/notifications`).
+- La ruta exige `Authorization: Bearer $CRON_SECRET` (401 si falta). El `GET /api/admin/notifications` del panel es **solo lectura**.
 
 ### Despliegue
 - La app vive desplegada en **Vercel** (`.vercel`).
