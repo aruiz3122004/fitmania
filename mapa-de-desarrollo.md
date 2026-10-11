@@ -120,7 +120,7 @@
 | 7 | **Precios y planes en Firestore** (no hardcode) | Constantes en el código | El administrador edita precios y descripciones desde el panel; el servidor **recalcula el monto** leyendo la base (el cliente solo envía el `planId`). |
 | 8 | **Activación de planes vía webhook server-side** | Marcar plan desde el cliente | El webhook verifica la firma de Stripe y escribe con el Admin SDK (reglas `write: false` en cliente). Nada de "autopremium". |
 | 9 | **Identidad QR = UID del usuario** | QR con hash secreto | El UID es estable y único; la recepción lee el código y consulta el estado del plan en vivo. El QR **no** contiene información sensible, solo referencia. |
-| 10 | **Cloudinary para subida de imágenes** | Firebase Storage directo | Preset firmado/semi-privado, entrega por CDN y transformaciones; Firebase Storage se reserva para avatares/posts con límites de tipo y tamaño. |
+| 10 | **Cloudinary para subida de imágenes** | Firebase Storage directo | Preset firmado/semi-privado, entrega por CDN y transformaciones. **Firebase Storage quedó fuera**: no se usa y su configuración fue eliminada (`storage.rules`, bloque `storage` de `firebase.json`, `getStorage` en `lib/firebase.ts`). |
 | 11 | **Diseño "cómic"** (bordes duros, sombras de bloque, tipografía Bangers) | UI corporativa neutra | La marca del gimnasio es superheroica; la UI refuerza personalidad, diferenciación y engagement. |
 | 12 | **Páginas internas con URL "secreta"** (`/fitministration`, `/fitception`) | Acceso directo desde el menú | Reducir superficie de ataque: el contenido interno no se enlaza públicamente y además exige llave + sesión. |
 

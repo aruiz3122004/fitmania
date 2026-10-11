@@ -141,7 +141,6 @@ fitmania/
 │   ├── cloudinary.ts              # uploadToCloudinary()
 │   └── mail.ts                    # Plantillas de correo (nodemailer/Gmail)
 ├── firestore.rules                # Reglas de seguridad Firestore
-├── storage.rules                  # Reglas de seguridad Storage
 ├── firebase.json / .firebaserc    # Config Firebase (proyecto fitmania-e1748)
 ├── init_products.js               # Seed de productos (raíz)
 ├── verify_flow.js                 # Test de stock/orden (raíz)
@@ -399,7 +398,7 @@ Proyecto Firebase: **`fitmania-e1748`** (`.firebaserc`).
 ## 13. Reglas de seguridad
 
 ### Firestore (`firestore.rules`, rules_version '2')
-- Funciones auxiliares: `isSignedIn()`, `isOwner(uid)`, `isAdmin()` (`request.auth.token.admin == true`).
+- Funciones auxiliares: `isSignedIn()`, `isAdmin()` (`request.auth.token.admin == true`), `isReceptionist()` (`request.auth.token.receptionist == true`).
 - **`users/{uid}`**: read/update solo el dueño o admin; create del dueño; **delete prohibido** (el borrado se hace vía Admin SDK).
 - **`posts`**: read público; create autenticado con `autor_id == auth.uid` y campos obligatorios (`hasAll([...])`); update solo de `likes`/`comentarios` (`affectedKeys().hasOnly`); delete por autor o admin (moderación).
 - **`pqrs`**: read quien la creó o admin; create autenticado (`userId == auth.uid`); update/delete solo admin.
@@ -410,13 +409,10 @@ Proyecto Firebase: **`fitmania-e1748`** (`.firebaserc`).
 
 > Importante: el webhook escribe Firestore con **Firebase Admin SDK**, que **omite las reglas de seguridad** (es código de servidor con credenciales). Las reglas protegen el acceso del cliente.
 
-### Storage (`storage.rules`)
-- Solo imágenes (`image/*`) y < **5 MB**.
-- `users/{uid}/**`: write solo el dueño (fotos de perfil).
-- `posts/{uid}/**`: write solo el dueño (imágenes del foro).
-- Read público para ambos.
+### Storage
+Firebase Storage **no se usa** y su configuración fue eliminada (`storage.rules`, bloque `storage` de `firebase.json`, `getStorage`/`storage` en `lib/firebase.ts`). El deploy de reglas es solo `firebase deploy --only firestore:rules`.
 
-> En la práctica los avatares se suben a **Cloudinary** (`services/cloudinary.ts`, preset `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`) y la URL se guarda en `users/{uid}.photoURL`.
+> Todas las imágenes (avatares, foro) se suben a **Cloudinary** (`services/cloudinary.ts`, preset `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`) y la URL se guarda en `users/{uid}.photoURL` / `posts/{id}`.
 
 ---
 
@@ -429,7 +425,6 @@ Archivo: **`.env.local`** en `fitmania/fitmania/` (¡nunca subir a Git!). Nombre
 NEXT_PUBLIC_FIREBASE_API_KEY=
 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 NEXT_PUBLIC_FIREBASE_APP_ID=
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=

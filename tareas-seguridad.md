@@ -293,7 +293,7 @@ Nueva utilidad `lib/datetime.ts` (`getDateKeyInAppTz`, `formatInAppTz`) con `Int
 - T-12: replicar en Vercel `ADMIN_GATE_KEY`, `RECEPTION_GATE_KEY`, `ADMIN_AUTHORIZED_EMAIL`, `RECEPTION_AUTHORIZED_EMAIL`, `INTERNAL_MIDDLEWARE_SECRET`, `CRON_SECRET`, `UPSTASH_*`; limpiar variables obsoletas.
 - T-17: probar **checkout completo de Stripe** y login real (Firebase) ya en producción.
 - T-18: al desplegar, Vercel detecta `vercel.json` y activa el cron diario; definir `CRON_SECRET` para que la ruta no responda 401.
-- `firestore.rules`/`storage.rules`: `firebase deploy --only firestore:rules,storage:rules`.
+- `firestore.rules`: `firebase deploy --only firestore:rules` (Firebase Storage no se usa; su configuración fue eliminada).
 - Otorgar el claim `receptionist` a la cuenta de recepción si aún no lo tiene (`node scripts/manage-claims.js <email> receptionist on`).
 
 ## ⚡ Historial de ejecución (tareas de código, sin paneles externos)
