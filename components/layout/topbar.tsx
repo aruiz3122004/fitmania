@@ -1,0 +1,304 @@
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useState, useEffect, useRef } from 'react'
+import { ShoppingCart, User, Menu, X } from 'lucide-react'
+import { useCartStore, useAuthStore, useUIStore } from '@/lib/store'
+import { UserDropdown } from './user-dropdown'
+import { FitAvatar } from '@/components/ui/fit-avatar'
+import { auth, db } from '@/lib/firebase'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
+import { getAvatarUrlById } from '@/lib/avatar-utils'
+
+const navLinks = [
+  { href: '/', label: 'Inicio' },
+  { href: '/tienda', label: 'Tienda' },
+  { href: '/planes', label: 'Planes' },
+  { href: '/foro', label: 'Foro' },
+  { href: '/entrenadores', label: 'Entrenadores' },
+  { href: '/pqrs', label: 'PQRS' },
+]
+
+export function Topbar() {
+  const pathname = usePathname()
+  const cartCount = useCartStore((state) =>
+    state.items.reduce((count, item) => count + item.cantidad, 0),
+  )
+  const { user, isAuthenticated, setUser } = useAuthStore()
+  const { isMobileMenuOpen, setMobileMenuOpen, isUserDropdownOpen, setUserDropdownOpen } = useUIStore()
+  const [scrolled, setScrolled] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setUserDropdownOpen(false)
+      }
+    }
+
+    if (isUserDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isUserDropdownOpen, setUserDropdownOpen])
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 100)
+      if (isUserDropdownOpen) setUserDropdownOpen(false)
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        setUser(null)
+        return
+      }
+
+      try {
+        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid))
+        const raw = userDoc.data()
+        const avatarId = raw?.avatar || 'fitman'
+        const resolvedUrl = getAvatarUrlById(avatarId)
+        const photoURL = resolvedUrl || raw?.photoURL || getAvatarUrlById('fitman')
+
+        setUser({
+          uid: firebaseUser.uid,
+          username: raw?.username || firebaseUser.email?.split('@')[0] || 'Usuario',
+          email: firebaseUser.email || raw?.email || '',
+          gender: raw?.gender,
+          avatar: avatarId,
+          photoURL: photoURL,
+          peso: raw?.peso,
+          altura: raw?.altura,
+          plan: raw?.plan
+            ? {
+              ...raw.plan,
+              inicio: raw.plan.inicio?.toDate?.() || new Date(raw.plan.inicio),
+              expira: raw.plan.expira?.toDate?.() || new Date(raw.plan.expira),
+            }
+            : null,
+        })
+      } catch (error) {
+        console.error("Error al cargar perfil desde Firestore:", error);
+        // Fallback: Permitir navegación básica aunque no se pueda leer el perfil extendido
+        setUser({
+          uid: firebaseUser.uid,
+          username: firebaseUser.email?.split('@')[0] || 'Usuario',
+          email: firebaseUser.email || '',
+          avatar: 'fitman',
+          photoURL: getAvatarUrlById('fitman'),
+          plan: null,
+        })
+      }
+    })
+
+    return () => unsubscribe()
+  }, [setUser])
+
+  return (
+    <header
+      className={`fixed top-0 left-0 right-0 z-50 bg-primary border-b-4 border-secondary transition-shadow duration-300 ${scrolled ? 'shadow-[0_4px_30px_rgba(0,0,0,0.4)]' : 'shadow-[0_4px_20px_rgba(0,0,0,0.3)]'
+        }`}
+    >
+      {/* Helper component for calculating remaining days */}
+      {(() => {
+        const getDaysRemaining = () => {
+          if (!user?.plan?.expira) return null
+          const now = new Date()
+          const expira = new Date(user.plan.expira)
+          const diff = Math.ceil((expira.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+          return diff > 0 ? diff : 0
+        }
+        const daysRemaining = getDaysRemaining()
+        const isPremium = !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
+
+        return (
+          <div className="max-w-[1400px] mx-auto flex items-center justify-between px-8 h-[72px]">
+            {/* Logo */}
+            <Link
+              href="/"
+              onClick={() => {
+                setMobileMenuOpen(false)
+                setUserDropdownOpen(false)
+              }}
+              className="flex items-center gap-3 transition-transform hover:scale-[1.03]"
+            >
+              <FitAvatar
+                src="/Imagenes/Avatares/FitmanNEW.png"
+                alt="Fitmania logo"
+                size={50}
+                borderWidth="border-3"
+                borderColor="border-white"
+                bgColor="bg-secondary"
+                circleClassName="shadow-[0_0_0_2px_var(--navy)]"
+              />
+              <div className="flex flex-col">
+                <span className="font-display text-[1.8rem] text-white tracking-[2px] leading-none [text-shadow:2px_2px_0_var(--navy)]">
+                  FIT<span className="text-accent">MANIA</span>
+                </span>
+                <span className="font-label text-[0.65rem] text-white/85 tracking-[1.5px] uppercase">
+                  Tu Pasion. Tu Fuerza.
+                </span>
+              </div>
+            </Link>
+
+            {/* Desktop Navigation */}
+            <nav className="hidden lg:flex gap-2">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`font-heading font-bold text-[0.9rem] text-white px-4 py-2 uppercase tracking-[1px] relative transition-all border-2 border-transparent hover:bg-black/15 hover:border-white/20 ${pathname === link.href ? 'after:scale-x-100' : 'after:scale-x-0'
+                    } after:content-[''] after:absolute after:bottom-[2px] after:left-1/2 after:-translate-x-1/2 after:w-[70%] after:h-[3px] after:bg-accent after:transition-transform hover:after:scale-x-100`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3">
+              <Link
+                href="/carrito"
+                className="relative text-white p-2 transition-transform hover:scale-115 hover:-rotate-5"
+                aria-label="Carrito de compras"
+              >
+                <ShoppingCart className="w-6 h-6" strokeWidth={2.5} />
+                {cartCount > 0 && (
+                  <span className="absolute -top-[2px] -right-1 bg-accent text-secondary font-label font-bold text-[0.65rem] w-[18px] h-[18px] rounded-full flex items-center justify-center border-2 border-secondary">
+                    {cartCount}
+                  </span>
+                )}
+              </Link>
+
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setUserDropdownOpen(!isUserDropdownOpen)}
+                  className="text-white p-2 transition-transform hover:scale-115"
+                  aria-label="Mi cuenta"
+                >
+                  {isAuthenticated && user?.photoURL ? (
+                    <FitAvatar
+                      src={user.photoURL}
+                      alt="Avatar"
+                      size={28}
+                      borderColor="border-white"
+                      bgColor="bg-primary"
+                      isPremium={isPremium}
+                    />
+                  ) : (
+                    <User className="w-7 h-7" strokeWidth={2.5} />
+                  )}
+                </button>
+                {isUserDropdownOpen && <UserDropdown />}
+              </div>
+
+              {/* Hamburger */}
+              <button
+                className="lg:hidden flex flex-col gap-[5px] p-2"
+                onClick={() => setMobileMenuOpen(!isMobileMenuOpen)}
+                aria-label="Menu"
+              >
+                {isMobileMenuOpen ? (
+                  <X className="w-6 h-6 text-white" />
+                ) : (
+                  <Menu className="w-6 h-6 text-white" />
+                )}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Mobile Menu */}
+      {(() => {
+        const getDaysRemaining = () => {
+          if (!user?.plan?.expira) return null
+          const now = new Date()
+          const expira = new Date(user.plan.expira)
+          const diff = Math.ceil((expira.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+          return diff > 0 ? diff : 0
+        }
+        const daysRemaining = getDaysRemaining()
+        const isPremium = !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
+
+        return (
+          <div
+            className={`lg:hidden fixed inset-0 top-[72px] bg-secondary/95 backdrop-blur-md z-40 overflow-y-auto transition-all duration-400 ease-in-out ${isMobileMenuOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full pointer-events-none'
+              }`}
+          >
+            <div className="flex flex-col p-8 gap-2 min-h-full pb-24">
+              <span className="font-label text-xs text-white/50 uppercase tracking-widest mb-4">Navegación</span>
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="font-display italic text-3xl text-white py-4 border-b-2 border-white/10 uppercase tracking-wider hover:text-accent hover:pl-4 transition-all duration-300"
+                >
+                  {link.label}
+                </Link>
+              ))}
+
+              <div className="mt-8 flex-1 flex flex-col justify-end">
+                <span className="font-label text-xs text-white/50 uppercase tracking-widest mb-4 block">Cuenta</span>
+                {!isAuthenticated ? (
+                  <Link
+                    href="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center justify-center gap-3 bg-primary text-white p-4 rounded-xl border-4 border-black shadow-comic-sm font-label font-bold uppercase tracking-widest text-sm hover:bg-black transition-colors"
+                  >
+                    <User className="w-5 h-5" strokeWidth={2.5} /> Iniciar Sesión / Regístrate
+                  </Link>
+                ) : (
+                  <div className="bg-white rounded-2xl p-4 border-4 border-black shadow-comic-sm flex flex-col gap-4">
+                    <div className="flex items-center gap-4">
+                      {user?.photoURL ? (
+                        <FitAvatar
+                          src={user.photoURL}
+                          alt="Avatar"
+                          size={48}
+                          borderWidth="border-3"
+                          borderColor="border-black"
+                          bgColor="bg-primary"
+                          isPremium={isPremium}
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-primary rounded-full border-3 border-black flex items-center justify-center text-white">
+                          <User className="w-6 h-6" strokeWidth={2.5} />
+                        </div>
+                      )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-display italic text-xl text-secondary uppercase truncate">{user?.username}</span>
+                        <span className="font-label text-xs text-gray-500 truncate">{user?.email}</span>
+                      </div>
+                    </div>
+                    <Link
+                      href="/perfil"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="text-center font-label font-bold text-xs text-secondary bg-gray-100 p-3 rounded-xl uppercase tracking-wider hover:bg-gray-200 transition-colors"
+                    >
+                      Configuración de Cuenta
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+    </header>
+  )
+}

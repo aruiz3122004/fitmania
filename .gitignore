@@ -1,0 +1,56 @@
+# v0 sandbox internal files
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+.snowflake/
+.v0-trash/
+.vercel/
+next.user-config.*
+
+# Environment variables
+.env*.local
+
+# Common ignores
+node_modules
+.vercel
+.next/
+.DS_Store
+
+# Diagnostic, Test and Fix Scripts
+app/api/test-admin/
+fix_env.js
+deep_diag.js
+tmp_check_key.js
+tmp_fix_key.js
+verify_flow.js
+init_products.js
+
+tmp/
+test-ratelimit.js
+
+# Simulation Scripts and Keys
+scripts/
+scratch/
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!components.json
+!firebase.json
+
+# Firebase Admin SDK specific
+*adminsdk*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.log
+
+# TypeScript build cache (machine-specific, regenerates on build)
+*.tsbuildinfo
+
+*.fitmania_architecture.md
+*.fitmania_security.md
+*.fitmania_flow.md
+*.fitmania_flow.md
