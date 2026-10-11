@@ -25,6 +25,7 @@ Aplicación construida con **Next.js (App Router)** + **Firebase** + **Stripe**,
 15. [Scripts y datos de prueba](#15-scripts-y-datos-de-prueba)
 16. [Instalación y ejecución](#16-instalación-y-ejecución)
 17. [Notas técnicas y despliegue](#17-notas-técnicas-y-despliegue)
+18. [Pruebas](#18-pruebas)
 
 ---
 
@@ -52,10 +53,10 @@ La UI usa un **estilo cómic/superhéroe** (colores rojo/azul/amarillo, bordes g
 | Lenguaje | TypeScript 5.7 |
 | Estilos | Tailwind CSS v4 + shadcn/ui (Radix UI) + `tw-animate-css` |
 | Estado global | zustand 5 (carrito, sesión, UI) |
-| Backend/Firebase | Firebase 12 (Auth, Firestore, Storage) |
+| Backend/Firebase | Firebase 12 (Auth, Firestore) |
 | Admin SDK | firebase-admin 13 (autoridad para webhooks y rutas API) |
 | Pagos | Stripe 21 (`PaymentIntent`, currency `cop`) |
-| Correos | nodemailer (Gmail SMTP) |
+| Correos | nodemailer (Gmail SMTP, timeouts + hasta 3 reintentos, envío en segundo plano) |
 | Imágenes | Cloudinary (subida de avatares/perfil) |
 | QR | `@yudiel/react-qr-scanner` + `react-qr-code` |
 | Export a Excel | exceljs (exportación de ingresos de recepción) |
@@ -98,7 +99,7 @@ fitmania/
 │   │   │   └── log-block/route.ts     # POST: registra bloqueos (secreto interno)
 │   │   └── stripe/
 │   │       ├── create-payment/route.ts# POST: crea PaymentIntent en COP
-│   │       └── webhook/route.ts       # POST: evento Stripe → stock, órdenes, planes, emails
+│   │       └── webhook/route.ts       # POST: evento Stripe → stock, órdenes, planes, emails en 2.º plano
 │   ├── carrito/page.tsx           # Carrito de compras
 │   ├── entrenadores/page.tsx      # Entrenadores
 │   ├── fitception/page.tsx        # Panel de recepción — oculto (QR check-in)
@@ -108,7 +109,7 @@ fitmania/
 │   ├── pago/
 │   │   ├── page.tsx               # Checkout Stripe (CardElement) — /pago?concepto&monto
 │   │   └── resultado/page.tsx     # Resultado del pago (redirect_status)
-│   ├── perfil/page.tsx            # Perfil: avatar, datos, acompañante del plan
+│   ├── perfil/page.tsx            # Perfil: avatar, datos, acompañante + botón de acceso al panel (roles)
 │   ├── planes/page.tsx            # Página de planes
 │   ├── pqrs/page.tsx              # Formulario PQRS
 │   ├── registro/page.tsx          # Registro de usuarios
@@ -126,6 +127,7 @@ fitmania/
 │   ├── audit-logger.ts            # Registro de auditoría
 │   ├── datetime.ts                # Fechas en America/Bogota (T-20)
 │   ├── notifications.ts           # Generación de avisos de plan por vencer (T-18)
+│   ├── panel-access.ts            # Acceso directo a paneles por rol (hook usePanelAccess + enterPanel)
 │   ├── rate-limit-client.ts       # Helpers de rate limit (cliente)
 │   ├── store.ts                   # zustand: carrito, auth, UI
 │   ├── avatar-utils.ts            # Avatares (getAvatarUrlById)
@@ -139,7 +141,7 @@ fitmania/
 │   └── simulate_sale.js           # Simula compra con Admin SDK
 ├── services/
 │   ├── cloudinary.ts              # uploadToCloudinary()
-│   └── mail.ts                    # Plantillas de correo (nodemailer/Gmail)
+│   └── mail.ts                    # Plantillas + envío endurecido (timeouts SMTP, reintentos, logs [mail])
 ├── firestore.rules                # Reglas de seguridad Firestore
 ├── firebase.json / .firebaserc    # Config Firebase (proyecto fitmania-e1748)
 ├── init_products.js               # Seed de productos (raíz)
@@ -167,9 +169,9 @@ fitmania/
 | `/foro` | `app/foro/page.tsx` | Foro: noticias + posts con likes/comentarios |
 | `/pqrs` | `app/pqrs/page.tsx` | Formulario de Peticiones/Quejas/Reclamos/Sugerencias |
 | `/entrenadores` | `app/entrenadores/page.tsx` | Equipo de entrenadores |
-| `/perfil` | `app/perfil/page.tsx` | Datos del usuario, avatar, acompañante del plan |
-| `/fitministration` | `app/fitministration/page.tsx` | Panel admin — **oculto** (requiere llave `?key=` + login con claim `admin`) |
-| `/fitception` | `app/fitception/page.tsx` | Estación de recepción — **oculta** (requiere llave `?key=` + login con email autorizado) |
+| `/perfil` | `app/perfil/page.tsx` | Datos del usuario, avatar, acompañante del plan + botón de acceso al panel (solo roles) |
+| `/fitministration` | `app/fitministration/page.tsx` | Panel admin — **oculto** (llave `?key=` o botón por rol + login con claim `admin`) |
+| `/fitception` | `app/fitception/page.tsx` | Estación de recepción — **oculta** (llave `?key=` o botón por rol + login con email autorizado y claim) |
 
 La navegación pública se define en `components/layout/topbar.tsx` (`navLinks`: Inicio, Tienda, Planes, Foro, Entrenadores, PQRS) y es la misma barra usada en todas las páginas junto con `Footer`.
 
@@ -483,7 +485,7 @@ La PRIVATE_KEY suele traer `\n` literales: `lib/firebase-admin.ts` los convierte
 | `scripts/simulate_sale.js` | Simula una venta completa con el Admin SDK: usuario+producto, descuenta stock, crea orden y notificaciones y activa un plan. ⚠️ **Tiene ruta fija** al JSON de la cuenta de servicio (`C:\Users\...\fitmania-e1748-firebase-adminsdk-*.json`) — ajustarla o migrarla a `.env.local`. |
 | `verify_flow.js` (raíz) | Prueba el flujo de compra masiva + alerta de stock bajo (compra 14 unidades de `creatina`, genera orden y notificación `low_stock`). |
 
-Para desplegar reglas: `firebase deploy --only firestore:rules,storage:rules` (proyecto `fitmania-e1748`).
+Para desplegar reglas: `firebase deploy --only firestore:rules` (proyecto `fitmania-e1748`). Firebase Storage no se usa y fue eliminado del proyecto y del código.
 
 ---
 
@@ -560,11 +562,38 @@ El pago se confirma **dos veces**:
 
 ### Despliegue
 - La app vive desplegada en **Vercel** (`.vercel`).
-- Firebase (Auth, Firestore, Storage, rules) en el proyecto **`fitmania-e1748`**.
+- Firebase (Auth + Firestore y sus reglas) en el proyecto **`fitmania-e1748`**.
 - Para nuevos entornos, configurar las variables de §14 en el dashboard de Vercel.
 
 ### Archivos auxiliares
 - `deep_diag.js`, `fix_env.js`, `tmp_check_key.js`, `tmp_fix_key.js`: utilidades de diagnóstico temporales en la raíz (no forman parte del flujo de la app).
+
+---
+
+## 18. Pruebas
+
+Todo se puede probar en local (`npm run dev` → `http://localhost:3000`). Mantén la terminal del servidor a la vista: los logs de correo (`[mail]`, `[webhook]`) salen ahí.
+
+### Acceso directo por rol (botón, sin llave)
+1. Login en `/login` con la cuenta admin → el menú de cuenta y `/perfil` muestran el botón rojo **"Panel de Administración"**. Clic → llegas a `/fitministration` ya dentro (sin `?key=` ni contraseña).
+2. Repetir con la cuenta de recepción → botón verde **"Panel de Recepción"** → llegas a `/fitception` ya dentro.
+3. Con un usuario normal (sin claim) **no aparece ningún botón** ni en el menú ni en `/perfil`.
+4. En incógnito y sin sesión, `/fitception` y `/fitministration` responden **404** (la puerta por llave sigue protegiendo el acceso directo por URL).
+> Si el botón no aparece, cierra sesión del sitio y vuelve a entrar (el token en caché puede no traer el claim todavía).
+
+### Correos (Gmail SMTP endurecido)
+1. Como usuario normal, crea una **PQRS** en `/pqrs` con un correo cuya bandeja puedas revisar.
+2. Como admin (entra con el botón nuevo), responde ese ticket desde la pestaña **PQRS** del panel.
+3. En la terminal debe salir `[mail] Enviado a <correo> (id: ..., intento 1/3)` y el correo debe llegar (revisar también **spam**).
+4. Para ver los reintentos: pon temporalmente un `GMAIL_APP_PASSWORD` falso en `.env.local`, reinicia y responde otra PQRS → verás los intentos 1/3, 2/3 y 3/3 en el log. Luego **restaura** el valor real.
+
+### Pago completo + correo (avanzado)
+Requiere **Stripe CLI** (no viene instalado):
+1. `stripe login` y luego `stripe listen --forward-to localhost:3000/api/stripe/webhook` (imprime un secreto `whsec_...`).
+2. Pon **temporalmente** ese `whsec_...` como `STRIPE_WEBHOOK_SECRET` en `.env.local` y reinicia el dev.
+3. Compra en `/pago` con la tarjeta de prueba `4242 4242 4242 4242` usando tu propio email como comprador.
+4. Verifica: orden/plan creados en Firestore, `[mail] Enviado...` en la terminal y correo recibido.
+5. **Restaura** el `STRIPE_WEBHOOK_SECRET` original y reinicia.
 
 ---
 
