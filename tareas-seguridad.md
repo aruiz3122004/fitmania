@@ -294,7 +294,7 @@ Nueva utilidad `lib/datetime.ts` (`getDateKeyInAppTz`, `formatInAppTz`) con `Int
 - T-17: probar **checkout completo de Stripe** y login real (Firebase) ya en producción.
 - T-18: al desplegar, Vercel detecta `vercel.json` y activa el cron diario; definir `CRON_SECRET` para que la ruta no responda 401.
 - `firestore.rules`: `firebase deploy --only firestore:rules` (Firebase Storage no se usa; su configuración fue eliminada).
-- Otorgar el claim `receptionist` a la cuenta de recepción si aún no lo tiene (`node scripts/manage-claims.js <email> receptionist on`).
+- Claim `receptionist` ya otorgado a `arturosce56@gmail.com` (verificado con `manage-claims.js`; solo falta re-login en `/fitception`).
 
 ## ⚡ Historial de ejecución (tareas de código, sin paneles externos)
 
@@ -315,5 +315,8 @@ Nueva utilidad `lib/datetime.ts` (`getDateKeyInAppTz`, `formatInAppTz`) con `Int
 15. ✅ **T-16** — claims centralizados (`admin/users` + `manage-claims.js`).
 16. ✅ **T-17** — CSP estricta con nonces (`middleware.ts` + `force-dynamic`).
 17. ✅ **T-18** — notificaciones vía Vercel Cron (`/api/cron/notifications`) + GET solo lectura.
+18. ✅ **Acceso directo por rol** — `lib/panel-access.ts`: botón en el menú de cuenta + `/perfil` (solo visible con claim `admin`/`receptionist`) que intercambia el ID token fresco por la cookie del panel (sin llave `?key=` ni re-login; el servidor re-valida el claim y el correo).
+19. ✅ **Correos endurecidos** — `services/mail.ts` con timeouts SMTP explícitos (10/10/15 s) + hasta 3 reintentos con backoff y logs `[mail]`; el webhook de Stripe envía en segundo plano con `after()` (`maxDuration = 30`) para responder 2xx rápido.
+20. ✅ **Deploy de reglas + limpieza Storage** — `firestore.rules` desplegadas a `fitmania-e1748` (sin la función muerta `isOwner`); Firebase Storage eliminado del proyecto y del código (no se usaba; imágenes vía Cloudinary).
 
 *(Las externas — T-03, T-11-CFG, T-12-CFG y el deploy de reglas — requieren tus credenciales/paneles; guía exacta en cada tarea.)*

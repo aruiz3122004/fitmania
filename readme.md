@@ -199,9 +199,9 @@ La navegación pública se define en `components/layout/topbar.tsx` (`navLinks`:
 ### Roles
 - **Usuario normal**: creado en Auth + documento `users/{uid}`.
 - **Admin**: usuario con el **custom claim** `{ admin: true }` en Firebase Auth. Bootstrap: `node scripts/grant-admin.js <email>`.
-- **Recepcionista**: el **claim** `{ receptionist: true }` se asigna automáticamente al hacer login con un correo que coincida con `RECEPTION_AUTHORIZED_EMAIL`.
+- **Recepcionista**: usuario con el **custom claim** `{ receptionist: true }` (gestionado centralmente con `node scripts/manage-claims.js <email> receptionist on`; ya no se auto-otorga en el login, T-16).
 
-> Los dos paneles internos son URLs **invisibles** (`/fitministration` y `/fitception`); no aparecen en el menú público y exigen primero la llave `?key=` (ver [§7](#7-panel-de-administración) y [§8](#8-panel-de-recepción)).
+> Los dos paneles internos son URLs **invisibles** (`/fitministration` y `/fitception`); no aparecen en el menú público y exigen primero la llave `?key=` (ver [§7](#7-panel-de-administración) y [§8](#8-panel-de-recepción)). Las cuentas con rol (`admin`/`receptionist`) además ven un **botón de acceso directo** en el menú de su cuenta y en **`/perfil`** (`lib/panel-access.ts`): reutiliza la sesión de Firebase ya activa e intercambia el ID token fresco por la cookie del panel en el servidor (sin llave ni re-login; el servidor re-valida el claim).
 
 ---
 
@@ -253,7 +253,7 @@ const paymentIntent = await stripe.paymentIntents.create({
    - Limpia el carrito.
    - Muestra pantalla de éxito.
    - ⚠️ **No escribe el plan en Firestore**: la activación/renovación la hace **solo el webhook** (T-06). Antes el cliente actualizaba `users/{uid}.plan` directamente y el endpoint `/api/send-email` enviaba el correo (ambos eliminados).
-5. El correo de confirmación/recibo lo envía el **webhook** (firmado por Stripe), no el cliente.
+5. El correo de confirmación/recibo lo envía el **webhook** (firmado por Stripe), no el cliente: los envíos corren **en segundo plano** con `after()` (`maxDuration = 30` en la ruta) para responder rápido a Stripe, y `services/mail.ts` usa **timeouts explícitos** (10 s conexión/saludo, 15 s socket) + **hasta 3 reintentos** con backoff y logs `[mail]`.
 
 ### 6.5 Webhook de Stripe — `POST /api/stripe/webhook`
 Es el **procesador autoritativo** de pagos. Verifica la firma con `stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET)`.
@@ -291,6 +291,8 @@ El panel vive en una URL **oculta** y protegida en dos capas (`components/admin/
 
 Si pasa ambas capas, el servidor crea una **cookie `HttpOnly`** (`fitmania_session`, 1 h) que las rutas `/api/admin/*` re-validan con `verifyAdminRequest`.
 
+3. **Acceso directo (1 clic)**: las cuentas con rol `admin` ven un botón en el **menú de su cuenta** y en **`/perfil`** (`lib/panel-access.ts`, `enterPanel`). Reutiliza la sesión de Firebase ya activa enviando el ID token fresco a `POST /api/admin/login`, que crea la cookie y redirige al panel (sin llave ni contraseña; el servidor re-valida el claim y el correo).
+
 > ¿Cómo hago que mi cuenta sea admin (primera vez)? `node scripts/grant-admin.js <email>` desde la carpeta del proyecto (lee `.env.local` y asigna `{ admin: true }`). Luego cierra sesión y vuelve a entrar para que Firebase emita un token con el claim.
 
 ### Dashboard (`app/fitministration/page.tsx`)
@@ -319,7 +321,8 @@ Estación de control de ingresos del gimnasio en `/fitception` (URL también **o
 
 ### Acceso (doble capa) — `reception-login-form.tsx`
 1. **Puerta de llave**: al visitar `/fitception` el middleware exige `?key=<RECEPTION_GATE_KEY>` (o cookie `fitmania_reception_gate` válida por 1 hora, o una sesión de recepción ya iniciada). Sin esto responde **404**.
-2. **Login real**: `signInWithEmailAndPassword` de Firebase, y luego `POST /api/recepcion/login` exige que el correo coincida exactamente con **`RECEPTION_AUTHORIZED_EMAIL`** (si la variable no está definida, el servidor responde 500). Al loguearse se **asigna automáticamente el claim `receptionist: true`** para las reglas de Firestore.
+2. **Login real**: `signInWithEmailAndPassword` de Firebase, y luego `POST /api/recepcion/login` exige que el correo coincida exactamente con **`RECEPTION_AUTHORIZED_EMAIL`** (si la variable no está definida, el servidor responde 500) **y** que la cuenta tenga el claim `receptionist: true` (T-16: ya no se auto-otorga; se gestiona con `manage-claims.js` o el panel admin).
+3. **Acceso directo (1 clic)**: las cuentas con rol ven un botón en el **menú de su cuenta** y en **`/perfil`** (`lib/panel-access.ts`, `enterPanel`). Reutiliza la sesión de Firebase ya activa enviando el ID token fresco a `POST /api/recepcion/login`, que crea la cookie y redirige al panel (sin llave ni contraseña).
 
 La sesión se guarda en la cookie `HttpOnly` `fitmania_reception_session` (1 h).
 
@@ -534,6 +537,7 @@ El pago se confirma **dos veces**:
 
 ### Seguridad del admin
 - Acceso en dos capas: **puerta de llave** (`?key=ADMIN_GATE_KEY` en el middleware) + **login Firebase** que exige el custom claim `admin:true` (y `ADMIN_AUTHORIZED_EMAIL` si está definida).
+- El **botón de acceso directo** (`lib/panel-access.ts`, menú de cuenta + `/perfil`) no agrega confianza nueva: reutiliza el ID token de la sesión ya activa y el servidor **re-valida el claim** en `POST /api/admin/login` antes de crear la cookie.
 - El claim `admin:true` se asigna con `node scripts/grant-admin.js <email>` o `node scripts/manage-claims.js <email> admin on`.
 - La sesión usa **session cookies de Firebase** (`createSessionCookie` + `verifySessionCookie(..., checkRevoked)`) → revocables (T-15). La cookie es `HttpOnly` `fitmania_session` (1 h).
 - **Todas** las rutas `/api/admin/*` re-validan la sesión con `verifyAdminRequest` (incluida `/api/admin/planes`, T-05).
@@ -541,6 +545,7 @@ El pago se confirma **dos veces**:
 
 ### Seguridad de recepción
 - Doble capa: **puerta de llave** (`?key=RECEPTION_GATE_KEY` en el middleware) + **login Firebase** que exige que el correo coincida con `RECEPTION_AUTHORIZED_EMAIL` **y** que la cuenta tenga el claim `receptionist:true`.
+- El **botón de acceso directo** (`lib/panel-access.ts`, menú de cuenta + `/perfil`) no agrega confianza nueva: reutiliza el ID token de la sesión ya activa y el servidor **re-valida el claim y el correo** en `POST /api/recepcion/login` antes de crear la cookie.
 - El claim `receptionist` **ya no se auto-otorga** en el login (T-16): se gestiona centralmente (panel admin o `node scripts/manage-claims.js <email> receptionist on`). Al retirarlo se revocan las sesiones del usuario.
 - La sesión vive en la cookie `HttpOnly` `fitmania_reception_session` (session cookie de Firebase, 1 h, revocable).
 

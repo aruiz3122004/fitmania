@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import Stripe from 'stripe'
 import { 
   sendPaymentSuccessEmail, 
@@ -11,6 +11,22 @@ import { formatInAppTz } from '@/lib/datetime'
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-03-25.dahlia',
 })
+
+// Los correos se envían en segundo plano para responder rápido a Stripe (2xx).
+// Sin esto, un envío lento supera el límite de la función serverless y se pierde.
+export const maxDuration = 30
+
+/** Ejecuta el envío de correo después de responder, registrando el fallo sin romper el webhook. */
+function sendEmailInBackground(task: () => Promise<unknown>, context: string) {
+  after(() =>
+    task().catch((emailErr: any) => {
+      console.error(
+        `[webhook] No se pudo enviar el correo (${context}) tras los reintentos:`,
+        emailErr?.message || emailErr
+      )
+    })
+  )
+}
 
 const BANCOS_PSE = [
   { codigo: '1007', nombre: 'Bancolombia' },
@@ -132,16 +148,20 @@ export async function POST(req: NextRequest) {
             })
           })
 
-          // Enviar recibo detallado
-          await sendOrderReceiptEmail({
-            to: meta.customerEmail,
-            customerName: meta.customerName,
-            items: itemsToProcess,
-            total: paymentIntent.amount / 100,
-            bank: bancoNombre,
-            date: dateStr,
-            transactionId: paymentIntent.id
-          })
+          // Enviar recibo detallado (en segundo plano, sin bloquear la respuesta a Stripe).
+          sendEmailInBackground(
+            () =>
+              sendOrderReceiptEmail({
+                to: meta.customerEmail,
+                customerName: meta.customerName,
+                items: itemsToProcess,
+                total: paymentIntent.amount / 100,
+                bank: bancoNombre,
+                date: dateStr,
+                transactionId: paymentIntent.id,
+              }),
+            'recibo-orden'
+          )
 
         } catch (error) {
           console.error('Error procesando productos en webhook:', error)
@@ -199,15 +219,20 @@ export async function POST(req: NextRequest) {
             })
           })
 
-          await sendPaymentSuccessEmail({
-            to: meta.customerEmail,
-            customerName: meta.customerName,
-            amount: paymentIntent.amount / 100,
-            concept: meta.concept,
-            bank: bancoNombre,
-            date: dateStr,
-            transactionId: paymentIntent.id,
-          })
+          // Confirmación de plan (en segundo plano; el plan ya quedó activado arriba).
+          sendEmailInBackground(
+            () =>
+              sendPaymentSuccessEmail({
+                to: meta.customerEmail,
+                customerName: meta.customerName,
+                amount: paymentIntent.amount / 100,
+                concept: meta.concept,
+                bank: bancoNombre,
+                date: dateStr,
+                transactionId: paymentIntent.id,
+              }),
+            'confirmacion-plan'
+          )
 
           console.log(`Plan activado para ${meta.uid}`)
         } catch (dbErr: any) {
@@ -220,10 +245,14 @@ export async function POST(req: NextRequest) {
     case 'payment_intent.payment_failed': {
       const meta = paymentIntent.metadata
       if (meta.customerEmail) {
-        await sendPaymentFailedEmail({
-          to: meta.customerEmail,
-          customerName: meta.customerName,
-        })
+        sendEmailInBackground(
+          () =>
+            sendPaymentFailedEmail({
+              to: meta.customerEmail,
+              customerName: meta.customerName,
+            }),
+          'pago-rechazado'
+        )
       }
       break
     }

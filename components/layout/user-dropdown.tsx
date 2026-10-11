@@ -4,13 +4,14 @@ import Link from 'next/link'
 import { ChangeEvent, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore, useUIStore } from '@/lib/store'
-import { LogOut, Settings, UserCircle } from 'lucide-react'
+import { LogOut, Settings, UserCircle, ShieldCheck, QrCode, Loader2 } from 'lucide-react'
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { auth, db } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
 import { doc, updateDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore'
 import { uploadToCloudinary } from '@/services/cloudinary'
+import { usePanelAccess, enterPanel } from '@/lib/panel-access'
 
 export function UserDropdown() {
   const router = useRouter()
@@ -18,6 +19,23 @@ export function UserDropdown() {
   const { setUserDropdownOpen } = useUIStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isSavingAvatar, setIsSavingAvatar] = useState(false)
+
+  // Acceso a paneles internos (solo visible para roles con claim admin/receptionist).
+  const { role, loading: loadingRole, label: panelLabel } = usePanelAccess()
+  const [isEnteringPanel, setIsEnteringPanel] = useState(false)
+  const [panelError, setPanelError] = useState('')
+
+  const handleEnterPanel = async () => {
+    if (!role) return
+    setPanelError('')
+    setIsEnteringPanel(true)
+    try {
+      await enterPanel(role)
+    } catch (err: any) {
+      setPanelError(err?.message || 'No se pudo abrir el panel.')
+      setIsEnteringPanel(false)
+    }
+  }
 
   const handleClose = () => setUserDropdownOpen(false)
 
@@ -237,6 +255,35 @@ export function UserDropdown() {
             </div>
           </div>
         </div>
+
+        {/* Acceso al panel interno (solo roles con claim admin/receptionist) */}
+        {!loadingRole && role && (
+          <div className="p-3 bg-zinc-900 border-t-2 border-gray-200">
+            <button
+              onClick={handleEnterPanel}
+              disabled={isEnteringPanel}
+              className={`w-full flex items-center justify-center gap-3 px-3 py-3 border-2 border-white rounded-xl transition-all active:translate-y-1 disabled:opacity-50 ${
+                role === 'admin' ? 'bg-primary hover:bg-red-dark' : 'bg-green-600 hover:bg-green-700'
+              }`}
+            >
+              {isEnteringPanel ? (
+                <Loader2 className="w-5 h-5 text-white animate-spin" />
+              ) : role === 'admin' ? (
+                <ShieldCheck className="w-5 h-5 text-white" />
+              ) : (
+                <QrCode className="w-5 h-5 text-white" />
+              )}
+              <span className="font-label text-sm text-white font-black uppercase tracking-widest">
+                {isEnteringPanel ? 'Abriendo panel...' : panelLabel}
+              </span>
+            </button>
+            {panelError && (
+              <p className="mt-2 font-label text-[10px] font-bold text-red-400 uppercase text-center leading-tight">
+                {panelError}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Menu Options */}
         <div className="p-3 bg-zinc-50 border-t-2 border-gray-200 flex sm:flex-col gap-2">

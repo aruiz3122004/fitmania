@@ -11,6 +11,7 @@ import { doc, updateDoc } from 'firebase/firestore'
 import { Save, UserCircle, Camera, Loader2, ShieldCheck, Clock, Calendar, QrCode, Users } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import QRCode from 'react-qr-code'
+import { usePanelAccess, enterPanel } from '@/lib/panel-access'
 
 const formatDate = (dateValue: any) => {
   if (!dateValue) return 'N/A';
@@ -31,6 +32,23 @@ export default function PerfilPage() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Acceso al panel interno (solo visible para roles con claim admin/receptionist).
+  const { role, loading: loadingRole, label: panelLabel } = usePanelAccess()
+  const [isEnteringPanel, setIsEnteringPanel] = useState(false)
+  const [panelError, setPanelError] = useState('')
+
+  const handleEnterPanel = async () => {
+    if (!role) return
+    setPanelError('')
+    setIsEnteringPanel(true)
+    try {
+      await enterPanel(role)
+    } catch (err: any) {
+      setPanelError(err?.message || 'No se pudo abrir el panel.')
+      setIsEnteringPanel(false)
+    }
+  }
 
   // Companion State
   const [compNombre, setCompNombre] = useState(user?.plan?.acompanante?.nombre || '')
@@ -268,6 +286,42 @@ export default function PerfilPage() {
 
             {status && <p className="mt-4 font-label text-sm text-gray-600">{status}</p>}
           </div>
+
+          {/* Acceso al personal (solo roles con claim admin/receptionist) */}
+          {!loadingRole && role && (
+            <div className="mt-8 bg-zinc-900 border-3 border-black shadow-[8px_8px_0_0_rgba(220,38,38,1)] p-6 flex flex-col sm:flex-row items-center gap-4 animate-in slide-in-from-bottom-4 duration-500">
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border-4 border-black shrink-0 ${role === 'admin' ? 'bg-primary' : 'bg-green-600'}`}>
+                {role === 'admin' ? (
+                  <ShieldCheck className="w-7 h-7 text-white" />
+                ) : (
+                  <QrCode className="w-7 h-7 text-white" />
+                )}
+              </div>
+              <div className="flex-1 text-center sm:text-left">
+                <h3 className="font-display text-2xl tracking-[2px] text-white uppercase">Acceso al personal</h3>
+                <p className="font-label text-xs text-white/60 uppercase tracking-widest">
+                  Tu cuenta tiene rol de {role === 'admin' ? 'administrador' : 'recepción'}
+                </p>
+                {panelError && (
+                  <p className="font-label text-xs text-red-400 font-bold mt-1">{panelError}</p>
+                )}
+              </div>
+              <button
+                onClick={handleEnterPanel}
+                disabled={isEnteringPanel}
+                className="inline-flex items-center gap-2 font-label font-black text-sm text-white bg-primary px-6 py-3 border-2 border-white shadow-comic-sm hover:bg-red-dark transition-all disabled:opacity-50 uppercase tracking-widest shrink-0"
+              >
+                {isEnteringPanel ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : role === 'admin' ? (
+                  <ShieldCheck className="w-4 h-4" />
+                ) : (
+                  <QrCode className="w-4 h-4" />
+                )}
+                {isEnteringPanel ? 'Abriendo...' : panelLabel}
+              </button>
+            </div>
+          )}
 
           {/* Sección de Membresía */}
           {user?.plan && (

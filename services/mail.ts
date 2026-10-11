@@ -1,12 +1,60 @@
 import nodemailer from 'nodemailer'
+import type { Transporter, SendMailOptions } from 'nodemailer'
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD, // App Password de Google, NO tu contraseña normal
-  },
-})
+const GMAIL_USER = process.env.GMAIL_USER
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD
+
+/**
+ * Crea el transporte SMTP de Gmail con timeouts explícitos.
+ *
+ * Sin timeouts, un envío lento puede colgar la función serverless hasta el
+ * límite de Vercel y el correo se pierde (el webhook no reintenta el envío).
+ */
+function getTransporter(): Transporter {
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    throw new Error('Faltan GMAIL_USER o GMAIL_APP_PASSWORD en las variables de entorno.')
+  }
+
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+      user: GMAIL_USER,
+      pass: GMAIL_APP_PASSWORD, // App Password de Google, NO tu contraseña normal
+    },
+    connectionTimeout: 10_000, // 10 s para conectar
+    greetingTimeout: 10_000, // 10 s para el saludo SMTP
+    socketTimeout: 15_000, // 15 s de inactividad máxima
+  })
+}
+
+/**
+ * Envía un correo con reintentos (backoff progresivo). Gmail falla de forma
+ * intermitente desde serverless; sin reintentos el correo se pierde para siempre.
+ */
+async function sendWithRetry(mail: SendMailOptions, maxAttempts = 3) {
+  const transporter = getTransporter()
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const info = await transporter.sendMail(mail)
+      console.log(`[mail] Enviado a ${mail.to} (id: ${info.messageId}, intento ${attempt}/${maxAttempts})`)
+      return info
+    } catch (err: any) {
+      lastError = err
+      console.error(
+        `[mail] Intento ${attempt}/${maxAttempts} falló para ${mail.to}: ${err?.code || err?.message || err}`
+      )
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
+      }
+    }
+  }
+
+  throw lastError
+}
 
 interface PaymentEmailData {
   to: string
@@ -130,8 +178,8 @@ export async function sendPaymentSuccessEmail(data: PaymentEmailData) {
     </html>
   `
 
-  await transporter.sendMail({
-    from: `"Fitmania" <${process.env.GMAIL_USER}>`,
+  await sendWithRetry({
+    from: `"Fitmania" <${GMAIL_USER}>`,
     to: data.to,
     subject: '✅ ¡Pago Exitoso! - Fitmania',
     html,
@@ -204,8 +252,8 @@ export async function sendPaymentFailedEmail(data: Pick<PaymentEmailData, 'to' |
     </html>
   `
 
-  await transporter.sendMail({
-    from: `"Fitmania" <${process.env.GMAIL_USER}>`,
+  await sendWithRetry({
+    from: `"Fitmania" <${GMAIL_USER}>`,
     to: data.to,
     subject: '❌ Pago Rechazado - Fitmania',
     html,
@@ -280,8 +328,8 @@ export async function sendOrderReceiptEmail(data: OrderReceiptData) {
     </html>
   `
 
-  await transporter.sendMail({
-    from: `"Fitmania" <${process.env.GMAIL_USER}>`,
+  await sendWithRetry({
+    from: `"Fitmania" <${GMAIL_USER}>`,
     to: data.to,
     subject: '🛍️ Recibo de Compra - Fitmania',
     html,
@@ -342,8 +390,8 @@ export async function sendPqrsReplyEmail(data: PqrsReplyData) {
     </html>
   `
 
-  await transporter.sendMail({
-    from: `"Fitmania" <${process.env.GMAIL_USER}>`,
+  await sendWithRetry({
+    from: `"Fitmania" <${GMAIL_USER}>`,
     to: data.to,
     subject: '📝 Respuesta a tu PQRS - Fitmania',
     html,

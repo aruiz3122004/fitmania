@@ -122,7 +122,8 @@
 | 9 | **Identidad QR = UID del usuario** | QR con hash secreto | El UID es estable y único; la recepción lee el código y consulta el estado del plan en vivo. El QR **no** contiene información sensible, solo referencia. |
 | 10 | **Cloudinary para subida de imágenes** | Firebase Storage directo | Preset firmado/semi-privado, entrega por CDN y transformaciones. **Firebase Storage quedó fuera**: no se usa y su configuración fue eliminada (`storage.rules`, bloque `storage` de `firebase.json`, `getStorage` en `lib/firebase.ts`). |
 | 11 | **Diseño "cómic"** (bordes duros, sombras de bloque, tipografía Bangers) | UI corporativa neutra | La marca del gimnasio es superheroica; la UI refuerza personalidad, diferenciación y engagement. |
-| 12 | **Páginas internas con URL "secreta"** (`/fitministration`, `/fitception`) | Acceso directo desde el menú | Reducir superficie de ataque: el contenido interno no se enlaza públicamente y además exige llave + sesión. |
+| 12 | **Páginas internas con URL "secreta"** (`/fitministration`, `/fitception`) | Acceso directo desde el menú | Reducir superficie de ataque: el contenido interno no se enlaza públicamente y además exige llave + sesión. Las cuentas con rol entran en 1 clic desde su menú/`/perfil` (`lib/panel-access.ts`, el servidor re-valida el claim). |
+| 13 | **Correos en segundo plano con reintentos** | Envío síncrono dentro del webhook | Gmail SMTP falla a veces desde serverless; el webhook responde 2xx rápido (`after()`, `maxDuration = 30`) y `services/mail.ts` reintenta (3×, timeouts 10/10/15 s) sin perder el pago. |
 
 ---
 
