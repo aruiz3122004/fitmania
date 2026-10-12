@@ -4,30 +4,28 @@ import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { AuthProvider } from './context/AuthContext'
 
-// T-17: la CSP usa nonces por request (middleware). Los nonces exigen renderizado
-// dinámico: una página estática se genera en build, sin request, y sus <script>
-// quedarían sin nonce (y bloqueados por el navegador). Por eso forzamos dinámico
-// en el segmento raíz (aplica a todas las rutas hijas).
-export const dynamic = 'force-dynamic'
-
 const bangers = Bangers({
   weight: '400',
   subsets: ['latin'],
+  display: 'swap',
   variable: '--font-display'
 })
 
 const epilogue = Epilogue({
   subsets: ['latin'],
+  display: 'swap',
   variable: '--font-heading'
 })
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
+  display: 'swap',
   variable: '--font-body'
 })
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
+  display: 'swap',
   variable: '--font-label'
 })
 

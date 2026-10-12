@@ -78,7 +78,7 @@ sequenceDiagram
     participant S as Stripe
     participant WH as Webhook Handler
     participant DB as Firestore
-    participant E as Gmail (Nodemailer)
+    participant E as Resend (API HTTP)
 
     U->>F: Selecciona plan/producto
     F->>M: POST /api/stripe/create-payment
@@ -101,7 +101,7 @@ sequenceDiagram
 | **Webhook** | API Route + firma | `stripe.webhooks.constructEvent()` verifica autenticidad |
 | **Transacciones** | Firestore `runTransaction()` | Actualización atómica de stock + creación de orden |
 | **Notificaciones** | Firestore `notifications` | Alerta automática de stock bajo (< 5 unidades) |
-| **Emails transaccionales** | Nodemailer + Gmail | Pago exitoso, pago fallido, recibo detallado, respuesta PQRS |
+| **Emails transaccionales** | Resend (API HTTP) | Pago exitoso, pago fallido, recibo detallado, respuesta PQRS |
 
 ---
 
@@ -212,7 +212,7 @@ erDiagram
 | **Cloudinary** | Imágenes de productos (tienda) | 25GB ancho de banda/mes |
 | **Upstash Redis** | Rate limiting en Edge | 10k comandos/día |
 | **Stripe** | Pagos PSE + tarjeta | Sin costo fijo, solo comisión por transacción |
-| **Gmail (Nodemailer)** | Emails transaccionales | ~500 emails/día |
+| **Resend** | Emails transaccionales | 3.000 emails/mes (free), 100/día |
 | **Vercel** | Hosting + Edge Functions + Analytics | 100GB bandwidth, Serverless functions |
 
 ---
@@ -238,7 +238,6 @@ fitmania/
 │   │   ├── auth/verify/          # Verificación de sesión JWT
 │   │   ├── recepcion/            # Login/Logout recepción
 │   │   ├── security/             # Rate limit check + log-block
-│   │   ├── send-email/           # Envío de correos
 │   │   └── stripe/               # create-payment + webhook
 │   ├── carrito/                  # Página del carrito
 │   ├── context/                  # AuthContext (Firebase listener)

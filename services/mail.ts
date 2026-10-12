@@ -1,55 +1,116 @@
-import nodemailer from 'nodemailer'
-import type { Transporter, SendMailOptions } from 'nodemailer'
+// Envío de correos con Resend (API HTTP) — reemplaza a Gmail SMTP/nodemailer.
+//
+// Motivo: Gmail rechaza envíos desde serverless de forma intermitente
+// (421 "Try again later", 454 "Too many login attempts"), tiene un tope diario
+// de ~500 destinatarios y exige mantener conexiones SMTP. Resend es una API
+// HTTP: sin conexiones persistentes, con métricas y sin esos límites.
+//
+// IMPORTANTE: para enviar a terceros necesitas un DOMINIO VERIFICADO en Resend.
+// Sin dominio, Resend solo permite "onboarding@resend.dev" y solo hacia el
+// correo dueño de la cuenta (modo pruebas).
 
-const GMAIL_USER = process.env.GMAIL_USER
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD
+const RESEND_API_KEY = process.env.RESEND_API_KEY
 
 /**
- * Crea el transporte SMTP de Gmail con timeouts explícitos.
- *
- * Sin timeouts, un envío lento puede colgar la función serverless hasta el
- * límite de Vercel y el correo se pierde (el webhook no reintenta el envío).
+ * Remitente por defecto. En producción debe ser de un dominio verificado,
+ * p. ej. `MAIL_FROM="Fitmania <no-reply@tudominio.com>"`.
  */
-function getTransporter(): Transporter {
-  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
-    throw new Error('Faltan GMAIL_USER o GMAIL_APP_PASSWORD en las variables de entorno.')
-  }
+const MAIL_FROM = process.env.MAIL_FROM || 'Fitmania <onboarding@resend.dev>'
 
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: {
-      user: GMAIL_USER,
-      pass: GMAIL_APP_PASSWORD, // App Password de Google, NO tu contraseña normal
-    },
-    connectionTimeout: 10_000, // 10 s para conectar
-    greetingTimeout: 10_000, // 10 s para el saludo SMTP
-    socketTimeout: 15_000, // 15 s de inactividad máxima
-  })
+/**
+ * Copia oculta (BCC) para que el administrador reciba copia de cada correo.
+ * Por defecto usa `ADMIN_AUTHORIZED_EMAIL` (el Gmail del admin).
+ */
+const ADMIN_COPY_EMAIL = process.env.ADMIN_COPY_EMAIL || process.env.ADMIN_AUTHORIZED_EMAIL
+
+const RESEND_ENDPOINT = 'https://api.resend.com/emails'
+
+interface SendMailOptions {
+  from: string
+  to: string
+  subject: string
+  html: string
 }
 
 /**
- * Envía un correo con reintentos (backoff progresivo). Gmail falla de forma
- * intermitente desde serverless; sin reintentos el correo se pierde para siempre.
+ * Envía un correo con reintentos (backoff progresivo).
+ *
+ * Reintenta solo errores transitorios (429 de rate limit, 5xx de Resend y
+ * fallos de red/timeout). Los errores definitivos (remitente sin dominio
+ * verificado, destinatario inválido, etc.) se propagan de inmediato.
  */
 async function sendWithRetry(mail: SendMailOptions, maxAttempts = 3) {
-  const transporter = getTransporter()
+  if (!RESEND_API_KEY) {
+    throw new Error('Falta RESEND_API_KEY en las variables de entorno.')
+  }
+
+  const to = (mail.to || '').trim()
+  if (!to) {
+    throw new Error('Correo sin destinatario (campo "to" vacío).')
+  }
+
+  // Copia al admin (BCC); se evita duplicar si el destinatario ya es el admin.
+  const adminCopy =
+    ADMIN_COPY_EMAIL && ADMIN_COPY_EMAIL.trim().toLowerCase() !== to.toLowerCase()
+      ? ADMIN_COPY_EMAIL.trim()
+      : null
+
   let lastError: unknown
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15_000)
+
     try {
-      const info = await transporter.sendMail(mail)
-      console.log(`[mail] Enviado a ${mail.to} (id: ${info.messageId}, intento ${attempt}/${maxAttempts})`)
-      return info
+      const res = await fetch(RESEND_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: mail.from,
+          to: [to],
+          ...(adminCopy ? { bcc: [adminCopy] } : {}),
+          subject: mail.subject,
+          html: mail.html,
+        }),
+        signal: controller.signal,
+      })
+
+      if (res.ok) {
+        const data: any = await res.json().catch(() => ({}))
+        console.log(
+          `[mail] Enviado a ${to}${adminCopy ? ` (copia a ${adminCopy})` : ''} (id: ${data?.id || 'sin-id'}, intento ${attempt}/${maxAttempts})`
+        )
+        return data
+      }
+
+      const bodyText = await res.text().catch(() => '')
+      const message = `Resend ${res.status}: ${bodyText.slice(0, 300)}`
+
+      if (res.status === 429 || res.status >= 500) {
+        // Transitorio: reintentar con backoff.
+        lastError = new Error(message)
+        console.error(`[mail] Intento ${attempt}/${maxAttempts} rechazado para ${to}: ${message}`)
+      } else {
+        // Definitivo: no tiene sentido reintentar.
+        const fatal: any = new Error(message)
+        fatal.definitive = true
+        throw fatal
+      }
     } catch (err: any) {
+      if (err?.definitive) throw err
       lastError = err
       console.error(
-        `[mail] Intento ${attempt}/${maxAttempts} falló para ${mail.to}: ${err?.code || err?.message || err}`
+        `[mail] Intento ${attempt}/${maxAttempts} falló para ${to}: ${err?.message || err}`
       )
-      if (attempt < maxAttempts) {
-        await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
-      }
+    } finally {
+      clearTimeout(timeout)
+    }
+
+    if (attempt < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
     }
   }
 
@@ -179,7 +240,7 @@ export async function sendPaymentSuccessEmail(data: PaymentEmailData) {
   `
 
   await sendWithRetry({
-    from: `"Fitmania" <${GMAIL_USER}>`,
+    from: MAIL_FROM,
     to: data.to,
     subject: '✅ ¡Pago Exitoso! - Fitmania',
     html,
@@ -253,7 +314,7 @@ export async function sendPaymentFailedEmail(data: Pick<PaymentEmailData, 'to' |
   `
 
   await sendWithRetry({
-    from: `"Fitmania" <${GMAIL_USER}>`,
+    from: MAIL_FROM,
     to: data.to,
     subject: '❌ Pago Rechazado - Fitmania',
     html,
@@ -329,7 +390,7 @@ export async function sendOrderReceiptEmail(data: OrderReceiptData) {
   `
 
   await sendWithRetry({
-    from: `"Fitmania" <${GMAIL_USER}>`,
+    from: MAIL_FROM,
     to: data.to,
     subject: '🛍️ Recibo de Compra - Fitmania',
     html,
@@ -391,7 +452,7 @@ export async function sendPqrsReplyEmail(data: PqrsReplyData) {
   `
 
   await sendWithRetry({
-    from: `"Fitmania" <${GMAIL_USER}>`,
+    from: MAIL_FROM,
     to: data.to,
     subject: '📝 Respuesta a tu PQRS - Fitmania',
     html,

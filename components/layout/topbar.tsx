@@ -7,10 +7,6 @@ import { ShoppingCart, User, Menu, X } from 'lucide-react'
 import { useCartStore, useAuthStore, useUIStore } from '@/lib/store'
 import { UserDropdown } from './user-dropdown'
 import { FitAvatar } from '@/components/ui/fit-avatar'
-import { auth, db } from '@/lib/firebase'
-import { onAuthStateChanged } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
-import { getAvatarUrlById } from '@/lib/avatar-utils'
 
 const navLinks = [
   { href: '/', label: 'Inicio' },
@@ -58,54 +54,6 @@ export function Topbar() {
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!firebaseUser) {
-        setUser(null)
-        return
-      }
-
-      try {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid))
-        const raw = userDoc.data()
-        const avatarId = raw?.avatar || 'fitman'
-        const resolvedUrl = getAvatarUrlById(avatarId)
-        const photoURL = resolvedUrl || raw?.photoURL || getAvatarUrlById('fitman')
-
-        setUser({
-          uid: firebaseUser.uid,
-          username: raw?.username || firebaseUser.email?.split('@')[0] || 'Usuario',
-          email: firebaseUser.email || raw?.email || '',
-          gender: raw?.gender,
-          avatar: avatarId,
-          photoURL: photoURL,
-          peso: raw?.peso,
-          altura: raw?.altura,
-          plan: raw?.plan
-            ? {
-              ...raw.plan,
-              inicio: raw.plan.inicio?.toDate?.() || new Date(raw.plan.inicio),
-              expira: raw.plan.expira?.toDate?.() || new Date(raw.plan.expira),
-            }
-            : null,
-        })
-      } catch (error) {
-        console.error("Error al cargar perfil desde Firestore:", error);
-        // Fallback: Permitir navegación básica aunque no se pueda leer el perfil extendido
-        setUser({
-          uid: firebaseUser.uid,
-          username: firebaseUser.email?.split('@')[0] || 'Usuario',
-          email: firebaseUser.email || '',
-          avatar: 'fitman',
-          photoURL: getAvatarUrlById('fitman'),
-          plan: null,
-        })
-      }
-    })
-
-    return () => unsubscribe()
-  }, [setUser])
 
   return (
     <header

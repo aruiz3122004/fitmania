@@ -97,7 +97,7 @@
 ┌───────────┐      ┌──────────────────┐      ┌─────────────────────┐
 │  Firebase │      │      Stripe      │      │ Servicios auxiliares│
 │  Auth     │      │  PaymentIntents  │      │ · Cloudinary (img)  │
-│  Firestore│      │  Webhooks firmados│      │ · Gmail SMTP        │
+│  Firestore│      │  Webhooks firmados│      │ · Resend (email)    │
 │  Storage  │      └──────────────────┘      │ · Upstash Redis     │
 └───────────┘                                │ · Vercel Analytics  │
                                              └─────────────────────┘
@@ -123,7 +123,7 @@
 | 10 | **Cloudinary para subida de imágenes** | Firebase Storage directo | Preset firmado/semi-privado, entrega por CDN y transformaciones. **Firebase Storage quedó fuera**: no se usa y su configuración fue eliminada (`storage.rules`, bloque `storage` de `firebase.json`, `getStorage` en `lib/firebase.ts`). |
 | 11 | **Diseño "cómic"** (bordes duros, sombras de bloque, tipografía Bangers) | UI corporativa neutra | La marca del gimnasio es superheroica; la UI refuerza personalidad, diferenciación y engagement. |
 | 12 | **Páginas internas con URL "secreta"** (`/fitministration`, `/fitception`) | Acceso directo desde el menú | Reducir superficie de ataque: el contenido interno no se enlaza públicamente y además exige llave + sesión. Las cuentas con rol entran en 1 clic desde su menú/`/perfil` (`lib/panel-access.ts`, el servidor re-valida el claim). |
-| 13 | **Correos en segundo plano con reintentos** | Envío síncrono dentro del webhook | Gmail SMTP falla a veces desde serverless; el webhook responde 2xx rápido (`after()`, `maxDuration = 30`) y `services/mail.ts` reintenta (3×, timeouts 10/10/15 s) sin perder el pago. |
+| 13 | **Correos con Resend (API HTTP), en segundo plano y con reintentos** | Gmail SMTP (nodemailer) | Gmail rechaza envíos desde serverless de forma intermitente (421/454) y tiene tope diario; se migró a Resend. El webhook responde 2xx rápido (`after()`, `maxDuration = 30`) y `services/mail.ts` reintenta (3×) sin perder el pago. |
 
 ---
 
@@ -257,9 +257,9 @@ Webhook firmado · cookies HttpOnly+SameSite+Secure · claims firmados · reglas
 | **Stripe** | Dashboard Stripe | `STRIPE_SECRET_KEY` + webhook apuntando a `https://<dominio>/api/stripe/webhook` con `STRIPE_WEBHOOK_SECRET` |
 | **CDN de imágenes** | **Cloudinary** | `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` + `UPLOAD_PRESET` |
 | **Rate limit compartido** | **Upstash Redis** | `UPSTASH_REDIS_REST_URL` / `_TOKEN` (ver auditoría A-1) |
-| **Correos** | **Gmail SMTP** | `GMAIL_USER` + App Password |
+| **Correos** | **Resend** | `RESEND_API_KEY` + `MAIL_FROM` (dominio verificado; sin él solo `onboarding@resend.dev`) |
 
-**Variables de entorno (grupos):** públicas `NEXT_PUBLIC_*` (Firebase, Stripe, Cloudinary, tokens de gate de recepción) y privadas (Firebase Admin, Stripe secret, webhook secret, Gmail). El `.env.local` está en `.gitignore` (`env*.local`) — rotar credenciales históricas (ver auditoría C-1).
+**Variables de entorno (grupos):** públicas `NEXT_PUBLIC_*` (Firebase, Stripe, Cloudinary, tokens de gate de recepción) y privadas (Firebase Admin, Stripe secret, webhook secret, Resend). El `.env.local` está en `.gitignore` (`env*.local`) — rotar credenciales históricas (ver auditoría C-1).
 
 ---
 

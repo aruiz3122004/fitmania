@@ -26,6 +26,7 @@ Aplicación construida con **Next.js (App Router)** + **Firebase** + **Stripe**,
 16. [Instalación y ejecución](#16-instalación-y-ejecución)
 17. [Notas técnicas y despliegue](#17-notas-técnicas-y-despliegue)
 18. [Pruebas](#18-pruebas)
+19. [Deuda técnica conocida](#19-deuda-técnica-conocida)
 
 ---
 
@@ -56,7 +57,7 @@ La UI usa un **estilo cómic/superhéroe** (colores rojo/azul/amarillo, bordes g
 | Backend/Firebase | Firebase 12 (Auth, Firestore) |
 | Admin SDK | firebase-admin 13 (autoridad para webhooks y rutas API) |
 | Pagos | Stripe 21 (`PaymentIntent`, currency `cop`) |
-| Correos | nodemailer (Gmail SMTP, timeouts + hasta 3 reintentos, envío en segundo plano) |
+| Correos | Resend (API HTTP, hasta 3 reintentos, envío en segundo plano) |
 | Imágenes | Cloudinary (subida de avatares/perfil) |
 | QR | `@yudiel/react-qr-scanner` + `react-qr-code` |
 | Export a Excel | exceljs (exportación de ingresos de recepción) |
@@ -141,7 +142,7 @@ fitmania/
 │   └── simulate_sale.js           # Simula compra con Admin SDK
 ├── services/
 │   ├── cloudinary.ts              # uploadToCloudinary()
-│   └── mail.ts                    # Plantillas + envío endurecido (timeouts SMTP, reintentos, logs [mail])
+│   └── mail.ts                    # Plantillas + envío por Resend (API HTTP, reintentos, logs [mail])
 ├── firestore.rules                # Reglas de seguridad Firestore
 ├── firebase.json / .firebaserc    # Config Firebase (proyecto fitmania-e1748)
 ├── init_products.js               # Seed de productos (raíz)
@@ -255,7 +256,7 @@ const paymentIntent = await stripe.paymentIntents.create({
    - Limpia el carrito.
    - Muestra pantalla de éxito.
    - ⚠️ **No escribe el plan en Firestore**: la activación/renovación la hace **solo el webhook** (T-06). Antes el cliente actualizaba `users/{uid}.plan` directamente y el endpoint `/api/send-email` enviaba el correo (ambos eliminados).
-5. El correo de confirmación/recibo lo envía el **webhook** (firmado por Stripe), no el cliente: los envíos corren **en segundo plano** con `after()` (`maxDuration = 30` en la ruta) para responder rápido a Stripe, y `services/mail.ts` usa **timeouts explícitos** (10 s conexión/saludo, 15 s socket) + **hasta 3 reintentos** con backoff y logs `[mail]`.
+5. El correo de confirmación/recibo lo envía el **webhook** (firmado por Stripe), no el cliente: los envíos corren **en segundo plano** con `after()` (`maxDuration = 30` en la ruta) para responder rápido a Stripe, y `services/mail.ts` hace un `POST` a la **API HTTP de Resend** con timeout de 15 s (`AbortController`) + **hasta 3 reintentos** con backoff (solo en `429`/`5xx`/error de red) y logs `[mail]`. Cada correo lleva una **copia oculta (BCC)** al admin.
 
 ### 6.5 Webhook de Stripe — `POST /api/stripe/webhook`
 Es el **procesador autoritativo** de pagos. Verifica la firma con `stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET)`.
@@ -263,7 +264,7 @@ Es el **procesador autoritativo** de pagos. Verifica la firma con `stripe.webhoo
 **Evento `payment_intent.succeeded`:**
 - **Si hay `meta.items`** (compra de tienda):
   1. Lee cada producto de Firestore (`products/{id}`) para obtener nombre/precio.
-  2. En una **transacción**: descuenta stock (`Math.max(0, stock - cantidad)`) y, si baja de 5 unidades, crea una notificación `low_stock`.
+  2. En una **transacción**: descuenta stock (`Math.max(0, stock - cantidad)`) y, si baja de 5 unidades, crea una notificación `low_stock`. ⚠️ Firestore exige **todas las lecturas antes de todas las escrituras**, así que la transacción primero lee **todos** los productos y luego escribe (no intercalar `get`/`update` dentro del mismo `for`).
   3. Crea la **orden** en `orders/{paymentIntent.id}` con `{ uid, customerName, customerEmail, items, total, banco, fecha, status: 'paid' }`.
   4. Crea una notificación `purchase` para el admin.
   5. Envía el **recibo detallado** (`sendOrderReceiptEmail`) con la lista de items.
@@ -442,11 +443,14 @@ FIREBASE_PRIVATE_KEY=            # con saltos de línea; el código limpia comil
 # Stripe
 NEXT_PUBLIC_STRIPE_PUBLIC_KEY=
 STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
+STRIPE_WEBHOOK_SECRET=           # secreto del endpoint del Dashboard de Stripe (NO el de la CLI `stripe listen`, que solo sirve en local)
 
-# Correos (Gmail App Password)
-GMAIL_USER=
-GMAIL_APP_PASSWORD=
+# Correos (Resend - https://resend.com/api-keys)
+RESEND_API_KEY=                  # obligatorio; sin él no se envía ningún correo
+MAIL_FROM=                       # remitente, p.ej. "Fitmania <no-reply@tudominio.com>"
+                                 # sin dominio verificado solo permite "Fitmania <onboarding@resend.dev>"
+                                 # y solo hacia el correo dueño de la cuenta (y suele caer en Spam)
+ADMIN_COPY_EMAIL=                # opcional; BCC al admin en cada correo (por defecto ADMIN_AUTHORIZED_EMAIL)
 
 # Puerta de acceso a paneles internos (urls /fitministration y /fitception)
 ADMIN_GATE_KEY=
@@ -473,6 +477,8 @@ NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=
 
 La PRIVATE_KEY suele traer `\n` literales: `lib/firebase-admin.ts` los convierte en saltos reales y quita comillas para evitar el error *"Invalid PEM formatted message"*.
 
+> **Variables obsoletas (eliminar):** `GMAIL_USER`, `GMAIL_APP_PASSWORD` (reemplazadas por Resend) y `STRIPE_WEBHOOK_SECRET_PRODUCTION` (el código solo lee `STRIPE_WEBHOOK_SECRET`). En Vercel deben replicarse **todas** las de este bloque (más `UPSTASH_*` si se usa el rate limiting). Tras editar variables en Vercel hay que **re-desplegar** (los cambios no aplican a deploys existentes).
+
 ---
 
 ## 15. Scripts y datos de prueba
@@ -484,6 +490,11 @@ La PRIVATE_KEY suele traer `\n` literales: `lib/firebase-admin.ts` los convierte
 | `scripts/manage-claims.js` | **Gestión de roles**: otorga/retira `admin` y `receptionist` (`node scripts/manage-claims.js <email\|uid> <admin\|receptionist> <on\|off>`). Al retirar un rol revoca los refresh tokens (invalida sesiones). Fusión de claims. |
 | `scripts/simulate_sale.js` | Simula una venta completa con el Admin SDK: usuario+producto, descuenta stock, crea orden y notificaciones y activa un plan. ⚠️ **Tiene ruta fija** al JSON de la cuenta de servicio (`C:\Users\...\fitmania-e1748-firebase-adminsdk-*.json`) — ajustarla o migrarla a `.env.local`. |
 | `verify_flow.js` (raíz) | Prueba el flujo de compra masiva + alerta de stock bajo (compra 14 unidades de `creatina`, genera orden y notificación `low_stock`). |
+| `scripts/verify-mail.mjs` | Diagnóstico de Resend. Sin flags: valida `RESEND_API_KEY` y lista dominios (no envía). Con `--send [--to=<correo>]`: envía un correo de prueba. |
+| `scripts/check-product.mjs` | Lista productos con su `precio`/`stock` (diagnóstico de los campos `precio` vs `price`). |
+| `scripts/check-orders.mjs` | Lista las últimas órdenes y el stock actual (verificación post-compra). |
+
+> ⚠️ **La carpeta `scripts/` está en `.gitignore`**, por lo que estos scripts **no se versionan** (son herramientas locales de bootstrap/diagnóstico). Si se necesita reproducir la app desde cero, hay que recrearlos.
 
 Para desplegar reglas: `firebase deploy --only firestore:rules` (proyecto `fitmania-e1748`). Firebase Storage no se usa y fue eliminado del proyecto y del código.
 
@@ -516,8 +527,12 @@ Scripts de `package.json`:
 | Start (producción) | `npm run start` |
 | Lint | `npm run lint` |
 
-> **Webhook local**: para probar pagos con webhooks en desarrollo se recomienda Stripe CLI:
-> `stripe listen --forward-to localhost:3000/api/stripe/webhook` y usar ese secreto como `STRIPE_WEBHOOK_SECRET`.
+> **Webhook local (obligatorio para probar compras)**: Stripe **no puede** enviar webhooks a `localhost`, así que en desarrollo hay que reenviarlos con la **Stripe CLI** (no viene instalada; en Windows: `winget install --id Stripe.StripeCli -e`). Con la CLI ya no hace falta `stripe login`: basta exportar `STRIPE_API_KEY` con tu `sk_test_...`.
+> ```
+> stripe listen --print-secret  # opcional: imprime el whsec que debes poner en STRIPE_WEBHOOK_SECRET
+> stripe listen --events payment_intent.succeeded,payment_intent.payment_failed --forward-to localhost:3000/api/stripe/webhook
+> ```
+> Sin este túnel, el pago se completa en Stripe pero **no se crea la orden ni se envía el correo** (el webhook nunca llega). El secreto de la CLI (`whsec_...`) es **solo local**; en Vercel debe ir el del endpoint del Dashboard.
 
 ---
 
@@ -581,19 +596,50 @@ Todo se puede probar en local (`npm run dev` → `http://localhost:3000`). Mant�
 4. En incógnito y sin sesión, `/fitception` y `/fitministration` responden **404** (la puerta por llave sigue protegiendo el acceso directo por URL).
 > Si el botón no aparece, cierra sesión del sitio y vuelve a entrar (el token en caché puede no traer el claim todavía).
 
-### Correos (Gmail SMTP endurecido)
+### Correos (Resend)
 1. Como usuario normal, crea una **PQRS** en `/pqrs` con un correo cuya bandeja puedas revisar.
 2. Como admin (entra con el botón nuevo), responde ese ticket desde la pestaña **PQRS** del panel.
 3. En la terminal debe salir `[mail] Enviado a <correo> (id: ..., intento 1/3)` y el correo debe llegar (revisar también **spam**).
-4. Para ver los reintentos: pon temporalmente un `GMAIL_APP_PASSWORD` falso en `.env.local`, reinicia y responde otra PQRS → verás los intentos 1/3, 2/3 y 3/3 en el log. Luego **restaura** el valor real.
+4. Requisitos de Resend: `RESEND_API_KEY` configurada y `MAIL_FROM` de un **dominio verificado** (DNS).
+5. Diagnóstico rápido: `node scripts/verify-mail.mjs` valida la API key y lista los dominios (no envía correo); `node scripts/verify-mail.mjs --send [--to=<correo>]` envía una prueba.
+
+> ⚠️ **Modo test de Resend (sin dominio verificado):** el servidor **solo entrega a `andreselgameroscuro@gmail.com`** (dueño de la cuenta). Enviar a cualquier otro correo responde **403** (definitivo, sin reintentos) y la UI **no falla**: en PQRS el ticket ya quedó resuelto en Firestore y en compras la orden ya quedó creada. Además, al usar `onboarding@resend.dev`, Gmail suele mandarlo a **Spam**. Para enviar a clientes y llegar a Inbox → verificar dominio (SPF/DKIM/DMARC) y cambiar `MAIL_FROM`.
 
 ### Pago completo + correo (avanzado)
-Requiere **Stripe CLI** (no viene instalado):
-1. `stripe login` y luego `stripe listen --forward-to localhost:3000/api/stripe/webhook` (imprime un secreto `whsec_...`).
-2. Pon **temporalmente** ese `whsec_...` como `STRIPE_WEBHOOK_SECRET` en `.env.local` y reinicia el dev.
-3. Compra en `/pago` con la tarjeta de prueba `4242 4242 4242 4242` usando tu propio email como comprador.
-4. Verifica: orden/plan creados en Firestore, `[mail] Enviado...` en la terminal y correo recibido.
-5. **Restaura** el `STRIPE_WEBHOOK_SECRET` original y reinicia.
+Requiere **Stripe CLI** (no viene instalada; `winget install --id Stripe.StripeCli -e`):
+1. Exporta la key de test en la sesión: `$env:STRIPE_API_KEY = "sk_test_..."` (evita `stripe login`).
+2. `stripe listen --print-secret` para ver el `whsec_...` y ponlo como `STRIPE_WEBHOOK_SECRET` en `.env.local` (reinicia el dev). Ese secreto es **el mismo** que ya usa la CLI.
+3. Arranca el túnel (déjalo corriendo):
+   `stripe listen --events payment_intent.succeeded,payment_intent.payment_failed --forward-to localhost:3000/api/stripe/webhook`
+4. Compra en `/pago` con la tarjeta de prueba `4242 4242 4242 4242`. En **modo test de Resend**, inicia sesión como `andreselgameroscuro@gmail.com` para que el recibo salga.
+5. Verifica: orden creada y **stock descontado** en Firestore, `[mail] Enviado...` en la terminal, evento `--> payment_intent.succeeded` / `<-- [200] POST` en el listener, y el registro en el panel de Resend.
+6. Para inspeccionar Firestore: `node scripts/check-orders.mjs` (últimas órdenes y stock).
+7. Si editas `.env.local`, **reinicia** `npm run dev` para recargar variables.
+
+---
+
+## 19. Deuda técnica conocida
+
+Puntos asumidos conscientemente o pendientes de cerrar. **Ninguno bloquea el funcionamiento actual**, pero conviene resolverlos por orden de impacto.
+
+| # | Deuda | Impacto | Acción sugerida |
+|---|---|---|---|
+| 1 | **Resend en modo test** — sin dominio verificado solo entrega a `andreselgameroscuro@gmail.com` y suele caer en Spam | 🔴 Alto | Verificar dominio (SPF/DKIM/DMARC) y cambiar `MAIL_FROM` a `no-reply@tudominio`. Ver §18. |
+| 2 | **Stripe en modo test** (`sk_test_...`) | 🔴 Alto | Para cobros reales: `sk_live_...`, endpoint en el Dashboard y `STRIPE_WEBHOOK_SECRET` de producción. `NEXT_PUBLIC_STRIPE_PUBLIC_KEY` debe ser del mismo modo. |
+| 3 | **Idempotencia del webhook de productos**: la orden sí (id = `paymentIntent.id`), pero el **stock no** — un reintento de Stripe descuenta dos veces | 🔴 Alto | Marcar eventos procesados (`events/{event.id}` o flag en la orden) antes de aplicar escrituras de stock. El ramal de planes ya es idempotente (T-09). |
+| 4 | **Campo `precio` vs `price`**: productos usan `precio`, planes usan `price`; `create-payment` lee `precio ?? price` como parche | 🟡 Medio | Unificar a un único nombre de campo en productos y planes (migración + código). |
+| 5 | **`typescript.ignoreBuildErrors: true`** — los errores de TS no bloquean el build | 🟡 Medio | `npx tsc --noEmit` ya pasa limpio → activar `false` en un cambio aparte. |
+| 6 | **`force-dynamic` global + CSP con nonce** → todas las rutas son dinámicas (ƒ), sin caché/ISR | 🟡 Medio | El nonce obliga a SSR; evaluar ISR/caché si se prioriza rendimiento sobre la CSP estricta. |
+| 7 | **Imágenes sin optimizar** (`images.unoptimized: true`) | 🟢 Bajo | Necesario hoy por las rutas locales de `public/Imagenes/...`; migrar a Cloudinary/optimizador para rendimiento. |
+| 8 | **Carpeta `scripts/` sin versionar** (`.gitignore`) — bootstrap y diagnóstico no están en el repo | 🟡 Medio | Versionar los scripts no sensibles (`grant-admin`, `manage-claims`, `verify-mail`, `check-*`) o documentarlos para recrearlos. |
+| 9 | **`scripts/simulate_sale.js` con ruta fija** al JSON de la cuenta de servicio | 🟢 Bajo | Migrarlo a leer credenciales de `.env.local` (como el resto). |
+| 10 | **Vulnerabilidades npm no críticas** (13: 9 moderadas, 4 altas) en la cadena `@grpc/grpc-js` del SDK cliente de Firebase | 🟢 Bajo | Único fix es un downgrade a `firebase@9.14.0` (no aceptable). CI (`.github/workflows/security-audit.yml`) falla solo ante **críticas**. Revisar en cada actualización de Firebase. |
+| 11 | **Rotación de credenciales no realizada** (decisión D-1): la contención fue purgar el historial de git (T-03) | 🟡 Medio | Si el repo estuvo público, quien lo clonó conserva copias. Ante actividad rara (Stripe/Gmail) → rotar esa clave puntual. |
+| 12 | **`STRIPE_WEBHOOK_SECRET` local vs producción**: el de la CLI solo vale en local | 🟡 Medio | En Vercel debe ser el secreto del endpoint del Dashboard (no el de `stripe listen`). |
+| 13 | **Datos de prueba en Firestore** — órdenes `sim_*`, `pi_mock_*`, `pi_lowstock_*` de pruebas | 🟢 Bajo | Limpiar colecciones de prueba antes de salir a producción real. |
+| 14 | **Archivos auxiliares de diagnóstico** en la raíz (`deep_diag.js`, `fix_env.js`, `tmp_check_key.js`, `tmp_fix_key.js`), gitignored | 🟢 Bajo | Eliminarlos cuando ya no se usen. |
+
+> El detalle ampliado y el estado por tarea de seguridad están en `tareas-seguridad.md`.
 
 ---
 

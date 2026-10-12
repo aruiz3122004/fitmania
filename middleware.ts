@@ -329,7 +329,13 @@ export const config = {
      * - _next/image (optimización de imágenes)
      * - favicon.ico (icono)
      * - Imagenes/Public (tus carpetas de assets)
+     * - Archivos estáticos por extensión
+     *
+     * IMPORTANTE: NO excluir `api`. El middleware es quien aplica el rate limit
+     * y protege las APIs de admin/recepción, y además atiende endpoints que no
+     * existen como route handler (/api/security/attempt y /api/security/success).
+     * Si se excluye `api`, esos endpoints devuelven el HTML del 404.
      */
-    '/((?!_next/static|_next/image|favicon.ico|Imagenes|Public).*)',
+    '/((?!_next/static|_next/image|favicon.ico|Imagenes|Public|.*\\.png$|.*\\.jpg$|.*\\.jpeg$|.*\\.gif$|.*\\.svg$|.*\\.webp$|.*\\.woff2?$|.*\\.ico$).*)',
   ],
 };

@@ -1,8 +1,10 @@
 'use client';
 
+export const dynamic = 'force-dynamic'
+
 import React, { useState, useEffect } from 'react';
 import { auth } from '@/lib/firebase';
-import { signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import Image from 'next/image';
 import {
   Users,
@@ -409,11 +411,15 @@ export default function AdminPage() {
   };
 
   const handleLogout = async () => {
-    // Borrar la cookie HttpOnly en el servidor y cerrar sesión en Firebase
-    await fetch('/api/admin/logout', { method: 'POST' });
-    await signOut(auth);
-    setAdminSessionValid(false);
-    setVisualState('login');
+    // Cerrar SOLO la sesión del panel (cookie HttpOnly `fitmania_session` del servidor).
+    // IMPORTANTE: no usar signOut(auth). Eso cerraba también la cuenta de Firebase y
+    // obligaba al usuario a volver a iniciar sesión en el sitio. La cuenta sigue activa;
+    // para reabrir el panel basta el botón de acceso del menú (nuevo ID token).
+    try {
+      await fetch('/api/admin/logout', { method: 'POST' });
+    } finally {
+      window.location.href = '/';
+    }
   };
 
   // --- ACTIONS ---

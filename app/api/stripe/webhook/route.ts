@@ -100,15 +100,23 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // Ejecutar transacción para actualizar stock y crear orden
+          // Ejecutar transacción para actualizar stock y crear orden.
+          // Firestore exige TODAS las lecturas antes de TODAS las escrituras:
+          // primero leemos todos los productos y luego escribimos.
           await db.runTransaction(async (transaction) => {
-            for (const item of itemsToProcess) {
-              const productRef = db.collection('products').doc(item.id)
-              const pSnap = await transaction.get(productRef)
+            const productRefs = itemsToProcess.map((item) => db.collection('products').doc(item.id))
+            const productSnaps: any[] = []
+            for (const ref of productRefs) {
+              productSnaps.push(await transaction.get(ref))
+            }
+
+            for (let i = 0; i < itemsToProcess.length; i++) {
+              const item = itemsToProcess[i]
+              const pSnap = productSnaps[i]
               if (pSnap.exists) {
                 const currentStock = pSnap.data()?.stock || 0
                 const newStock = Math.max(0, currentStock - item.cantidad)
-                transaction.update(productRef, { stock: newStock })
+                transaction.update(productRefs[i], { stock: newStock })
 
                 // Notificar si el stock es bajo (< 5)
                 if (newStock < 5) {

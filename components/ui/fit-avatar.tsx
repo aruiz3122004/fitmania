@@ -31,7 +31,7 @@ export function FitAvatar({
   borderColor = 'border-white',
   borderWidth = 'border-2',
   bgColor = 'bg-primary',
-  overflowScale = 6.0,
+  overflowScale = 1.4,
   circleClassName = '',
   fallback,
   className = '',
@@ -60,8 +60,9 @@ export function FitAvatar({
 
     /* ── Default avatar → overflow ──────────────────────────────── */
     if (isDefault) {
-      // Extremely large scales to satisfy the "WOW" requirement
-      const dynamicScale = isPremium ? 1.80 : 1.75
+      // Escala configurable por prop (antes estaba fija en 1.75/1.80).
+      // Permite que en rejillas compactas el avatar no invada a los vecinos.
+      const dynamicScale = isPremium ? overflowScale + 0.05 : overflowScale
       const imgSize = size * dynamicScale
 
       return (

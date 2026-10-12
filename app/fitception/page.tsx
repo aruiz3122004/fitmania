@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Toaster, toast } from 'sonner'
+
 import { ReceptionLoginForm } from '@/components/recepcion/reception-login-form'
 import { db, auth } from '@/lib/firebase'
 import { collection, getDocs, doc, setDoc, query, where, orderBy, limit } from 'firebase/firestore'
@@ -185,9 +186,14 @@ export default function ReceptionPage() {
   }
 
   const handleLogout = async () => {
-    await fetch('/api/recepcion/logout', { method: 'POST' });
-    await auth.signOut();
-    setVisualState('login');
+    // Cerrar SOLO la sesión del panel de recepción (cookie HttpOnly).
+    // No usar auth.signOut(): cerraba la cuenta de Firebase y obligaba a
+    // volver a iniciar sesión en el sitio. La cuenta debe permanecer activa.
+    try {
+      await fetch('/api/recepcion/logout', { method: 'POST' });
+    } finally {
+      window.location.href = '/';
+    }
   };
 
   if (loading) {

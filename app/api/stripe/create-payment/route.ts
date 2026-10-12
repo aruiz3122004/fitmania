@@ -44,7 +44,10 @@ export async function POST(req: NextRequest) {
         }
 
         const productData = productDoc.data()
-        const price = Number(productData?.price) || 0
+        // Los productos guardan el precio en `precio` (español); se admite `price`
+        // como respaldo por si algún documento antiguo usó el campo en inglés.
+        const rawPrice = productData?.precio ?? productData?.price
+        const price = Number(rawPrice) || 0
         const stock = Number(productData?.stock) ?? 0
 
         if (price <= 0) {
