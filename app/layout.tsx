@@ -38,9 +38,15 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: 'FITMANIA - Tu Pasion. Tu Fuerza.',
   description: 'Gimnasio con estilo de superheroes. Planes de membresia, suplementos, snacks y ropa fitness.',
+  manifest: '/manifest.json',
   icons: {
     icon: '/Imagenes/Avatares/FitmanNEW.png',
     apple: '/Imagenes/Avatares/FitmanNEW.png',
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'FITMANIA',
   },
 }
 
@@ -56,6 +62,17 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${bangers.variable} ${epilogue.variable} ${plusJakarta.variable} ${spaceGrotesk.variable}`}>
       <body className="font-body antialiased">
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').catch(function(err){ console.log('SW registration failed', err); });
+                });
+              }
+            `,
+          }}
+        />
         {/*  AuthProvider envuelve toda la app  Para manejar el estado de autenticacion de Firebase */}
         <AuthProvider>
           {children}
