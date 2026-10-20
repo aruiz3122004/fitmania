@@ -3,6 +3,7 @@ import { Bangers, Epilogue, Plus_Jakarta_Sans, Space_Grotesk } from 'next/font/g
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { AuthProvider } from './context/AuthContext'
+import { ServiceWorkerRegister } from '@/components/pwa/service-worker-register'
 
 // T-17: la CSP usa nonces por request (middleware). Los nonces exigen renderizado
 // dinámico: una página estática se genera en build, sin request, y sus <script>
@@ -62,22 +63,12 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${bangers.variable} ${epilogue.variable} ${plusJakarta.variable} ${spaceGrotesk.variable}`}>
       <body className="font-body antialiased">
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').catch(function(err){ console.log('SW registration failed', err); });
-                });
-              }
-            `,
-          }}
-        />
         {/*  AuthProvider envuelve toda la app  Para manejar el estado de autenticacion de Firebase */}
         <AuthProvider>
           {children}
           <Analytics />
         </AuthProvider>
+        <ServiceWorkerRegister />
       </body>
     </html>
   )

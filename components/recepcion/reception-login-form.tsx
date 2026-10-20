@@ -16,7 +16,7 @@ import {
   ArrowLeft 
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getRateLimitStatus, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
+import { getRateLimitStatus, formatTimeLeft } from '@/lib/rate-limit-client'
 
 export function ReceptionLoginForm({ onSuccessAction }: { onSuccessAction: () => void }) {
   const [email, setEmail] = useState('')
@@ -117,8 +117,6 @@ export function ReceptionLoginForm({ onSuccessAction }: { onSuccessAction: () =>
         avatar: 'fitman',
       })
 
-      // EXITO: Limpiar historial de bloqueos
-      await clearRateLimit()
 
       // Limpiar la URL (quitar la ?key= de la barra de direcciones)
       if (typeof window !== 'undefined') {

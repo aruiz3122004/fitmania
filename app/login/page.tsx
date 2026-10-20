@@ -21,7 +21,7 @@ import {
   Timer 
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getRateLimitStatus, consumeRateLimitAttempt, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
+import { getRateLimitStatus, consumeRateLimitAttempt, formatTimeLeft } from '@/lib/rate-limit-client'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -105,8 +105,6 @@ export default function LoginPage() {
         plan: userData?.plan || null,
       })
 
-      // EXITO: Limpiamos por completo el historial de fallos y rate limit
-      await clearRateLimit()
 
       router.push('/')
     } catch (err: any) {

@@ -9,11 +9,11 @@ export const dynamic = 'force-dynamic'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { useAuthStore, useCartStore } from '@/lib/store'
-import { db } from '@/lib/firebase'
+import { auth, db } from '@/lib/firebase'
 import { doc } from 'firebase/firestore'
 import { ShieldCheck, CreditCard, Loader2, AlertTriangle, Timer } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getRateLimitStatus, consumeRateLimitAttempt, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
+import { getRateLimitStatus, consumeRateLimitAttempt, formatTimeLeft } from '@/lib/rate-limit-client'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!)
 
@@ -91,16 +91,18 @@ function CheckoutForm({ amount, concept, planId, cartItems, montoFormateado }: {
         return
       }
 
+      // El servidor identifica al comprador por el ID token (no por datos del body).
+      const idToken = await auth.currentUser?.getIdToken()
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión para pagar.')
+
       const res = await fetch('/api/stripe/create-payment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
-          amount,
           planId,
-          items: cartItems.length > 0 ? cartItems : undefined,
-          customerEmail: user?.email || '',
-          customerName: user?.username || '',
-          uid: user?.uid || '',
+          items: !planId && cartItems.length > 0
+            ? cartItems.map((item) => ({ id: item.id, cantidad: item.cantidad }))
+            : undefined,
         }),
       })
 
@@ -140,8 +142,6 @@ function CheckoutForm({ amount, concept, planId, cartItems, montoFormateado }: {
         // no el cliente. Se eliminó /api/send-email por ser un relé de correo abierto (T-04).
         setSuccess(true)
         
-        // EXITO: Limpiar historial de rate limit
-        await clearRateLimit()
 
         if (cartItems && cartItems.length > 0) {
            clearCart() // Vaciamos el carrito tras compra exitosa

@@ -9,19 +9,34 @@ import ExcelJS from 'exceljs';
 const MAX_EXPORT_DAYS = 92;    // ~3 meses por exportación
 const MAX_EXPORT_ROWS = 20000; // tope de filas por exportación
 
+// Ventana anti-duplicados: un mismo socio no se registra dos veces dentro de este lapso
+// (doble escaneo, reintento del botón). Evita inflar el conteo de asistencia.
+const DUPLICATE_WINDOW_MS = 3 * 60 * 60 * 1000; // 3 horas
+
+/** Convierte un Timestamp de Firestore, Date o string ISO a Date (o null). */
+function toDate(value: any): Date | null {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') return value.toDate();
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 // ─── POST: Registrar una nueva entrada ───
+// F2-03 (parcial) / A08: el cliente SOLO envía el `userId` escaneado. Nombre, correo y
+// estado del plan los deriva el servidor desde `users/{uid}` (antes los enviaba el
+// navegador de recepción y se podían alterar). Quien autoriza queda registrado con
+// su uid/correo real, y el registro es atómico con su copia en `checkIns`.
 export async function POST(request: NextRequest) {
   try {
-    // Verificar sesión de recepción: cookie HttpOnly + email autorizado (T-10, auditoría M-2)
+    // Verificar sesión de recepción: cookie HttpOnly + claim (T-10, auditoría M-2)
     const decoded = await verifyReceptionRequest(request);
     if (!decoded) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { userId, userName, userEmail, hasPlanActivo, planNombre } = body;
-
-    if (!userId || !userName || !userEmail) {
+    const body = await request.json().catch(() => null);
+    const userId = typeof body?.userId === 'string' ? body.userId.trim() : '';
+    if (!userId || userId.includes('/') || userId.length > 128) {
       return NextResponse.json({ error: 'Datos incompletos.' }, { status: 400 });
     }
 
@@ -30,20 +45,83 @@ export async function POST(request: NextRequest) {
     const dateStr = getDateKeyInAppTz(now);
 
     const firestore = getAdminFirestore();
+    const userRef = firestore.collection('users').doc(userId);
     const entryRef = firestore.collection('entry_logs').doc();
+    const checkInRef = firestore.collection('checkIns').doc(entryRef.id);
+    const sameDayQuery = firestore
+      .collection('entry_logs')
+      .where('userId', '==', userId)
+      .where('date', '==', dateStr);
 
-    await entryRef.set({
-      userId,
-      userName,
-      userEmail,
-      hasPlanActivo: hasPlanActivo ?? false,
-      planNombre: planNombre || null,
-      timestamp: now,
-      date: dateStr,
-      authorizedBy: 'Recepcionista',
+    const result = await firestore.runTransaction(async (tx) => {
+      const userSnap = await tx.get(userRef);
+      if (!userSnap.exists) return { status: 'not_found' as const };
+
+      // Anti-duplicados dentro de la transacción (dos escaneos simultáneos no pasan ambos).
+      const sameDay = await tx.get(sameDayQuery);
+      const lastEntry = sameDay.docs
+        .map((d) => toDate(d.data().timestamp))
+        .filter((d): d is Date => !!d)
+        .sort((a, b) => b.getTime() - a.getTime())[0];
+      if (lastEntry && now.getTime() - lastEntry.getTime() < DUPLICATE_WINDOW_MS) {
+        return { status: 'duplicate' as const, lastEntry };
+      }
+
+      const user = userSnap.data() || {};
+      const expira = toDate(user.plan?.expira);
+      const hasPlanActivo = !!expira && expira.getTime() > now.getTime();
+      const userName = String(user.username || user.email || 'Socio');
+      const userEmail = String(user.email || '');
+
+      const authorizedBy = {
+        authorizedBy: decoded.email || 'Recepcionista',
+        authorizedByUid: decoded.uid,
+      };
+
+      tx.set(entryRef, {
+        userId,
+        userName,
+        userEmail,
+        hasPlanActivo,
+        planNombre: user.plan?.nombre || null,
+        planExpira: expira,
+        timestamp: now,
+        date: dateStr,
+        source: 'qr',
+        ...authorizedBy,
+      });
+      // Copia para el historial individual del panel de recepción (antes la escribía el cliente).
+      tx.set(checkInRef, {
+        userId,
+        userName,
+        timestamp: now,
+        hasPlanActivo,
+        ...authorizedBy,
+      });
+
+      return { status: 'created' as const, hasPlanActivo, planNombre: user.plan?.nombre || null, userName };
     });
 
-    return NextResponse.json({ success: true, entryId: entryRef.id });
+    if (result.status === 'not_found') {
+      return NextResponse.json({ error: 'Socio no encontrado.' }, { status: 404 });
+    }
+    if (result.status === 'duplicate') {
+      return NextResponse.json(
+        {
+          error: `Este socio ya registró ingreso a las ${formatInAppTz(result.lastEntry, { hour: '2-digit', minute: '2-digit', hour12: false })}.`,
+          duplicate: true,
+        },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      entryId: entryRef.id,
+      hasPlanActivo: result.hasPlanActivo,
+      planNombre: result.planNombre,
+      userName: result.userName,
+    });
   } catch (error: any) {
     console.error('Error en POST /api/recepcion/entry-log:', error);
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });

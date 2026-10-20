@@ -40,7 +40,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json(users);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/admin/users]', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }
 
@@ -103,7 +105,9 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/admin/users]', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }
 
@@ -136,6 +140,8 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/admin/users]', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }

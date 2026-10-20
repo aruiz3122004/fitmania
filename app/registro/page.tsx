@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { cn } from '@/lib/utils'
-import { getRateLimitStatus, consumeRateLimitAttempt, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
+import { getRateLimitStatus, consumeRateLimitAttempt, formatTimeLeft } from '@/lib/rate-limit-client'
 
 export default function RegistroPage() {
   const router = useRouter()
@@ -122,15 +122,19 @@ export default function RegistroPage() {
         plan: null,
       }
 
+      // Firestore rechaza valores `undefined`: se omiten los campos opcionales vacíos
+      // (si no, el alta falla después de crear la cuenta en Auth y deja un usuario huérfano).
+      const firestoreUserData = Object.fromEntries(
+        Object.entries(userData).filter(([, value]) => value !== undefined)
+      )
+
       await setDoc(doc(db, 'users', credentials.user.uid), {
-        ...userData,
+        ...firestoreUserData,
         createdAt: new Date(),
       })
 
       setUser(userData)
       
-      // EXITO: Limpiamos por completo el historial de fallos y rate limit
-      await clearRateLimit()
       
       router.push('/')
     } catch (err: any) {

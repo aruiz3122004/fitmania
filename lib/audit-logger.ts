@@ -1,5 +1,6 @@
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { headers } from 'next/headers';
+import { getClientIp } from '@/lib/client-ip';
 
 type AuditCategory = 'AUTH_SUCCESS' | 'AUTH_FAILURE' | 'ADMIN_ACTION' | 'SECURITY_BLOCK' | 'PLAN_MANAGEMENT';
 
@@ -23,13 +24,13 @@ export async function recordAuditLog(options: AuditLogOptions) {
     // Extraer IP de headers de next/headers o del objeto Request manual
     let ip = 'unknown';
     
+    // F1-26: IP confiable (x-vercel-forwarded-for); `x-forwarded-for` es falsificable.
     try {
-      const headersList = await headers();
-      ip = (headersList.get('x-forwarded-for') ?? '127.0.0.1').split(',')[0].trim();
+      ip = getClientIp(await headers());
     } catch {
       // Fallback si no estamos en contexto aplicable para next/headers
       if (options.request) {
-         ip = (options.request.headers.get('x-forwarded-for') ?? '127.0.0.1').split(',')[0].trim();
+         ip = getClientIp(options.request.headers);
       }
     }
 

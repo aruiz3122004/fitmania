@@ -15,19 +15,62 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.receptionist == true;
     }
 
+    // Campos del perfil que el propio usuario puede escribir. `plan` NUNCA está aquí:
+    // solo lo escribe el servidor (webhook de pagos / panel admin vía Admin SDK).
+    function editableProfileKeys() {
+      return ['username', 'avatar', 'photoURL', 'peso', 'altura', 'gender'];
+    }
+
     match /users/{uid} {
+      // TODO(F3-05): retirar isReceptionist() cuando recepción consuma un endpoint con proyección mínima.
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin() || isReceptionist());
-      allow create: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
-      // El plan solo lo activa el webhook de Stripe (Admin SDK). El propietario no puede escribirlo (T-06, auditoría C-3).
+      // F1-05 (B2): el alta solo admite campos conocidos y el plan debe ir vacío.
+      allow create: if isAdmin() || (isSignedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(editableProfileKeys().concat(['uid', 'email', 'plan', 'createdAt']))
+        && request.resource.data.get('plan', null) == null
+        && request.resource.data.get('uid', uid) == uid);
       allow update: if isAdmin() || (isSignedIn() && request.auth.uid == uid
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan']));
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(editableProfileKeys()));
       allow delete: if isAdmin();
+    }
+
+    // Un like válido cambia la lista SOLO en el uid de quien lo hace (agrega o quita).
+    function isOwnLikeToggle() {
+      let before = resource.data.get('likes', []).toSet();
+      let after = request.resource.data.get('likes', []).toSet();
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+        && after.difference(before).union(before.difference(after)) == [request.auth.uid].toSet();
+    }
+
+    // Un comentario nuevo de un tercero solo puede AGREGAR un elemento al final, firmado por él.
+    // TODO(F1-07): mover comentarios a subcolección para permitir editar/borrar el propio en posts ajenos.
+    function isOwnCommentAppend() {
+      let before = resource.data.get('comentarios', []);
+      let after = request.resource.data.get('comentarios', []);
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comentarios'])
+        && after.size() == before.size() + 1
+        && after[before.size()].autor_id == request.auth.uid
+        && after[before.size()].contenido is string
+        && after[before.size()].contenido.size() <= 1000;
     }
 
     match /posts/{postId} {
       allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.autor_id == request.auth.uid;
-      allow update: if isSignedIn() && (resource.data.autor_id == request.auth.uid || isAdmin());
+      allow create: if isSignedIn()
+        && request.resource.data.autor_id == request.auth.uid
+        && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium',
+             'contenido', 'imagen_url', 'tipo_recurso', 'likes', 'comentarios', 'created_at'])
+        && request.resource.data.contenido is string
+        && request.resource.data.contenido.size() <= 2000
+        && request.resource.data.get('likes', []).size() == 0
+        && request.resource.data.get('comentarios', []).size() == 0;
+      // Autor: edita su contenido y modera su post. Terceros: solo like propio o comentario propio.
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.autor_id == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contenido', 'likes', 'comentarios', 'autor_avatar'])
+            && request.resource.data.contenido is string
+            && request.resource.data.contenido.size() <= 2000)
+        || (isSignedIn() && (isOwnLikeToggle() || isOwnCommentAppend()));
       allow delete: if isAdmin() || (isSignedIn() && resource.data.autor_id == request.auth.uid);
     }
 
@@ -73,7 +116,7 @@ service cloud.firestore {
     // Registro de Check-ins (Historial individual para el dashboard de recepción)
     match /checkIns/{checkInId} {
       allow read: if isAdmin() || isReceptionist();
-      allow write: if isAdmin() || isReceptionist();
+      allow write: if false; // F2-03: lo escribe el servidor junto con entry_logs (transacción).
     }
 
     // Auditoría de Seguridad e Inmutable
@@ -85,7 +128,12 @@ service cloud.firestore {
     // Reportes de usuarios
     match /reportes/{reporteId} {
       allow read: if isAdmin();
-      allow create: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.reportante_id == request.auth.uid
+        && request.resource.data.keys().hasOnly(['reportante', 'reportante_id', 'publicacion_id', 'autor_publicacion',
+             'motivo', 'fecha_publicacion', 'fecha_reporte'])
+        && request.resource.data.motivo is string
+        && request.resource.data.motivo.size() <= 500;
       allow update, delete: if isAdmin();
     }
   }

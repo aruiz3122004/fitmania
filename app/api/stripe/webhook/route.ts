@@ -79,61 +79,83 @@ export async function POST(req: NextRequest) {
 
       const bancoNombre = BANCOS_PSE.find((b) => b.codigo === meta.bank)?.nombre || meta.bank || 'Tarjeta/Otro'
 
-      // --- PROCESAMIENTO DE ITEMS (PRODUCTOS) ---
-      if (meta.items) {
+      // B4: si algo falla se responde 5xx para que Stripe REINTENTE el evento.
+      // Antes el error se registraba y se respondía 200: la orden se perdía.
+      let processingFailed = false
+
+      // --- PROCESAMIENTO DE ITEMS (PRODUCTOS) — idempotente ---
+      if (meta.items && meta.type !== 'plan') {
         try {
           const itemEntries = meta.items.split(',') // Formato "id:qty,id:qty"
-          const itemsToProcess: { id: string; nombre: string; precio: number; cantidad: number }[] = []
+          const orderRef = db.collection('orders').doc(paymentIntent.id)
+          let itemsToProcess: { id: string; nombre: string; precio: number; cantidad: number }[] = []
+          let alreadyProcessed = false
 
-          // Obtener detalles de productos desde Firestore para el recibo y para el stock
-          for (const entry of itemEntries) {
-            const [id, qty] = entry.split(':')
-            const productDoc = await db.collection('products').doc(id).get()
-            if (productDoc.exists) {
-              const pData = productDoc.data()!
-              itemsToProcess.push({
-                id,
-                nombre: pData.nombre,
-                precio: pData.precio,
-                cantidad: parseInt(qty)
-              })
-            }
-          }
-
-          // Ejecutar transacción para actualizar stock y crear orden.
-          // Firestore exige TODAS las lecturas antes de TODAS las escrituras:
-          // primero leemos todos los productos y luego escribimos.
+          // Firestore exige TODAS las lecturas antes de TODAS las escrituras.
           await db.runTransaction(async (transaction) => {
-            const productRefs = itemsToProcess.map((item) => db.collection('products').doc(item.id))
-            const productSnaps: any[] = []
+            // Idempotencia: si la orden ya existe, Stripe está reintentando un evento
+            // ya procesado → no volver a descontar stock ni duplicar notificaciones.
+            const orderSnap = await transaction.get(orderRef)
+            if (orderSnap.exists) {
+              alreadyProcessed = true
+              return
+            }
+
+            const parsed = itemEntries
+              .map((entry) => {
+                const [id, qty] = entry.split(':')
+                return { id: String(id).trim().toLowerCase(), cantidad: parseInt(qty, 10) }
+              })
+              .filter((it) => it.id && Number.isInteger(it.cantidad) && it.cantidad > 0)
+
+            const productRefs = parsed.map((item) => db.collection('products').doc(item.id))
+            const productSnaps: FirebaseFirestore.DocumentSnapshot[] = []
             for (const ref of productRefs) {
               productSnaps.push(await transaction.get(ref))
             }
 
-            for (let i = 0; i < itemsToProcess.length; i++) {
-              const item = itemsToProcess[i]
+            // Se reconstruye en cada intento (la transacción puede reintentarse).
+            itemsToProcess = []
+            for (let i = 0; i < parsed.length; i++) {
+              const item = parsed[i]
               const pSnap = productSnaps[i]
-              if (pSnap.exists) {
-                const currentStock = pSnap.data()?.stock || 0
-                const newStock = Math.max(0, currentStock - item.cantidad)
-                transaction.update(productRefs[i], { stock: newStock })
+              if (!pSnap.exists) continue
+              const pData = pSnap.data()!
+              itemsToProcess.push({
+                id: item.id,
+                nombre: pData.nombre,
+                precio: Number(pData.precio ?? pData.price) || 0,
+                cantidad: item.cantidad,
+              })
 
-                // Notificar si el stock es bajo (< 5)
-                if (newStock < 5) {
-                  const notifRef = db.collection('notifications').doc()
-                  transaction.set(notifRef, {
-                    tipo: 'low_stock',
-                    mensaje: `¡Alerta! El producto ${item.nombre} tiene stock crítico: ${newStock} unidades.`,
-                    id_producto: item.id,
-                    leido: false,
-                    fecha: new Date()
-                  })
-                }
+              const currentStock = Number(pData.stock) || 0
+              if (currentStock < item.cantidad) {
+                // TODO(F1-20): reembolso automático cuando no alcanza el stock.
+                transaction.set(db.collection('notifications').doc(), {
+                  tipo: 'oversell',
+                  mensaje: `¡Revisar! Se vendieron ${item.cantidad} de ${pData.nombre} con solo ${currentStock} en stock (orden ${paymentIntent.id}).`,
+                  id_producto: item.id,
+                  id_orden: paymentIntent.id,
+                  leido: false,
+                  fecha: new Date(),
+                })
+              }
+              const newStock = Math.max(0, currentStock - item.cantidad)
+              transaction.update(productRefs[i], { stock: newStock })
+
+              // Notificar si el stock es bajo (< 5)
+              if (newStock < 5) {
+                transaction.set(db.collection('notifications').doc(), {
+                  tipo: 'low_stock',
+                  mensaje: `¡Alerta! El producto ${pData.nombre} tiene stock crítico: ${newStock} unidades.`,
+                  id_producto: item.id,
+                  leido: false,
+                  fecha: new Date()
+                })
               }
             }
 
-            // Crear el documento de la orden
-            const orderRef = db.collection('orders').doc(paymentIntent.id)
+            // Crear el documento de la orden (id = PaymentIntent → idempotente)
             transaction.set(orderRef, {
               uid: meta.uid || 'anonimo',
               customerName: meta.customerName,
@@ -146,8 +168,7 @@ export async function POST(req: NextRequest) {
             })
 
             // Notificación de compra
-            const buyNotifRef = db.collection('notifications').doc()
-            transaction.set(buyNotifRef, {
+            transaction.set(db.collection('notifications').doc(), {
               tipo: 'purchase',
               mensaje: `${meta.customerName} ha realizado una compra por ${new Intl.NumberFormat('es-CO', {style:'currency', currency:'COP'}).format(paymentIntent.amount/100)}`,
               id_orden: paymentIntent.id,
@@ -157,62 +178,91 @@ export async function POST(req: NextRequest) {
           })
 
           // Enviar recibo detallado (en segundo plano, sin bloquear la respuesta a Stripe).
-          sendEmailInBackground(
-            () =>
-              sendOrderReceiptEmail({
-                to: meta.customerEmail,
-                customerName: meta.customerName,
-                items: itemsToProcess,
-                total: paymentIntent.amount / 100,
-                bank: bancoNombre,
-                date: dateStr,
-                transactionId: paymentIntent.id,
-              }),
-            'recibo-orden'
-          )
-
+          if (!alreadyProcessed) {
+            sendEmailInBackground(
+              () =>
+                sendOrderReceiptEmail({
+                  to: meta.customerEmail,
+                  customerName: meta.customerName,
+                  items: itemsToProcess,
+                  total: paymentIntent.amount / 100,
+                  bank: bancoNombre,
+                  date: dateStr,
+                  transactionId: paymentIntent.id,
+                }),
+              'recibo-orden'
+            )
+          }
         } catch (error) {
           console.error('Error procesando productos en webhook:', error)
+          processingFailed = true
         }
       }
 
       // --- PROCESAMIENTO DE PLANES (idempotente — T-09, auditoría A-8) ---
-      if (meta.uid && (meta.concept?.toLowerCase().includes('plan') || meta.concept?.toLowerCase().includes('mensualidad'))) {
-        let dias = 30
-        const concepto = meta.concept.toLowerCase()
-        if (concepto.includes('parejas')) dias = 40
-        else if (concepto.includes('dos en uno')) dias = 60
+      // B3: se decide por `type`/`planId` (metadata puesta por el servidor), no por si
+      // el nombre contiene "plan". El criterio por nombre queda SOLO para PaymentIntents
+      // creados antes de este cambio (sin `type` en la metadata).
+      const conceptLower = (meta.concept || '').toLowerCase()
+      const isPlanPayment = meta.type
+        ? meta.type === 'plan'
+        : conceptLower.includes('plan') || conceptLower.includes('mensualidad')
 
+      if (meta.uid && isPlanPayment) {
         const now = new Date()
         const orderRef = db.collection('orders').doc(paymentIntent.id)
+        let alreadyProcessed = false
+        let dias = 0
 
         try {
+          // Duración: la define el plan (`days`, editable en el panel admin).
+          if (meta.planId) {
+            const planSnap = await db.collection('planes').doc(meta.planId).get()
+            dias = Number(planSnap.data()?.days) || 0
+          }
+          if (!dias) {
+            // Respaldo para planes sin `days` (datos antiguos).
+            dias = 30
+            if (conceptLower.includes('parejas')) dias = 40
+            else if (conceptLower.includes('dos en uno')) dias = 60
+          }
+
           await db.runTransaction(async (transaction) => {
             // Idempotencia: si esta orden ya existe (Stripe reintentó el evento),
             // el plan ya se activó — no procesar de nuevo.
             const orderSnap = await transaction.get(orderRef)
-            if (orderSnap.exists) return
+            if (orderSnap.exists) {
+              alreadyProcessed = true
+              return
+            }
 
             const userRef = db.collection('users').doc(meta.uid)
             const userSnap = await transaction.get(userRef)
             const existingPlan = userSnap.data()?.plan
+            const existingExpira: Date | null = existingPlan?.expira?.toDate
+              ? existingPlan.expira.toDate()
+              : existingPlan?.expira
+                ? new Date(existingPlan.expira)
+                : null
 
             // Renovación: sumar los días al vencimiento vigente si no venció; si ya venció, desde hoy
-            const base = existingPlan?.expira && new Date(existingPlan.expira).getTime() > now.getTime()
-              ? new Date(existingPlan.expira)
+            const base = existingExpira && existingExpira.getTime() > now.getTime()
+              ? existingExpira
               : new Date()
             const expira = new Date(base)
             expira.setDate(base.getDate() + dias)
 
-            transaction.update(userRef, {
+            // `set` con merge: no falla si el documento del usuario no existe.
+            transaction.set(userRef, {
               plan: {
                 nombre: meta.concept,
+                planId: meta.planId || null,
                 precio: paymentIntent.amount / 100,
                 dias_total: dias,
                 inicio: now,
                 expira: expira,
               },
-            })
+            }, { merge: true })
 
             // Marcar el PaymentIntent como procesado (id determinista) para tolerar reintentos
             transaction.set(orderRef, {
@@ -220,6 +270,7 @@ export async function POST(req: NextRequest) {
               customerName: meta.customerName,
               customerEmail: meta.customerEmail,
               type: 'plan',
+              planId: meta.planId || null,
               concepto: meta.concept,
               total: paymentIntent.amount / 100,
               fecha: new Date(),
@@ -228,24 +279,30 @@ export async function POST(req: NextRequest) {
           })
 
           // Confirmación de plan (en segundo plano; el plan ya quedó activado arriba).
-          sendEmailInBackground(
-            () =>
-              sendPaymentSuccessEmail({
-                to: meta.customerEmail,
-                customerName: meta.customerName,
-                amount: paymentIntent.amount / 100,
-                concept: meta.concept,
-                bank: bancoNombre,
-                date: dateStr,
-                transactionId: paymentIntent.id,
-              }),
-            'confirmacion-plan'
-          )
-
-          console.log(`Plan activado para ${meta.uid}`)
+          if (!alreadyProcessed) {
+            sendEmailInBackground(
+              () =>
+                sendPaymentSuccessEmail({
+                  to: meta.customerEmail,
+                  customerName: meta.customerName,
+                  amount: paymentIntent.amount / 100,
+                  concept: meta.concept,
+                  bank: bancoNombre,
+                  date: dateStr,
+                  transactionId: paymentIntent.id,
+                }),
+              'confirmacion-plan'
+            )
+            console.log(`Plan activado para ${meta.uid} (${dias} días)`)
+          }
         } catch (dbErr: any) {
           console.error('Error actualizando plan en Firestore:', dbErr.message)
+          processingFailed = true
         }
+      }
+
+      if (processingFailed) {
+        return NextResponse.json({ error: 'Error procesando el evento' }, { status: 500 })
       }
       break
     }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { getAdminFirestore } from '@/lib/firebase-admin'
+import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-12-18.acacia' as any,
@@ -8,12 +8,34 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 export async function POST(req: NextRequest) {
   try {
+    // F1-18 (parcial): el pago exige sesión. uid y correo salen del ID token verificado,
+    // nunca del body (antes se podían enviar recibos a direcciones arbitrarias).
+    const authHeader = req.headers.get('authorization')
+    const idToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    if (!idToken) {
+      return NextResponse.json({ error: 'Debes iniciar sesión para pagar.' }, { status: 401 })
+    }
+    let decoded
+    try {
+      decoded = await getAdminAuth().verifyIdToken(idToken)
+    } catch {
+      return NextResponse.json({ error: 'Sesión inválida o expirada. Vuelve a iniciar sesión.' }, { status: 401 })
+    }
+    if (!decoded.email) {
+      return NextResponse.json({ error: 'Tu cuenta no tiene un correo asociado.' }, { status: 400 })
+    }
+
     const body = await req.json()
-    const { planId, items, customerEmail, customerName, uid } = body
+    const { planId, items } = body
+    const uid = decoded.uid
+    const customerEmail = decoded.email
 
     let amount = 0
     let concept = ''
     const db = getAdminFirestore()
+
+    const userSnap = await db.collection('users').doc(uid).get()
+    const customerName = String(userSnap.data()?.username || decoded.name || customerEmail.split('@')[0]).slice(0, 100)
 
     // 1. Lógica para PLANES
     if (planId) {
@@ -72,16 +94,20 @@ export async function POST(req: NextRequest) {
     }
 
     // Preparar metadatos
-    const metadata: any = { 
-      customerName, 
-      customerEmail, 
-      concept, 
-      uid 
+    const metadata: any = {
+      customerName,
+      customerEmail,
+      concept,
+      uid,
+      // B3: el webhook decide por el TIPO y el planId, no por el texto del concepto.
+      type: planId ? 'plan' : 'products',
     }
 
     if (planId) metadata.planId = planId
-    if (items) {
-      const itemsSummary = items.map((it: any) => `${it.id}:${it.cantidad}`).join(',')
+    // Solo compras de productos llevan ítems: antes un pago de plan con carrito lleno
+    // hacía que el webhook descontara stock de productos que no se cobraron.
+    if (!planId && items) {
+      const itemsSummary = items.map((it: any) => `${String(it.id).trim().toLowerCase()}:${Number(it.cantidad)}`).join(',')
       metadata.items = itemsSummary.substring(0, 500)
     }
 
@@ -97,6 +123,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ clientSecret: paymentIntent.client_secret })
   } catch (error: any) {
     console.error('Error creando PaymentIntent:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'No se pudo iniciar el pago. Intenta de nuevo.' }, { status: 500 })
   }
 }

@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { resetRateLimitFor } from '@/lib/rate-limit-server';
+import { GATE_COOKIE, createGateToken, gateCookieOptions, getGateSecret } from '@/lib/gate-token';
+
+// Duración de la sesión del panel admin.
+const SESSION_SECONDS = 60 * 60; // 1 hora
 
 export async function POST(request: Request) {
   try {
@@ -32,7 +37,7 @@ export async function POST(request: Request) {
     // Crear session cookie de Firebase (revocable y verificable server-side) en lugar
     // de guardar el ID token crudo (T-15, auditoría A-4).
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {
-      expiresIn: 60 * 60 * 1000, // 1 hora en ms
+      expiresIn: SESSION_SECONDS * 1000,
     });
 
     const response = NextResponse.json({ success: true, uid: decodedToken.uid }, { status: 200 });
@@ -42,8 +47,22 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === 'production', // Solo HTTPS en producción
       sameSite: 'lax',     // Más compatible con redirecciones y navegación top-level
       path: '/',
-      maxAge: 60 * 60,      // 1 hora en segundos
+      maxAge: SESSION_SECONDS,
     });
+
+    // F1-12: token de puerta firmado con la misma vigencia que la sesión, para que
+    // el middleware deje pasar al panel sin depender de una cookie falsificable.
+    const gateSecret = getGateSecret('admin');
+    if (gateSecret) {
+      response.cookies.set(
+        GATE_COOKIE.admin,
+        await createGateToken('admin', gateSecret, SESSION_SECONDS),
+        gateCookieOptions(SESSION_SECONDS)
+      );
+    }
+
+    // F1-10: acceso verificado → reiniciar el contador de intentos de esta IP.
+    await resetRateLimitFor(request);
 
     await recordAuditLog({
       action: 'LOGIN_ADMIN',

@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { Redis } from '@upstash/redis';
+import { getClientIp } from '@/lib/client-ip';
+import {
+  GATE_COOKIE,
+  type GateScope,
+  createGateToken,
+  gateCookieOptions,
+  getGateSecret,
+  timingSafeEqualStrings,
+  verifyGateToken,
+} from '@/lib/gate-token';
 
 // Inicializar Upstash Redis de forma directa para control granular
 let redis: Redis | null = null;
@@ -65,7 +75,7 @@ function buildCsp(nonce: string): string {
     script-src ${scriptSrc};
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     img-src 'self' blob: data: https://res.cloudinary.com https://*.googleusercontent.com https://*.stripe.com https://*.firebaseapp.com;
-    connect-src 'self' https://*.stripe.com https://*.googleapis.com https://*.firebaseio.com https://res.cloudinary.com https://va.vercel-scripts.com;
+    connect-src 'self' https://*.stripe.com https://*.googleapis.com https://*.firebaseio.com https://api.cloudinary.com https://res.cloudinary.com https://va.vercel-scripts.com;
     frame-src 'self' https://*.stripe.com https://*.firebaseapp.com;
     font-src 'self' data: https://fonts.gstatic.com;
     worker-src 'self' blob:;
@@ -83,6 +93,9 @@ function applySecurityHeaders(response: NextResponse, csp: string) {
   headers.set('X-Frame-Options', 'DENY');
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // F1-16: la cámara solo la usa el escáner QR de recepción (mismo origen).
+  headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=(self)');
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
 
   if (isProd) {
     headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
@@ -109,8 +122,55 @@ function rewriteWithNonce(request: NextRequest, destination: URL, nonce: string,
   return applySecurityHeaders(response, csp);
 }
 
+// -------------------------------------------------------
+// PUERTA DE PANELES INTERNOS (F1-12)
+// -------------------------------------------------------
+// La cookie de puerta es un token HMAC firmado con la llave del panel (no un literal
+// `'true'`), y la mera presencia de una cookie de sesión YA NO abre la puerta: ambas
+// se podían falsificar a mano. Los logins de panel emiten el token tras verificar
+// la sesión, así que el acceso directo por rol (`enterPanel`) sigue funcionando.
+const GATE_TTL_SECONDS = 60 * 60; // 1 hora al entrar con `?key=`
+
+async function handlePanelGate(
+  request: NextRequest,
+  scope: GateScope,
+  hasSessionCookie: boolean,
+  nonce: string,
+  csp: string
+) {
+  const secret = getGateSecret(scope);
+
+  // Sin llave configurada: comportamiento anterior (solo sesión), con aviso.
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(`[SECURITY] Falta la llave de puerta del panel "${scope}" (ADMIN_GATE_KEY / RECEPTION_GATE_KEY).`);
+    }
+    return hasSessionCookie
+      ? nextWithNonce(request, nonce, csp)
+      : rewriteWithNonce(request, new URL('/404', request.url), nonce, csp);
+  }
+
+  const gateCookie = request.cookies.get(GATE_COOKIE[scope])?.value;
+  if (await verifyGateToken(scope, secret, gateCookie)) {
+    return nextWithNonce(request, nonce, csp);
+  }
+
+  const key = request.nextUrl.searchParams.get('key');
+  if (key && timingSafeEqualStrings(key, secret)) {
+    const resp = nextWithNonce(request, nonce, csp);
+    resp.cookies.set(
+      GATE_COOKIE[scope],
+      await createGateToken(scope, secret, GATE_TTL_SECONDS),
+      gateCookieOptions(GATE_TTL_SECONDS)
+    );
+    return resp;
+  }
+
+  return rewriteWithNonce(request, new URL('/404', request.url), nonce, csp);
+}
+
 export default async function middleware(request: NextRequest) {
-  const { pathname, searchParams } = request.nextUrl;
+  const { pathname } = request.nextUrl;
   const nonce = generateNonce();
   const csp = buildCsp(nonce);
 
@@ -125,22 +185,11 @@ export default async function middleware(request: NextRequest) {
   if (redis) {
     // IP confiable (T-11, auditoría A-1): Vercel adjunta la IP real del cliente;
     // NO confiar en el primer valor de x-forwarded-for (header falsificable por el atacante).
-    const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]
-      || request.headers.get('cf-connecting-ip')
-      || (request as { ip?: string }).ip
-      || request.headers.get('x-forwarded-for')?.split(',')[0]
-      || '127.0.0.1';
+    const ip = getClientIp(request.headers);
 
-    // 1. REINICIO DE INTENTOS (Solo si login/pago fue exitoso)
-    if (pathname === '/api/security/success') {
-      try {
-        await redis.del(`fw_attempts_${ip}`, `fw_lockout_${ip}`, `fw_level_${ip}`);
-        return applySecurityHeaders(NextResponse.json({ success: true, message: 'Intentos restaurados' }), csp);
-      } catch (e) {
-        console.error('Error limpiando rate limit:', e);
-        return applySecurityHeaders(NextResponse.json({ success: true }), csp); // Fallback
-      }
-    }
+    // F1-10 (auditoría B5): se eliminó `/api/security/success`. Reiniciaba el contador
+    // SIN autenticación, así que cualquiera podía anular su propio bloqueo. El reinicio
+    // ahora lo hace el servidor tras un login de panel verificado (lib/rate-limit-server.ts).
 
     const sensitiveEndpoints = [
       '/api/admin/login',
@@ -251,55 +300,11 @@ export default async function middleware(request: NextRequest) {
   const normalizedPath = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
 
   if (normalizedPath === '/fitministration') {
-    const key = searchParams.get('key');
-    const validKey = process.env.ADMIN_GATE_KEY;
-    const adminGateCookie = request.cookies.get('fitmania_admin_gate')?.value;
-
-    // Permitir si ya tiene sesión iniciada o si ya pasó la "gate" con cookie
-    if (adminSession || adminGateCookie === 'true') {
-      return nextWithNonce(request, nonce, csp);
-    }
-
-    // Si trae la llave correcta, dejarlo pasar y ponerle la cookie por 1 hora
-    if (validKey && key === validKey) {
-      const resp = nextWithNonce(request, nonce, csp);
-      resp.cookies.set('fitmania_admin_gate', 'true', {
-        maxAge: 3600, // 1 hora
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        path: '/',
-        sameSite: 'lax'
-      });
-      return resp;
-    }
-
-    return rewriteWithNonce(request, new URL('/404', request.url), nonce, csp);
+    return handlePanelGate(request, 'admin', !!adminSession, nonce, csp);
   }
 
   if (normalizedPath === '/fitception') {
-    const key = searchParams.get('key');
-    const validKey = process.env.RECEPTION_GATE_KEY;
-    const receptionGateCookie = request.cookies.get('fitmania_reception_gate')?.value;
-
-    // Permitir si ya tiene sesión iniciada o si ya pasó la "gate" con cookie
-    if (receptionSession || receptionGateCookie === 'true') {
-      return nextWithNonce(request, nonce, csp);
-    }
-
-    // Si trae la llave correcta, dejarlo pasar y ponerle la cookie por 1 hora
-    if (validKey && key === validKey) {
-      const resp = nextWithNonce(request, nonce, csp);
-      resp.cookies.set('fitmania_reception_gate', 'true', {
-        maxAge: 3600, // 1 hora
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        path: '/',
-        sameSite: 'lax'
-      });
-      return resp;
-    }
-
-    return rewriteWithNonce(request, new URL('/404', request.url), nonce, csp);
+    return handlePanelGate(request, 'recepcion', !!receptionSession, nonce, csp);
   }
 
   // -------------------------------------------------------
@@ -333,7 +338,7 @@ export const config = {
      *
      * IMPORTANTE: NO excluir `api`. El middleware es quien aplica el rate limit
      * y protege las APIs de admin/recepción, y además atiende endpoints que no
-     * existen como route handler (/api/security/attempt y /api/security/success).
+     * existen como route handler (/api/security/attempt).
      * Si se excluye `api`, esos endpoints devuelven el HTML del 404.
      */
     '/((?!_next/static|_next/image|favicon.ico|Imagenes|Public|.*\\.png$|.*\\.jpg$|.*\\.jpeg$|.*\\.gif$|.*\\.svg$|.*\\.webp$|.*\\.woff2?$|.*\\.ico$).*)',

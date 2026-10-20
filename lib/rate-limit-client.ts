@@ -76,16 +76,9 @@ export async function consumeRateLimitAttempt(): Promise<RateLimitStatus> {
   }
 }
 
-/**
- * Limpia el historial de fallos del rate limit si el usuario ingresó correctamente.
- */
-export async function clearRateLimit(): Promise<void> {
-  try {
-    await fetch('/api/security/success', { method: 'POST' });
-  } catch (e) {
-    console.error('Error limpiando rate limit:', e);
-  }
-}
+// F1-10: `clearRateLimit()` se eliminó. El reinicio del contador lo hace el servidor
+// tras un login de panel verificado (lib/rate-limit-server.ts); desde el cliente
+// era una puerta trasera para anular el bloqueo.
 
 /**
  * Formatea los segundos restantes en un formato amigable (MM:SS)

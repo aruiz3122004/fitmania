@@ -5,7 +5,7 @@ import { Toaster, toast } from 'sonner'
 
 import { ReceptionLoginForm } from '@/components/recepcion/reception-login-form'
 import { db, auth } from '@/lib/firebase'
-import { collection, getDocs, doc, setDoc, query, where, orderBy, limit } from 'firebase/firestore'
+import { collection, getDocs, query, where } from 'firebase/firestore'
 import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
@@ -32,7 +32,7 @@ export default function ReceptionPage() {
     // Verificar la sesión leyendo la cookie HttpOnly vía el servidor
     const checkReceptionSession = async () => {
       try {
-        const res = await fetch('/api/auth/verify?role=reception');
+        const res = await fetch('/api/auth/verify?role=recepcion');
         if (res.ok) {
           // Si la cookie es válida, verificar estado de Firebase
           const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -154,30 +154,29 @@ export default function ReceptionPage() {
     if (!scannedUser) return;
 
     try {
-      // 1. Registro en checkIns (para vista individual del usuario)
-      const checkInRef = doc(collection(db, 'checkIns'))
-      await setDoc(checkInRef, {
-        userId: scannedUser.id,
-        userName: scannedUser.username || scannedUser.email,
-        timestamp: new Date(),
-        authorizedBy: 'Recepcionista'
-      });
-
-      // 2. Registro en entry_logs (historial empresarial vía API server-side)
-      const hasPlanActivo = scannedUser.plan && new Date(scannedUser.plan.expira.seconds * 1000) > new Date();
-      await fetch('/api/recepcion/entry-log', {
+      // El servidor registra entry_logs + checkIns en una transacción, deriva el estado
+      // del plan desde Firestore y rechaza duplicados (409). Solo se envía el uid.
+      const res = await fetch('/api/recepcion/entry-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: scannedUser.id,
-          userName: scannedUser.username || scannedUser.email,
-          userEmail: scannedUser.email,
-          hasPlanActivo: !!hasPlanActivo,
-          planNombre: scannedUser.plan?.nombre || null,
-        }),
+        body: JSON.stringify({ userId: scannedUser.id }),
       });
+      const data = await res.json().catch(() => ({}));
 
-      toast.success('Acceso autorizado y registrado.')
+      if (!res.ok) {
+        if (res.status === 409) {
+          toast.warning(data.error || 'Este socio ya registró su ingreso.')
+        } else {
+          toast.error(data.error || 'Error al registrar acceso.')
+        }
+        return
+      }
+
+      if (data.hasPlanActivo) {
+        toast.success('Acceso autorizado y registrado.')
+      } else {
+        toast.warning('Ingreso registrado SIN plan activo.')
+      }
       setScannedUser(null)
       setSimulatorId('')
     } catch (error) {

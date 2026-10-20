@@ -24,6 +24,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, ...result });
   } catch (error: any) {
     console.error('Error generando notificaciones programadas:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/cron/notifications]', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }

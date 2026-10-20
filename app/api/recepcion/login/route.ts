@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { resetRateLimitFor } from '@/lib/rate-limit-server';
+import { GATE_COOKIE, createGateToken, gateCookieOptions, getGateSecret } from '@/lib/gate-token';
+
+// F1-15: la recepción trabaja todo el día; la sesión cubre un turno completo.
+const SESSION_SECONDS = 12 * 60 * 60; // 12 horas
 
 export async function POST(request: Request) {
   try {
@@ -50,7 +55,7 @@ export async function POST(request: Request) {
 
     // Crear session cookie de Firebase (revocable) en lugar del ID token crudo (T-15).
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {
-      expiresIn: 60 * 60 * 1000, // 1 hora en ms
+      expiresIn: SESSION_SECONDS * 1000,
     });
 
     const response = NextResponse.json({ success: true, uid: decodedToken.uid }, { status: 200 });
@@ -60,8 +65,21 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60, // 1 hora
+      maxAge: SESSION_SECONDS,
     });
+
+    // F1-12: token de puerta firmado con la misma vigencia que la sesión.
+    const gateSecret = getGateSecret('recepcion');
+    if (gateSecret) {
+      response.cookies.set(
+        GATE_COOKIE.recepcion,
+        await createGateToken('recepcion', gateSecret, SESSION_SECONDS),
+        gateCookieOptions(SESSION_SECONDS)
+      );
+    }
+
+    // F1-10: acceso verificado → reiniciar el contador de intentos de esta IP.
+    await resetRateLimitFor(request);
 
     await recordAuditLog({
       action: 'LOGIN_RECEPTION',

@@ -35,6 +35,8 @@ export async function GET(request: Request) {
 
   } catch (error: any) {
     console.error('Error en API Admin Stats:', error);
-    return NextResponse.json({ error: error.message || 'Error interno' }, { status: 500 });
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/admin/stats]', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }

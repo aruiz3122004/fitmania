@@ -5,7 +5,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
 import { useAuthStore } from '@/lib/store'
-import { db } from '@/lib/firebase'
+import { auth, db } from '@/lib/firebase'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import { doc, updateDoc } from 'firebase/firestore'
 import { Save, UserCircle, Camera, Loader2, ShieldCheck, Clock, Calendar, QrCode, Users } from 'lucide-react'
@@ -72,16 +72,21 @@ export default function PerfilPage() {
     setIsSavingCompanion(true);
     setStatus('Guardando acompañante...');
     try {
-      const companionData = {
-        nombre: compNombre,
-        email: compEmail,
-        rutinaDias: compDias
-      };
-      
-      await updateDoc(doc(db, 'users', user.uid), {
-        'plan.acompanante': companionData
+      // Lo escribe el servidor: las reglas no permiten al cliente tocar `plan` (F1-08).
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Sesión expirada');
+      const res = await fetch('/api/me/companion', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ nombre: compNombre, email: compEmail, rutinaDias: compDias }),
       });
-      
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatus(data.error || 'Error al guardar acompañante.');
+        return;
+      }
+      const companionData = data.acompanante;
+
       updateUser({
         ...user,
         plan: {

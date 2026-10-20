@@ -43,43 +43,16 @@ export function UserDropdown() {
     if (!user?.uid) return
     await updateDoc(doc(db, 'users', user.uid), updates)
 
+    // Solo se actualizan los posts PROPIOS (consulta por autor, no toda la colección).
+    // Los comentarios en posts ajenos conservan el avatar anterior: las reglas no
+    // permiten reescribir comentarios ajenos (pendiente F1-07: resolver avatar por autor_id).
     if (updates.photoURL) {
-      const postsRef = collection(db, 'posts')
-      const querySnapshot = await getDocs(postsRef)
+      const ownPosts = await getDocs(query(collection(db, 'posts'), where('autor_id', '==', user.uid)))
 
-      if (!querySnapshot.empty) {
+      if (!ownPosts.empty) {
         const batch = writeBatch(db)
-        querySnapshot.forEach((docSnap) => {
-          const postData = docSnap.data()
-          let needsUpdate = false
-          const postUpdate: any = {}
-
-          // Actualizar avatar del autor del post
-          if (postData.autor_id === user.uid) {
-            postUpdate.autor_avatar = updates.photoURL
-            needsUpdate = true
-          }
-
-          // Actualizar avatares en los comentarios
-          if (Array.isArray(postData.comentarios)) {
-            const updatedComentarios = postData.comentarios.map((comment: any) => {
-              if (comment.autor_username === user.username) {
-                return { ...comment, autor_avatar: updates.photoURL }
-              }
-              return comment
-            })
-
-            // Verificar si algún comentario cambió
-            const changed = JSON.stringify(updatedComentarios) !== JSON.stringify(postData.comentarios)
-            if (changed) {
-              postUpdate.comentarios = updatedComentarios
-              needsUpdate = true
-            }
-          }
-
-          if (needsUpdate) {
-            batch.update(docSnap.ref, postUpdate)
-          }
+        ownPosts.forEach((docSnap) => {
+          batch.update(docSnap.ref, { autor_avatar: updates.photoURL })
         })
         await batch.commit()
       }

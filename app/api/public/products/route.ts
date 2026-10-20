@@ -21,6 +21,8 @@ export async function GET() {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30' },
     })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/public/products]', e)
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })
   }
 }

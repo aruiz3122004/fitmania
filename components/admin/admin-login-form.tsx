@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { getRateLimitStatus, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client';
+import { getRateLimitStatus, formatTimeLeft } from '@/lib/rate-limit-client';
 
 interface AdminLoginFormProps {
   onSuccess: () => void;
@@ -118,8 +118,6 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
       setAuthSuccess(true);
       toast.success('Acceso Autorizado');
       
-      // Limpiar rate limit histórico de fallos exitosamente
-      await clearRateLimit();
 
       // Limpiar la URL (quitar la ?key= de la barra de direcciones)
       if (typeof window !== 'undefined') {
