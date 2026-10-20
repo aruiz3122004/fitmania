@@ -5,6 +5,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
+import { PrivacySection } from '@/components/profile/privacy-section'
 import { useAuthStore } from '@/lib/store'
 import { auth, db } from '@/lib/firebase'
 import { uploadToCloudinary } from '@/services/cloudinary'
@@ -151,6 +152,9 @@ export default function PerfilPage() {
     }
   }
 
+  // F3-10: peso/altura solo se editan con autorización de datos sensibles vigente.
+  const [sensitiveConsent, setSensitiveConsent] = useState(false)
+
   const handleSave = async () => {
     if (!user?.uid) {
       setStatus('Debes iniciar sesion para editar tu perfil.')
@@ -160,10 +164,12 @@ export default function PerfilPage() {
     setIsSaving(true)
     setStatus('')
     try {
-      const payload = {
+      const payload: { username: string; peso?: number | null; altura?: number | null } = {
         username: username.trim(),
-        peso: peso ? Number(peso) : null,
-        altura: altura ? Number(altura) : null,
+      }
+      if (sensitiveConsent) {
+        payload.peso = peso ? Number(peso) : null
+        payload.altura = altura ? Number(altura) : null
       }
       await updateDoc(doc(db, 'users', user.uid), payload)
       updateUser({
@@ -268,7 +274,9 @@ export default function PerfilPage() {
                   type="number"
                   value={peso}
                   onChange={(e) => setPeso(e.target.value)}
-                  className="w-full mt-2 border-2 border-gray-200 px-3 py-2 outline-none focus:border-primary"
+                  disabled={!sensitiveConsent}
+                  title={sensitiveConsent ? undefined : 'Autoriza el tratamiento de datos sensibles en "Privacidad y datos"'}
+                  className="w-full mt-2 border-2 border-gray-200 px-3 py-2 outline-none focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
@@ -277,7 +285,9 @@ export default function PerfilPage() {
                   type="number"
                   value={altura}
                   onChange={(e) => setAltura(e.target.value)}
-                  className="w-full mt-2 border-2 border-gray-200 px-3 py-2 outline-none focus:border-primary"
+                  disabled={!sensitiveConsent}
+                  title={sensitiveConsent ? undefined : 'Autoriza el tratamiento de datos sensibles en "Privacidad y datos"'}
+                  className="w-full mt-2 border-2 border-gray-200 px-3 py-2 outline-none focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -292,6 +302,16 @@ export default function PerfilPage() {
             </button>
 
             {status && <p className="mt-4 font-label text-sm text-gray-600">{status}</p>}
+
+            <PrivacySection
+              onSensitiveChange={(granted) => {
+                setSensitiveConsent(granted)
+                if (!granted) {
+                  setPeso('')
+                  setAltura('')
+                }
+              }}
+            />
           </div>
 
           {/* Acceso al personal (solo roles con claim admin/receptionist) */}

@@ -91,6 +91,13 @@ export function Footer() {
 
       {/* Bottom bar */}
       <div className="border-t-3 border-black/20 text-center py-6 px-8 relative z-10">
+        {/* F3-09: enlaces legales obligatorios (Ley 1581 / Ley 1480). */}
+        <nav className="flex flex-wrap justify-center gap-x-5 gap-y-2 mb-3 font-label text-[0.75rem] text-white/90 underline">
+          <Link href="/legal/privacidad">Tratamiento de datos</Link>
+          <Link href="/legal/terminos">Términos y condiciones</Link>
+          <Link href="/legal/cookies">Cookies</Link>
+          <Link href="/pqrs">PQRS</Link>
+        </nav>
         <p className="font-label text-[0.8rem] text-white/80 tracking-[1px]">
           &copy; 2026 FITMANIA. Todos los derechos reservados. Tu Pasion. Tu Fuerza.
         </p>

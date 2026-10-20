@@ -29,6 +29,9 @@ import { getRateLimitStatus, consumeRateLimitAttempt, formatTimeLeft } from '@/l
 export default function RegistroPage() {
   const router = useRouter()
   const { setUser } = useAuthStore()
+  // F3-10: autorización de tratamiento (obligatoria) y de datos sensibles (opcional y separada).
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [sensitiveConsent, setSensitiveConsent] = useState(false)
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -87,6 +90,11 @@ export default function RegistroPage() {
       return
     }
 
+    if (!acceptedTerms) {
+      setError('Debes aceptar los términos y la política de tratamiento de datos para crear tu cuenta.')
+      return
+    }
+
     if (formData.password.length < 6) {
       setError('La contrasena debe tener al menos 6 caracteres')
       return
@@ -118,8 +126,10 @@ export default function RegistroPage() {
           username: formData.username,
           gender: formData.gender,
           avatar: formData.avatar,
-          peso: formData.peso || null,
-          altura: formData.altura || null,
+          peso: sensitiveConsent ? formData.peso || null : null,
+          altura: sensitiveConsent ? formData.altura || null : null,
+          acceptedTerms,
+          sensitiveConsent,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -343,7 +353,24 @@ export default function RegistroPage() {
                 </div>
               </div>
 
-              <div className={cn("grid grid-cols-2 gap-4 mb-4 transition-opacity", isBlocked && "opacity-50 pointer-events-none")}>
+              {/* F3-10: los datos de salud solo se piden con autorización expresa y separada. */}
+              <label className={cn("flex items-start gap-3 mb-3 cursor-pointer", isBlocked && "opacity-50 pointer-events-none")}>
+                <input
+                  type="checkbox"
+                  checked={sensitiveConsent}
+                  onChange={(e) => {
+                    setSensitiveConsent(e.target.checked)
+                    if (!e.target.checked) setFormData({ ...formData, peso: '', altura: '' })
+                  }}
+                  className="mt-1 w-4 h-4 accent-primary"
+                />
+                <span className="font-body text-xs text-gray-600">
+                  <strong>Opcional:</strong> autorizo el tratamiento de mi peso y altura (datos sensibles) para personalizar mi
+                  seguimiento. No es obligatorio y puedo revocarlo desde mi perfil.
+                </span>
+              </label>
+
+              <div className={cn("grid grid-cols-2 gap-4 mb-4 transition-opacity", (isBlocked || !sensitiveConsent) && "opacity-50 pointer-events-none")}>
                 {/* Weight */}
                 <div>
                   <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
@@ -407,6 +434,22 @@ export default function RegistroPage() {
                   ))}
                 </div>
               </div>
+
+              <label className="flex items-start gap-3 mb-6 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-1 w-4 h-4 accent-primary"
+                  required
+                />
+                <span className="font-body text-xs text-gray-600">
+                  Acepto los{' '}
+                  <Link href="/legal/terminos" target="_blank" className="underline font-bold">términos y condiciones</Link>{' '}
+                  y autorizo el tratamiento de mis datos personales según la{' '}
+                  <Link href="/legal/privacidad" target="_blank" className="underline font-bold">política de tratamiento de datos</Link>.
+                </span>
+              </label>
 
               {/* Submit */}
               <button

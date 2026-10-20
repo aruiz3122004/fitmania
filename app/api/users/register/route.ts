@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils';
+import { recordConsent } from '@/lib/consents';
 
 /**
  * POST /api/users/register — crea el perfil del usuario recién registrado (F1-06).
@@ -39,8 +40,14 @@ export async function POST(request: Request) {
     const username = typeof body?.username === 'string' ? body.username.trim() : '';
     const gender = typeof body?.gender === 'string' ? body.gender : '';
     const avatar = typeof body?.avatar === 'string' && AVATAR_IDS.has(body.avatar) ? body.avatar : 'fitman';
-    const peso = optionalNumber(body?.peso, 20, 400);
-    const altura = optionalNumber(body?.altura, 50, 260);
+    // F3-10: aceptar términos y política es obligatorio; los datos de salud solo con
+    // autorización expresa y separada (si no, se descartan aunque lleguen).
+    if (body?.acceptedTerms !== true) {
+      return NextResponse.json({ error: 'Debes aceptar los términos y la política de tratamiento de datos.' }, { status: 400 });
+    }
+    const sensitiveConsent = body?.sensitiveConsent === true;
+    const peso = sensitiveConsent ? optionalNumber(body?.peso, 20, 400) : null;
+    const altura = sensitiveConsent ? optionalNumber(body?.altura, 50, 260) : null;
 
     if (username.length < 2 || username.length > 40) {
       return NextResponse.json({ error: 'El nombre de usuario debe tener entre 2 y 40 caracteres.' }, { status: 400 });
@@ -62,7 +69,6 @@ export async function POST(request: Request) {
       createdAt: new Date(),
     };
     if (gender) profile.gender = gender;
-    // TODO(F3-10): guardar peso/altura solo con consentimiento explícito de datos sensibles.
     if (peso !== null) profile.peso = peso;
     if (altura !== null) profile.altura = altura;
 
@@ -75,6 +81,13 @@ export async function POST(request: Request) {
       }
       throw err;
     }
+
+    const db = getAdminFirestore();
+    await Promise.all([
+      recordConsent(db, uid, 'terms', true, request),
+      recordConsent(db, uid, 'privacy', true, request),
+      recordConsent(db, uid, 'sensitive_data', sensitiveConsent, request),
+    ]);
 
     const { createdAt: _createdAt, ...publicProfile } = profile;
     return NextResponse.json({ success: true, profile: publicProfile });

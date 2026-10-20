@@ -3,6 +3,7 @@ import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { listAllAuthUsers } from '@/lib/admin-users';
+import { deleteMemberAccount } from '@/lib/account-deletion';
 
 export async function GET(request: Request) {
   const isAdmin = await verifyAdminRequest(request);
@@ -149,16 +150,18 @@ export async function DELETE(request: Request) {
     const auth = getAdminAuth();
     const db = getAdminFirestore();
 
-    // 1. Eliminar de Auth
-    await auth.deleteUser(uid);
-    // 2. Eliminar de Firestore
-    await db.collection('users').doc(uid).delete();
+    if (uid === isAdmin.uid) {
+      return NextResponse.json({ error: 'No puedes eliminar tu propia cuenta de administrador.' }, { status: 400 });
+    }
+    // F2-26: supresión completa (posts, comentarios y likes borrados; ingresos, PQRS y
+    // reportes anonimizados; órdenes conservadas por obligación contable).
+    const summary = await deleteMemberAccount(db, auth, uid);
 
     // Audit Log
     await recordAuditLog({
       action: 'DELETE_USER',
       category: 'ADMIN_ACTION',
-      details: `Socio eliminado permanentemente de Firebase. UID: ${uid}`,
+      details: `Socio eliminado (supresión). UID: ${uid}. Posts: ${summary.posts}, comentarios: ${summary.comments}, ingresos anonimizados: ${summary.entries}.`,
       adminEmail: isAdmin.email,
       targetId: uid,
       request,

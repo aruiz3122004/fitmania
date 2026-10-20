@@ -12,7 +12,8 @@ import {
   Lightbulb,
   Send,
   CheckCircle,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck
 } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { db } from '@/lib/firebase'
@@ -51,6 +52,15 @@ const tiposPQRS = [
     description: 'Comparte ideas para mejorar nuestros servicios y tu experiencia.',
     color: 'bg-green-500',
     borderColor: 'border-green-500',
+  },
+  {
+    // F3-11: canal de habeas data (consultas 10 días hábiles, reclamos 15 días hábiles).
+    id: 'datos_personales',
+    label: 'Datos personales',
+    icon: ShieldCheck,
+    description: 'Consulta, actualiza, rectifica o suprime tus datos personales (Ley 1581 de 2012).',
+    color: 'bg-purple-600',
+    borderColor: 'border-purple-600',
   },
 ]
 
@@ -188,7 +198,7 @@ export default function PQRSPage() {
                   <h3 className="font-display text-xl text-secondary tracking-wider mb-4">
                     SELECCIONA EL TIPO
                   </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     {tiposPQRS.map((tipo) => {
                       const Icon = tipo.icon
                       const isSelected = selectedTipo === tipo.id
@@ -282,6 +292,10 @@ export default function PQRSPage() {
                 <li className="font-body text-sm text-gray-600 flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-500"></span>
                   Sugerencias: 10 dias habiles
+                </li>
+                <li className="font-body text-sm text-gray-600 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-purple-600"></span>
+                  Datos personales: consultas 10 y reclamos 15 dias habiles
                 </li>
               </ul>
             </div>

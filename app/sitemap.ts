@@ -11,6 +11,9 @@ const PUBLIC_ROUTES: { path: string; priority: number; changeFrequency: 'daily' 
   { path: '/pqrs', priority: 0.4, changeFrequency: 'monthly' },
   { path: '/registro', priority: 0.5, changeFrequency: 'monthly' },
   { path: '/login', priority: 0.3, changeFrequency: 'monthly' },
+  { path: '/legal/privacidad', priority: 0.2, changeFrequency: 'monthly' },
+  { path: '/legal/terminos', priority: 0.2, changeFrequency: 'monthly' },
+  { path: '/legal/cookies', priority: 0.1, changeFrequency: 'monthly' },
 ]
 
 export default function sitemap(): MetadataRoute.Sitemap {

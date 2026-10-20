@@ -91,3 +91,18 @@ export async function verifyReceptionRequest(request: Request) {
     return null;
   }
 }
+
+/**
+ * Verifica a un usuario final por `Authorization: Bearer <idToken>`.
+ * Para endpoints del propio usuario (/api/me/*, registro, foro).
+ */
+export async function verifyUserRequest(request: Request) {
+  const authHeader = request.headers.get('authorization');
+  const idToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!idToken) return null;
+  try {
+    return await getAdminAuth().verifyIdToken(idToken);
+  } catch {
+    return null;
+  }
+}

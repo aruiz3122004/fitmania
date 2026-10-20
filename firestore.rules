@@ -25,6 +25,14 @@ service cloud.firestore {
       return ['username', 'avatar', 'photoURL', 'peso', 'altura', 'gender'];
     }
 
+    // F3-10: peso/altura (datos de salud) solo con autorización vigente o para borrarlos.
+    function sensitiveWriteAllowed(uid) {
+      let consentPath = /databases/$(database)/documents/consents/$(uid + '_sensitive_data');
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['peso', 'altura'])
+        || (request.resource.data.get('peso', null) == null && request.resource.data.get('altura', null) == null)
+        || (exists(consentPath) && get(consentPath).data.granted == true);
+    }
+
     match /users/{uid} {
       // F2-18: recepción ya no lee `users` directo; usa /api/recepcion/members (datos mínimos).
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
@@ -32,7 +40,8 @@ service cloud.firestore {
       // el cliente no puede crear su documento (cerraba B2: autoasignarse un plan).
       allow create: if isAdmin();
       allow update: if isAdmin() || (isSignedIn() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(editableProfileKeys()));
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(editableProfileKeys())
+        && sensitiveWriteAllowed(uid));
       allow delete: if isAdmin();
     }
 
