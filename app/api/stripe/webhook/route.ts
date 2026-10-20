@@ -142,9 +142,21 @@ export async function POST(req: NextRequest) {
               }
               const newStock = Math.max(0, currentStock - item.cantidad)
               transaction.update(productRefs[i], { stock: newStock })
+              // F2-25: movimiento de inventario por la venta (trazabilidad del stock).
+              transaction.set(db.collection('inventory_movements').doc(), {
+                productId: item.id,
+                productName: pData.nombre,
+                type: 'sale',
+                before: currentStock,
+                after: newStock,
+                delta: newStock - currentStock,
+                orderId: paymentIntent.id,
+                createdAt: new Date(),
+              })
 
-              // Notificar si el stock es bajo (< 5)
-              if (newStock < 5) {
+              // Notificar si el stock queda en o bajo el umbral del producto (por defecto 5).
+              const threshold = Number.isFinite(Number(pData.lowStockThreshold)) ? Number(pData.lowStockThreshold) : 5
+              if (newStock <= threshold) {
                 transaction.set(db.collection('notifications').doc(), {
                   tipo: 'low_stock',
                   mensaje: `¡Alerta! El producto ${pData.nombre} tiene stock crítico: ${newStock} unidades.`,

@@ -97,6 +97,22 @@ export async function PATCH(request: Request) {
 
     await docRef.update(updates);
 
+    // F2-25: todo cambio de stock queda como movimiento de inventario con su actor.
+    const previousStock = Number(before.data()?.stock) || 0;
+    if (updates.stock !== undefined && updates.stock !== previousStock) {
+      await db.collection('inventory_movements').add({
+        productId: id,
+        productName: before.data()?.nombre || id,
+        type: 'manual_adjustment',
+        before: previousStock,
+        after: updates.stock,
+        delta: Number(updates.stock) - previousStock,
+        actorEmail: isAdmin.email || null,
+        actorUid: isAdmin.uid,
+        createdAt: new Date(),
+      });
+    }
+
     const stockChange = updates.stock !== undefined ? ` | Stock: ${before.data()?.stock} → ${updates.stock}` : '';
     await recordAuditLog({
       action: 'UPDATE_PRODUCT',

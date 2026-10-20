@@ -48,6 +48,13 @@ export default function LoginPage() {
     return () => clearInterval(timer)
   }, [secondsLeft, isBlocked])
 
+  // Aviso cuando el panel de recepción cerró la sesión por inactividad (F1-15).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('motivo') === 'inactividad') {
+      setSuccess('Tu sesión se cerró por inactividad. Inicia sesión de nuevo para continuar.')
+    }
+  }, [])
+
   // Status check on mount
   useEffect(() => {
     const checkStatus = async () => {

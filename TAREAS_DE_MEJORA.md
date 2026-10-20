@@ -115,7 +115,7 @@
 - [x] **F1-14 · Recepción con una cuenta por persona** — `[CÓDIGO]` — S — Ref 4.18
   - Eliminar `RECEPTION_AUTHORIZED_EMAIL` de `auth-helpers.ts`, `recepcion/login` y `auth/verify`. El claim `receptionist` basta.
   - **Criterio:** dos recepcionistas con cuentas distintas entran, y cada ingreso registra a su autor (F2-03).
-- [~] **F1-15 · Sesión de recepción por turno y arreglo de `role`** — `[CÓDIGO]` — S — Ref 4.13
+- [x] **F1-15 · Sesión de recepción por turno y arreglo de `role`** — `[CÓDIGO]` — S — Ref 4.13
   - Cambiar `role=reception` por `role=recepcion` (`fitception/page.tsx:35`).
   - Session cookie de 12 h, cierre por 30 min de inactividad y re-autenticación silenciosa con `enterPanel()`.
   - **Criterio:** al recargar el panel con sesión activa no aparece el login, y un turno de 8 h no pide credenciales.
@@ -191,7 +191,7 @@
   - **Criterio:** RTO ≤ 4 h medido y registrado en `docs/runbook.md`.
 
 ### 2B. Ingresos (recepción)
-- [~] **F2-03 · Ingreso transaccional en el servidor** — `[CÓDIGO]` — L — Ref 4.9, 4.23
+- [x] **F2-03 · Ingreso transaccional en el servidor** — `[CÓDIGO]` — L — Ref 4.9, 4.23
   - `POST /api/recepcion/entry-log` recibe solo `{ qrToken | uid, source }`.
   - El servidor lee `users/{uid}`, calcula el estado del plan e impide duplicados con `entry_locks/{uid}_{fecha}` y una ventana configurable (3 h por defecto).
   - En la misma transacción escribe `entry_logs` (`authorizedByUid`, `authorizedByEmail`, `source`, `deviceId`) e incrementa `daily_stats` y `byHour`.
@@ -256,7 +256,7 @@
 - [~] **F2-18 · Recepción busca por UID** — `[CÓDIGO]` — S — Ref 4.6
   - Una sola lectura por escaneo, en lugar de `getDocs(collection('users'))`.
   - **Criterio:** abrir recepción no lee la colección `users`.
-- [ ] **F2-19 · Calendario desde `daily_stats`** — `[CÓDIGO]` — S — Ref 4.6 — Depende de F2-03
+- [x] **F2-19 · Calendario desde `daily_stats`** — `[CÓDIGO]` — S — Ref 4.6 — Depende de F2-03
   - **Criterio:** la consulta mensual hace como máximo 31 lecturas.
 - [~] **F2-20 · Panel admin eficiente** — `[CÓDIGO]` — M — Ref 4.6, 4.10, 4.13
   - `count()` para las PQRS, paginación con cursor en socios (sin `listUsers(1000)`) y carga de datos por pestaña.
@@ -275,7 +275,7 @@
   - **Criterio:** los ingresos de cada mes se pueden consultar después del cierre.
 
 ### 2G. Trazabilidad y datos personales
-- [ ] **F2-25 · Movimientos de inventario y eventos de correo** — `[CÓDIGO]` — M — Ref 4.23
+- [~] **F2-25 · Movimientos de inventario y eventos de correo** — `[CÓDIGO]` — M — Ref 4.23
   - Colecciones `inventory_movements` (venta, ajuste, conteo, con actor) y `email_events` (enviado o fallido).
   - **Criterio:** todo cambio de stock tiene su movimiento asociado.
 - [ ] **F2-26 · Retención y borrado de socios** — `[CÓDIGO]` — M — Ref 4.1
@@ -297,16 +297,16 @@
 ## FASE 3 — Negocio, legal, push y SEO (8 – 21 dic)
 
 ### 3A. Estadísticas (funcionalidades pedidas)
-- [ ] **F3-01 · Cierre diario y agregados mensuales** — `[CÓDIGO]` — M — Ref 5.2 — Depende de F2-03
+- [~] **F3-01 · Cierre diario y agregados mensuales** — `[CÓDIGO]` — M — Ref 5.2 — Depende de F2-03
   - Cron a las 23:59 America/Bogota: cierra `daily_stats` y consolida `monthly_stats` (visitas, únicos, media y hora pico).
   - **Criterio:** cada día tiene `closedAt` y cada mes tiene su resumen.
-- [ ] **F3-02 · Mapa de concurrencia** — `[CÓDIGO]` — M — Ref 5.1
+- [x] **F3-02 · Mapa de concurrencia** — `[CÓDIGO]` — M — Ref 5.1
   - Heatmap día × hora (5:00–23:00) para 4, 12 o 52 semanas, y barras del día actual en tiempo real.
   - **Criterio:** el mapa resalta la franja pico, y un clic abre el diario (F3-04).
-- [ ] **F3-03 · Medias por semana, mes y año** — `[CÓDIGO]` — S — Ref 5.2
+- [x] **F3-03 · Medias por semana, mes y año** — `[CÓDIGO]` — S — Ref 5.2
   - Visitas y clientes únicos, con Δ % frente al periodo anterior.
   - **Criterio:** las cifras coinciden con un conteo manual de staging.
-- [ ] **F3-04 · Diario de asistencia** — `[CÓDIGO]` — M — Ref 5.5
+- [x] **F3-04 · Diario de asistencia** — `[CÓDIGO]` — M — Ref 5.5
   - Total, únicos, hora pico, lista paginada, comparación con el mismo día de la semana anterior y exporte.
   - **Criterio:** se puede navegar por fecha desde el mapa.
 
@@ -315,13 +315,13 @@
   - `GET /api/recepcion/members?status=&q=&cursor=` con proyección mínima (nombre, foto, estado, vencimiento, días restantes).
   - Filtros: Activos, Por vencer, Vencidos y Sin plan.
   - **Criterio:** la respuesta no incluye peso, altura ni correo completo.
-- [ ] **F3-06 · Inventario de solo lectura** — `[CÓDIGO]` — S — Ref 5.4
+- [x] **F3-06 · Inventario de solo lectura** — `[CÓDIGO]` — S — Ref 5.4
   - `GET /api/recepcion/inventory` (nombre, stock, umbral). Umbral por producto (`lowStockThreshold`).
   - **Criterio:** recepción ve el stock y no puede modificarlo.
-- [ ] **F3-07 · Conteo físico con aprobación del admin** — `[CÓDIGO]` — M — Ref 5.4
+- [x] **F3-07 · Conteo físico con aprobación del admin** — `[CÓDIGO]` — M — Ref 5.4
   - Recepción reporta en `inventory_counts` y el admin aprueba el ajuste, que queda en `inventory_movements`.
   - **Criterio:** el stock solo cambia cuando el admin aprueba.
-- [ ] **F3-08 · Alertas de inventario en tiempo real al admin** — `[CÓDIGO]` — S — Ref 5.4
+- [~] **F3-08 · Alertas de inventario en tiempo real al admin** — `[CÓDIGO]` — S — Ref 5.4
   - `onSnapshot` de las notificaciones no leídas y push (F3-13) cuando el stock cruza el umbral.
   - **Criterio:** una venta que cruza el umbral avisa al admin en menos de 10 s.
 
@@ -498,3 +498,26 @@ Verificado: `next build` (incluye TypeScript) pasa. Con `next start`: `/api/heal
 1. Desplegar las reglas nuevas. Después de esto, **las cuentas sin correo verificado no pueden pagar ni publicar**. Las cuentas de prueba existentes deben verificar desde "Reenviar correo" en el perfil.
 2. Configurar en Vercel `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` y `NEXT_PUBLIC_SITE_URL`, y luego desactivar el preset sin firma en Cloudinary.
 3. Si hay más de una persona en recepción: asignar el claim desde el panel admin y dejar `RECEPTION_AUTHORIZED_EMAIL` vacía (o con la lista de correos separados por coma).
+
+### 2026-10-20 (3.ª tanda) — misma rama `fix/fase1-criticos`
+
+Verificado: `next build` pasa. Con `next start`: `/api/admin/attendance` y `/api/admin/inventory-counts` responden 401/403 sin sesión o con cookie falsa, y `/api/recepcion/inventory` responde 401. La hora en zona de Colombia (clave de franja del mapa) y el día de la semana se comprobaron con casos límite (00:30Z → 19 h, 05:10Z → 00 h). Los flujos autenticados no se pudieron probar sin credenciales: van en la lista de pruebas del preview.
+
+| Tarea | Hecho | Pendiente |
+|---|---|---|
+| F1-15 | Cierre por inactividad de 30 min en recepción: cierra el panel y la cuenta de Firebase (reentrar pide contraseña); el login explica el motivo | — |
+| F2-03 | Cada ingreso actualiza `daily_stats/{fecha}` en la misma transacción (`visits`, `uniqueMembers`, `withPlan`, `withoutPlan`, `byHour`) | — |
+| F2-19 | El calendario de recepción lee `daily_stats` (≤ 31 lecturas por mes; respaldo a `entry_logs` para meses sin agregados) | — |
+| F2-25 | `inventory_movements` para ventas (webhook), ajustes manuales del admin y conteos aprobados | `email_events` |
+| F3-01 | `POST /api/admin/attendance` recalcula los agregados desde `entry_logs` (máx. 92 días; botón "Recalcular") | Cron de cierre diario y `monthly_stats` (hoy las medias se calculan desde los días) |
+| F3-02 | Mapa de concurrencia: día de la semana × hora (05–22), promedio por franja, pico resaltado; periodos de 4, 12 y 52 semanas | — |
+| F3-03 | Media diaria, semanal y mensual, únicos por día y Δ % frente al periodo anterior (4 y 12 semanas) | — |
+| F3-04 | Diario por fecha: totales, socios distintos, sin plan, hora pico, comparación con el mismo día de la semana anterior y lista paginada con quién autorizó | Exportación desde el admin (existe en recepción) |
+| F3-06 | Recepción: pestaña "Inventario" de solo lectura (sin precios), stock bajo destacado; umbral `lowStockThreshold` por producto en el admin y el webhook | — |
+| F3-07 | Recepción reporta conteos físicos (no cambian el stock) → notificación al admin → el admin aplica o descarta, en una transacción con movimiento y auditoría | — |
+| F3-08 | Las notificaciones de conteo y sobreventa aparecen en la campana del admin y llevan a Inventario | Tiempo real (`onSnapshot`) y push (F3-13) |
+
+**Acciones pendientes del dueño (además de las anteriores):**
+1. Tras desplegar, en Admin → Asistencia pulsar **"Recalcular"** una vez para generar los agregados de los ingresos ya registrados.
+2. Revisar el umbral de alerta de cada producto (por defecto 5) en el modal de productos.
+3. Probar en el preview: ingreso → el mapa y el diario lo reflejan; conteo desde recepción → aparece en el admin → "Aplicar" ajusta el stock; 30 min sin actividad en recepción → vuelve al login.

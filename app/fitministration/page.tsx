@@ -34,7 +34,8 @@ import {
   Database,
   Coffee,
   Star,
-  Clock
+  Clock,
+  CalendarDays
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { useAuthStore } from '@/lib/store';
@@ -43,6 +44,8 @@ import { ProductModal } from '@/components/admin/product-modal';
 import { AdminLoginForm } from '@/components/admin/admin-login-form';
 import { AuditLogsTab } from '@/components/admin/audit-logs-tab';
 import { PlanModal } from '@/components/admin/plan-modal';
+import { AttendanceTab } from '@/components/admin/attendance-tab';
+import { InventoryCountsPanel } from '@/components/admin/inventory-counts-panel';
 
 // --- HELPERS ---
 const formatCurrency = (val: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(val);
@@ -61,6 +64,7 @@ const formatDate = (dateValue: any) => {
 const Sidebar = ({ activeTab, setActiveTab, onLogout }: any) => {
   const menuItems = [
     { id: 'overview', icon: TrendingUp, label: 'Resumen' },
+    { id: 'attendance', icon: CalendarDays, label: 'Asistencia' },
     { id: 'users', icon: Users, label: 'Usuarios' },
     { id: 'inventory', icon: Package, label: 'Inventario' },
     { id: 'planes', icon: CreditCard, label: 'Planes' },
@@ -147,7 +151,7 @@ const NotificationBell = ({ notifications, onMarkRead, onNavigate }: any) => {
                   className={`p-4 border-b-2 border-zinc-100 cursor-pointer transition-colors ${!n.leido ? 'bg-yellow-50 hover:bg-yellow-100' : 'opacity-60 hover:bg-zinc-50'}`}
                   onClick={() => {
                     onMarkRead(n.id);
-                    if (n.tipo === 'low_stock') onNavigate('inventory');
+                    if (n.tipo === 'low_stock' || n.tipo === 'inventory_count' || n.tipo === 'oversell') onNavigate('inventory');
                     if (n.tipo === 'purchase') onNavigate('orders');
                     if (n.tipo === 'pqrs') onNavigate('pqrs');
                     setOpen(false);
@@ -156,7 +160,7 @@ const NotificationBell = ({ notifications, onMarkRead, onNavigate }: any) => {
                   <p className="text-[10px] font-black uppercase mb-1 flex items-center gap-1">
                     {n.tipo === 'low_stock' && <AlertTriangle className="w-3 h-3 text-red-600" />}
                     {n.tipo === 'purchase' && <CreditCard className="w-3 h-3 text-green-600" />}
-                    {n.tipo === 'low_stock' ? 'Stock Bajo' : n.tipo === 'purchase' ? 'Compra' : 'Alerta'}
+                    {n.tipo === 'low_stock' ? 'Stock Bajo' : n.tipo === 'purchase' ? 'Compra' : n.tipo === 'inventory_count' ? 'Conteo de recepción' : n.tipo === 'oversell' ? 'Sobreventa' : 'Alerta'}
                   </p>
                   <p className="text-sm font-bold text-zinc-800 leading-tight">{n.mensaje}</p>
                 </div>
@@ -654,6 +658,13 @@ export default function AdminPage() {
 
   const renderOverview = () => (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Acceso a Asistencia también en móvil (la barra lateral solo existe en escritorio). */}
+      <button
+        onClick={() => setActiveTab('attendance')}
+        className="md:hidden w-full flex items-center justify-center gap-2 bg-red-600 text-white border-4 border-black rounded-2xl p-4 font-black uppercase shadow-[6px_6px_0_0_rgba(0,0,0,1)]"
+      >
+        <CalendarDays className="w-5 h-5" /> Ver asistencia y concurrencia
+      </button>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'Usuarios', val: usersList.length, color: 'bg-blue-500', icon: Users },
@@ -698,7 +709,7 @@ export default function AdminPage() {
             <h3 className="text-2xl font-black italic tracking-tighter text-red-500 uppercase">Alertas Críticas</h3>
           </div>
           <div className="space-y-4">
-            {productsList.filter(p => p.stock < 5).map(p => (
+            {productsList.filter(p => p.stock <= (p.lowStockThreshold ?? 5)).map(p => (
               <div key={p.id} className="bg-zinc-800 p-4 rounded-xl border-l-4 border-yellow-500 flex justify-between items-center animate-shake">
                 <div>
                   <p className="font-black text-sm uppercase">{p.nombre}</p>
@@ -707,7 +718,7 @@ export default function AdminPage() {
                 <button onClick={() => handleUpdateStock(p.id, p.stock + 20)} className="text-[10px] font-black underline hover:text-yellow-400">SURTIR +20</button>
               </div>
             ))}
-            {productsList.filter(p => p.stock < 5).length === 0 && <p className="text-zinc-600 font-bold italic">No hay alertas de inventario por ahora.</p>}
+            {productsList.filter(p => p.stock <= (p.lowStockThreshold ?? 5)).length === 0 && <p className="text-zinc-600 font-bold italic">No hay alertas de inventario por ahora.</p>}
           </div>
         </div>
       </div>
@@ -793,6 +804,7 @@ export default function AdminPage() {
 
   const renderInventory = () => (
     <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
+      <InventoryCountsPanel onApplied={refreshAllData} />
       <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 border-4 border-black rounded-2xl shadow-[6px_6px_0_0_rgba(0,0,0,1)] gap-6">
         <div>
           <h2 className="text-2xl font-black italic uppercase tracking-tighter">Suministros y Stock</h2>
@@ -826,7 +838,7 @@ export default function AdminPage() {
               <div className="flex items-center gap-4 bg-zinc-50 p-3 border-2 border-black rounded-xl mb-6">
                 <div className="flex-1">
                   <p className="text-[8px] font-black uppercase text-zinc-500">Cant. Disponible</p>
-                  <p className={`text-xl font-black ${p.stock < 5 ? 'text-red-600 animate-shake' : 'text-zinc-900'}`}>{p.stock} UDS</p>
+                  <p className={`text-xl font-black ${p.stock <= (p.lowStockThreshold ?? 5) ? 'text-red-600 animate-shake' : 'text-zinc-900'}`}>{p.stock} UDS</p>
                 </div>
                 <div className="flex flex-col gap-1">
                   <button onClick={() => handleUpdateStock(p.id, p.stock + 1)} className="bg-white border-2 border-black p-1 hover:bg-zinc-200"><Plus className="w-3 h-3" /></button>
@@ -1104,7 +1116,7 @@ export default function AdminPage() {
 
           <div className="w-full sm:w-auto mt-4 sm:mt-0">
             <h2 className="text-xs font-black text-red-600 uppercase tracking-[4px] mb-1">Fitmania Command Center</h2>
-            <p className="text-4xl md:text-5xl font-black italic underline decoration-red-600 decoration-8 underline-offset-8 tracking-tighter uppercase">{activeTab === 'overview' ? 'Operaciones' : activeTab}</p>
+            <p className="text-4xl md:text-5xl font-black italic underline decoration-red-600 decoration-8 underline-offset-8 tracking-tighter uppercase">{activeTab === 'overview' ? 'Operaciones' : activeTab === 'attendance' ? 'Asistencia' : activeTab}</p>
           </div>
 
           <div className="flex items-center gap-6 w-full sm:w-auto self-end sm:self-auto">
@@ -1133,6 +1145,7 @@ export default function AdminPage() {
 
         <div className="mb-20">
           {activeTab === 'overview' && renderOverview()}
+          {activeTab === 'attendance' && <AttendanceTab />}
           {activeTab === 'users' && renderUsers()}
           {activeTab === 'inventory' && renderInventory()}
           {activeTab === 'planes' && renderPlanes()}

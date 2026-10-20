@@ -142,6 +142,16 @@ export function ProductModal({ isOpen, onClose, onSave, product }: ProductModalP
                 onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) })}
               />
             </div>
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">Alerta de stock bajo (unidades)</label>
+              <input
+                type="number"
+                min={0}
+                className="w-full bg-zinc-50 border-2 border-black p-3 rounded-xl font-bold focus:ring-4 focus:ring-red-500/10 outline-none transition-all"
+                value={formData.lowStockThreshold ?? 5}
+                onChange={(e) => setFormData({ ...formData, lowStockThreshold: parseInt(e.target.value) || 0 })}
+              />
+            </div>
           </div>
 
           {/* Imagen URL Preview */}

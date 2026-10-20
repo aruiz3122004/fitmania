@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { Query } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyReceptionRequest } from '@/lib/auth-helpers';
-import { getDateKeyInAppTz, formatInAppTz } from '@/lib/datetime';
+import { getDateKeyInAppTz, formatInAppTz, getHourKeyInAppTz } from '@/lib/datetime';
+import { DAILY_STATS, recordEntryInDailyStats } from '@/lib/attendance';
 import ExcelJS from 'exceljs';
 
 // T-19: límites de exportación para no agotar memoria/tiempo en la función serverless.
@@ -99,6 +100,14 @@ export async function POST(request: NextRequest) {
         ...authorizedBy,
       });
 
+      // F2-03: agregados del día en la misma transacción (mapa de concurrencia, medias, diario).
+      recordEntryInDailyStats(firestore, tx, {
+        date: dateStr,
+        hourKey: getHourKeyInAppTz(now),
+        isFirstOfDay: sameDay.empty,
+        hasPlanActivo,
+      });
+
       return { status: 'created' as const, hasPlanActivo, planNombre: user.plan?.nombre || null, userName };
     });
 
@@ -179,27 +188,35 @@ export async function GET(request: NextRequest) {
     // ─── Obtener días con entradas (para el calendario) ───
     if (action === 'calendar') {
       const month = searchParams.get('month'); // YYYY-MM
-      let calQuery = firestore.collection('entry_logs').orderBy('date', 'desc');
-      
-      if (month) {
-        // Filtrar por rango del mes: YYYY-MM-01 a YYYY-MM-31
-        const startDate = `${month}-01`;
-        const endDate = `${month}-31`;
-        calQuery = firestore
+      if (!month || !/^[0-9]{4}-[0-9]{2}$/.test(month)) {
+        return NextResponse.json({ error: 'Parámetro `month` requerido (YYYY-MM).' }, { status: 400 });
+      }
+      const startDate = `${month}-01`;
+      const endDate = `${month}-31`;
+
+      // F2-19: se leen los agregados diarios (≤ 31 documentos) en lugar de todas las
+      // entradas del mes (~3 000 lecturas).
+      const statsSnap = await firestore
+        .collection(DAILY_STATS)
+        .where('date', '>=', startDate)
+        .where('date', '<=', endDate)
+        .get();
+      let days = statsSnap.docs
+        .filter((doc) => (Number(doc.data().visits) || 0) > 0)
+        .map((doc) => doc.id);
+
+      // Respaldo para meses anteriores a los agregados (sin `daily_stats`).
+      if (statsSnap.empty) {
+        const legacySnap = await firestore
           .collection('entry_logs')
           .where('date', '>=', startDate)
           .where('date', '<=', endDate)
-          .orderBy('date', 'desc') as any;
+          .select('date')
+          .get();
+        days = Array.from(new Set(legacySnap.docs.map((doc) => doc.data().date).filter(Boolean)));
       }
 
-      const calSnap = await calQuery.get();
-      const daysSet = new Set<string>();
-      calSnap.docs.forEach((doc) => {
-        const d = doc.data();
-        if (d.date) daysSet.add(d.date);
-      });
-
-      return NextResponse.json({ days: Array.from(daysSet) });
+      return NextResponse.json({ days });
     }
 
     // ─── Construir query sin índice compuesto ───

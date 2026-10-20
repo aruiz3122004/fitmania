@@ -71,6 +71,8 @@ const PRODUCT_SCHEMA: Record<string, FieldParser> = {
   precio: number(0, 100_000_000),
   categoria: text(40),
   stock: number(0, 1_000_000, true),
+  // F3-06: umbral por producto para la alerta de stock bajo (antes fijo en 5).
+  lowStockThreshold: number(0, 100_000, true),
   imagen_url: text(500),
   badge: text(40),
   colores: textList(30, 30),

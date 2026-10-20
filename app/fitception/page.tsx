@@ -5,15 +5,20 @@ import { Toaster, toast } from 'sonner'
 
 import { ReceptionLoginForm } from '@/components/recepcion/reception-login-form'
 import { auth } from '@/lib/firebase'
-import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList } from 'lucide-react'
+import { signOut } from 'firebase/auth'
+import { useIdleLogout } from '@/lib/use-idle-logout'
+import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList, Package } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import EntryHistoryTab from '@/components/recepcion/entry-history-tab'
+import InventoryTab from '@/components/recepcion/inventory-tab'
 
 const Scanner = dynamic(() => import('@yudiel/react-qr-scanner').then((mod) => mod.Scanner), {
   ssr: false,
   loading: () => <div className="w-full h-64 bg-zinc-100 animate-pulse flex items-center justify-center font-black uppercase text-zinc-400">Iniciando Cámara...</div>
 })
+
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutos
 
 export default function ReceptionPage() {
   const [visualState, setVisualState] = useState<'login' | 'unauthorized' | 'dashboard'>('login')
@@ -159,6 +164,17 @@ export default function ReceptionPage() {
     }
   };
 
+  // F1-15: tras 30 min sin actividad se cierra el panel Y la cuenta de Firebase, para
+  // que volver a entrar exija la contraseña (un equipo desatendido no queda abierto).
+  useIdleLogout(visualState === 'dashboard', IDLE_TIMEOUT_MS, async () => {
+    try {
+      await fetch('/api/recepcion/logout', { method: 'POST' });
+      await signOut(auth);
+    } finally {
+      window.location.href = '/login?motivo=inactividad';
+    }
+  });
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-zinc-950 font-display text-white text-2xl uppercase tracking-widest animate-pulse">Cargando Sistema...</div>
   }
@@ -230,6 +246,13 @@ export default function ReceptionPage() {
         >
           <ClipboardList className="w-4 h-4 mx-auto mb-1 sm:hidden" />
           Historial
+        </button>
+        <button
+          onClick={() => setActiveTab('inventory')}
+          className={`flex-1 max-w-[180px] py-4 rounded-t-2xl font-black uppercase text-xs sm:text-sm border-t-4 border-x-4 border-black transition-all ${activeTab === 'inventory' ? 'bg-white shadow-[0_-4px_0_0_rgba(22,163,74,1)]' : 'bg-green-200 text-green-800 border-b-4 hover:bg-green-300'}`}
+        >
+          <Package className="w-4 h-4 mx-auto mb-1 sm:hidden" />
+          Inventario
         </button>
       </div>
 
@@ -407,6 +430,10 @@ export default function ReceptionPage() {
         {/* History Tab */}
         {activeTab === 'history' && (
           <EntryHistoryTab />
+        )}
+
+        {activeTab === 'inventory' && (
+          <InventoryTab />
         )}
 
         {/* Members Directory Tab */}
