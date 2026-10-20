@@ -74,6 +74,50 @@ function Delta({ current, previous }: { current: number; previous: number | null
   );
 }
 
+/** Socios con plan activo que no vienen hace N días (F3-26). */
+function RetentionPanel() {
+  const [days, setDays] = useState(14);
+  const [data, setData] = useState<{ activeMembers: number; atRisk: { uid: string; username: string; email: string; plan: string; daysAbsent: number | null; expira: string | null }[] } | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/admin/retention?days=${days}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setData)
+      .catch(() => setData(null));
+  }, [days]);
+
+  return (
+    <div className="border-4 border-black rounded-2xl p-5 bg-white shadow-[6px_6px_0_0_rgba(0,0,0,1)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="font-black uppercase italic text-xl flex items-center gap-2"><TrendingDown className="w-5 h-5 text-red-600" /> Socios en riesgo de abandono</h3>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="border-4 border-black rounded-xl px-3 py-2 font-bold text-sm">
+          {[7, 14, 21, 30].map((d) => <option key={d} value={d}>{d} días sin venir</option>)}
+        </select>
+      </div>
+      {!data ? (
+        <p className="text-sm font-bold text-zinc-400">Cargando…</p>
+      ) : data.atRisk.length === 0 ? (
+        <p className="text-sm font-bold text-green-700 uppercase">Todos los socios activos ({data.activeMembers}) vinieron en los últimos {days} días.</p>
+      ) : (
+        <>
+          <p className="text-xs font-bold text-zinc-600 mb-3">{data.atRisk.length} de {data.activeMembers} socios activos. Contáctalos para motivar su regreso.</p>
+          <div className="divide-y-2 divide-zinc-100 max-h-80 overflow-y-auto">
+            {data.atRisk.map((m) => (
+              <div key={m.uid} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+                <span className="font-bold flex-1 min-w-[140px]">{m.username}</span>
+                <span className="text-[11px] font-bold text-zinc-500">{m.email}</span>
+                <span className="text-[10px] font-black uppercase px-2 py-1 rounded border-2 border-red-600 text-red-700 bg-red-50">
+                  {m.daysAbsent === null ? 'Nunca ha venido' : `${m.daysAbsent} días`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function AttendanceTab() {
   const [weeks, setWeeks] = useState(4);
   const [days, setDays] = useState<DailyStats[]>([]);
@@ -358,6 +402,8 @@ export function AttendanceTab() {
           <p className="text-sm font-bold text-zinc-400 uppercase">Sin ingresos registrados este día.</p>
         )}
       </div>
+
+      <RetentionPanel />
     </div>
   );
 }

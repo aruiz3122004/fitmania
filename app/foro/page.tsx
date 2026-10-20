@@ -8,7 +8,7 @@ import { SectionHeader } from '@/components/ui/section-header'
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
 import { useAuthStore } from '@/lib/store'
 import { FitAvatar } from '@/components/ui/fit-avatar'
-import { db } from '@/lib/firebase'
+import { auth, db } from '@/lib/firebase'
 import {
   addDoc,
   arrayRemove,
@@ -22,7 +22,8 @@ import {
   doc,
   deleteDoc,
   where,
-  limit
+  limit,
+  getCountFromServer
 } from 'firebase/firestore'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import {
@@ -50,6 +51,8 @@ type ForumComment = {
   autor_is_premium?: boolean
   contenido: string
   created_at: Date
+  /** Comentario antiguo guardado en el array `comentarios` del post (antes de F1-07). */
+  legacy?: boolean
 }
 
 type ForumPost = {
@@ -66,24 +69,22 @@ type ForumPost = {
   created_at: Date
 }
 
-const noticias = [
+type Noticia = { id: string; imagen: string | null; titulo: string; descripcion: string }
+
+// F3-16: las noticias se administran desde el panel (colección `news`). Estas se
+// muestran solo si todavía no hay ninguna publicada.
+const NOTICIAS_RESPALDO: Noticia[] = [
   {
-    id: 1,
-    imagen: '/images/gym1.jpg',
-    titulo: 'Nueva zona de CrossFit',
-    descripcion: 'Inauguramos nuestra nueva area de entrenamiento CrossFit con equipos de ultima generacion.',
+    id: 'respaldo-1',
+    imagen: '/Imagenes/Fitmania%20Gym.jpeg',
+    titulo: 'Bienvenido a FITMANIA',
+    descripcion: 'Entrena con los mejores equipos y entrenadores de Barranquilla.',
   },
   {
-    id: 2,
-    imagen: '/images/gym2.jpg',
-    titulo: 'Torneo de Fuerza 2026',
-    descripcion: 'Participa en nuestro proximo torneo de levantamiento de pesas. Premios increibles!',
-  },
-  {
-    id: 3,
-    imagen: '/images/gym3.jpg',
-    titulo: 'Clases de Yoga',
-    descripcion: 'Nuevas clases de yoga todos los sabados a las 8AM. Relaja cuerpo y mente.',
+    id: 'respaldo-2',
+    imagen: '/Imagenes/Tienda%20Fitmania.jpeg',
+    titulo: 'Visita nuestra tienda',
+    descripcion: 'Suplementos, snacks saludables y ropa deportiva para tu rutina.',
   },
 ]
 
@@ -101,6 +102,20 @@ function formatDate(date: Date) {
 
 function NewsSlider() {
   const [current, setCurrent] = useState(0)
+  const [noticias, setNoticias] = useState<Noticia[]>(NOTICIAS_RESPALDO)
+
+  useEffect(() => {
+    fetch('/api/public/news')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setNoticias(data)
+          setCurrent(0)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   const next = () => setCurrent((c) => (c + 1) % noticias.length)
   const prev = () => setCurrent((c) => (c - 1 + noticias.length) % noticias.length)
 
@@ -112,7 +127,7 @@ function NewsSlider() {
             key={noticia.id}
             className={`absolute inset-0 transition-opacity duration-500 ${index === current ? 'opacity-100' : 'opacity-0'}`}
           >
-            <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${noticia.imagen})`, backgroundColor: '#1a1a2e' }} />
+            <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: noticia.imagen ? `url(${noticia.imagen})` : undefined, backgroundColor: '#1a1a2e' }} />
             <div className="absolute inset-0 bg-gradient-to-r from-navy/90 via-navy/70 to-transparent" />
             <div className="absolute inset-0 flex items-center px-8 md:px-16">
               <div className="max-w-lg">
@@ -164,6 +179,41 @@ function PostCard({
 }) {
   const { user, isAuthenticated } = useAuthStore()
   const [showComments, setShowComments] = useState(false)
+  // F1-07: los comentarios viven en posts/{id}/comments (cada autor edita/borra los suyos).
+  // Los antiguos del array embebido se siguen mostrando hasta migrarlos.
+  const [subComments, setSubComments] = useState<ForumComment[]>([])
+  const [subCount, setSubCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    // Conteo barato (agregación) sin descargar los comentarios.
+    getCountFromServer(collection(db, 'posts', post.id, 'comments'))
+      .then((snap) => setSubCount(snap.data().count))
+      .catch(() => setSubCount(0))
+  }, [post.id])
+
+  useEffect(() => {
+    if (!showComments) return
+    const q = query(collection(db, 'posts', post.id, 'comments'), orderBy('created_at', 'asc'), limit(200))
+    return onSnapshot(q, (snap) => {
+      const list = snap.docs.map((d) => {
+        const c = d.data() as any
+        return {
+          id: d.id,
+          autor_id: c.autor_id || '',
+          autor_username: c.autor_username,
+          autor_avatar: c.autor_avatar || '',
+          autor_is_premium: !!c.autor_is_premium,
+          contenido: c.contenido || '',
+          created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
+        }
+      })
+      setSubComments(list)
+      setSubCount(list.length)
+    })
+  }, [showComments, post.id])
+
+  const allComments: ForumComment[] = [...post.comentarios.map((c) => ({ ...c, legacy: true })), ...subComments]
+  const commentCount = post.comentarios.length + (subCount ?? 0)
   const [newComment, setNewComment] = useState('')
   const [isCommenting, setIsCommenting] = useState(false)
   const [showReport, setShowReport] = useState(false)
@@ -213,7 +263,6 @@ function PostCard({
         fecha_reporte: new Date()
       })
 
-      console.log(`Email mock a: administrador@fitmania.com\nAsunto: Reporte de publicacion\nMensaje: El usuario ${user.username} ha reportado la publicacion de ${post.autor_username} subida el ${post.created_at}. Motivo: ${reportReason}`)
       setReportStatus('success')
     } catch (err) {
       console.error('Error al guardar reporte:', err)
@@ -367,7 +416,7 @@ function PostCard({
           className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-secondary transition-colors"
         >
           <MessageCircle className="w-5 h-5" />
-          <span>{post.comentarios.length}</span>
+          <span>{commentCount}</span>
         </button>
         <button onClick={handleShare} className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-secondary transition-colors">
           <Share2 className="w-5 h-5" />
@@ -546,15 +595,15 @@ function PostCard({
 
       {showComments && (
         <div className="border-t-2 border-gray-200 bg-gray-50 p-4">
-          {post.comentarios.map((comment) => {
+          {allComments.map((comment) => {
             // If the comment doesn't have a stored avatar, fall back to the current user's photo (for old comments)
             const commentAvatar = comment.autor_avatar || (user?.username === comment.autor_username ? user?.photoURL : null) || null
             // Premium detection: use stored value, but also check if comment is from current premium user (for old comments without the field)
             const currentUserIsPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
             const isCommentPremium = comment.autor_is_premium || (user?.username === comment.autor_username && currentUserIsPremium)
             const isCommentAuthor = user?.uid === comment.autor_id
-            const canDeleteComment = isCommentAuthor || isAuthor
-            const canEditComment = isCommentAuthor
+            const canDeleteComment = comment.legacy ? isAuthor : (isCommentAuthor || isAuthor)
+            const canEditComment = isCommentAuthor && (!comment.legacy || isAuthor)
             const isEditing = editingCommentId === comment.id
 
             return (
@@ -921,19 +970,16 @@ export default function ForoPage() {
 
   const handleAddComment = async (postId: string, content: string) => {
     if (!user?.uid) return
-    const postRef = doc(db, 'posts', postId)
     const isPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
 
-    await updateDoc(postRef, {
-      comentarios: arrayUnion({
-        id: `${user.uid}-${Date.now()}`,
-        autor_id: user.uid,
-        autor_username: user.username,
-        autor_avatar: user.photoURL || '',
-        autor_is_premium: isPremium,
-        contenido: content,
-        created_at: new Date(),
-      }),
+    // F1-07: comentario como documento propio (antes arrayUnion en el post).
+    await addDoc(collection(db, 'posts', postId, 'comments'), {
+      autor_id: user.uid,
+      autor_username: user.username,
+      autor_avatar: user.photoURL || '',
+      autor_is_premium: isPremium,
+      contenido: content,
+      created_at: serverTimestamp(),
     })
   }
 
@@ -962,23 +1008,40 @@ export default function ForoPage() {
               onLike={handleLike}
               onAddComment={handleAddComment}
               onDeletePost={async (id: string) => {
-                await deleteDoc(doc(db, 'posts', id))
+                // F1-25: el servidor borra el post, sus comentarios y su archivo en Cloudinary.
+                const idToken = await auth.currentUser?.getIdToken()
+                const res = await fetch(`/api/forum/posts/${encodeURIComponent(id)}`, {
+                  method: 'DELETE',
+                  headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
+                })
+                if (!res.ok) {
+                  const data = await res.json().catch(() => ({}))
+                  alert(data.error || 'No se pudo eliminar la publicación.')
+                }
               }}
               onEditPost={handleEditPost}
               onDeleteComment={async (postId: string, commentId: string) => {
-                const postRef = doc(db, 'posts', postId)
-                const updatedComentarios = post.comentarios.filter(c => c.id !== commentId)
-                await updateDoc(postRef, {
-                  comentarios: updatedComentarios
-                })
+                // Comentario heredado (array del post): solo lo modera el autor del post.
+                if (post.comentarios.some(c => c.id === commentId)) {
+                  await updateDoc(doc(db, 'posts', postId), {
+                    comentarios: post.comentarios.filter(c => c.id !== commentId)
+                  })
+                  return
+                }
+                await deleteDoc(doc(db, 'posts', postId, 'comments', commentId))
               }}
               onEditComment={async (postId: string, commentId: string, newContent: string) => {
-                const postRef = doc(db, 'posts', postId)
-                const updatedComentarios = post.comentarios.map(c =>
-                  c.id === commentId ? { ...c, contenido: newContent } : c
-                )
-                await updateDoc(postRef, {
-                  comentarios: updatedComentarios
+                if (post.comentarios.some(c => c.id === commentId)) {
+                  await updateDoc(doc(db, 'posts', postId), {
+                    comentarios: post.comentarios.map(c =>
+                      c.id === commentId ? { ...c, contenido: newContent } : c
+                    )
+                  })
+                  return
+                }
+                await updateDoc(doc(db, 'posts', postId, 'comments', commentId), {
+                  contenido: newContent,
+                  edited_at: serverTimestamp(),
                 })
               }}
             />

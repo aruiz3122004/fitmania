@@ -44,19 +44,6 @@ service cloud.firestore {
         && after.difference(before).union(before.difference(after)) == [request.auth.uid].toSet();
     }
 
-    // Un comentario nuevo de un tercero solo puede AGREGAR un elemento al final, firmado por él.
-    // TODO(F1-07): mover comentarios a subcolección para permitir editar/borrar el propio en posts ajenos.
-    function isOwnCommentAppend() {
-      let before = resource.data.get('comentarios', []);
-      let after = request.resource.data.get('comentarios', []);
-      return isVerified()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comentarios'])
-        && after.size() == before.size() + 1
-        && after[before.size()].autor_id == request.auth.uid
-        && after[before.size()].contenido is string
-        && after[before.size()].contenido.size() <= 1000;
-    }
-
     match /posts/{postId} {
       allow read: if true;
       allow create: if isVerified()
@@ -67,14 +54,37 @@ service cloud.firestore {
         && request.resource.data.contenido.size() <= 2000
         && request.resource.data.get('likes', []).size() == 0
         && request.resource.data.get('comentarios', []).size() == 0;
-      // Autor: edita su contenido y modera su post. Terceros: solo like propio o comentario propio.
+      // Autor: edita su contenido y modera su post. Terceros: solo su like (los comentarios van en la subcolección).
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.autor_id == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contenido', 'likes', 'comentarios', 'autor_avatar'])
             && request.resource.data.contenido is string
             && request.resource.data.contenido.size() <= 2000)
-        || (isSignedIn() && (isOwnLikeToggle() || isOwnCommentAppend()));
+        || (isSignedIn() && isOwnLikeToggle());
       allow delete: if isAdmin() || (isSignedIn() && resource.data.autor_id == request.auth.uid);
+    }
+
+    // F1-07: comentarios como documentos propios. El autor edita/borra el suyo; el
+    // autor del post y el admin pueden moderar (borrar) cualquiera del post.
+    match /posts/{postId}/comments/{commentId} {
+      allow read: if true;
+      allow create: if isVerified()
+        && exists(/databases/$(database)/documents/posts/$(postId))
+        && request.resource.data.autor_id == request.auth.uid
+        && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium',
+             'contenido', 'created_at'])
+        && request.resource.data.contenido is string
+        && request.resource.data.contenido.size() > 0
+        && request.resource.data.contenido.size() <= 1000;
+      allow update: if isSignedIn()
+        && resource.data.autor_id == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contenido', 'edited_at'])
+        && request.resource.data.contenido is string
+        && request.resource.data.contenido.size() > 0
+        && request.resource.data.contenido.size() <= 1000;
+      allow delete: if isAdmin()
+        || (isSignedIn() && (resource.data.autor_id == request.auth.uid
+            || get(/databases/$(database)/documents/posts/$(postId)).data.autor_id == request.auth.uid));
     }
 
     match /pqrs/{pqrsId} {
@@ -137,6 +147,12 @@ service cloud.firestore {
     match /audit_logs/{logId} {
       allow read: if isAdmin();
       allow write: if false; // Solo el Admin SDK desde el servidor puede escribir aquí.
+    }
+
+    // Noticias del foro (F3-16): las administra el panel vía API; el público lee las publicadas.
+    match /news/{newsId} {
+      allow read: if resource.data.published == true;
+      allow write: if isAdmin();
     }
 
     // Reportes de usuarios

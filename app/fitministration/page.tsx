@@ -35,7 +35,8 @@ import {
   Coffee,
   Star,
   Clock,
-  CalendarDays
+  CalendarDays,
+  Settings
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { useAuthStore } from '@/lib/store';
@@ -46,6 +47,8 @@ import { AuditLogsTab } from '@/components/admin/audit-logs-tab';
 import { PlanModal } from '@/components/admin/plan-modal';
 import { AttendanceTab } from '@/components/admin/attendance-tab';
 import { InventoryCountsPanel } from '@/components/admin/inventory-counts-panel';
+import { SystemTab } from '@/components/admin/system-tab';
+import { CommunityTab } from '@/components/admin/community-tab';
 
 // --- HELPERS ---
 const formatCurrency = (val: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(val);
@@ -69,8 +72,10 @@ const Sidebar = ({ activeTab, setActiveTab, onLogout }: any) => {
     { id: 'inventory', icon: Package, label: 'Inventario' },
     { id: 'planes', icon: CreditCard, label: 'Planes' },
     { id: 'pqrs', icon: MessageSquare, label: 'PQRS' },
+    { id: 'community', icon: Send, label: 'Comunidad' },
     { id: 'orders', icon: ShoppingBag, label: 'Compras' },
     { id: 'audit', icon: Database, label: 'Auditoría' },
+    { id: 'system', icon: Settings, label: 'Sistema' },
   ];
 
   return (
@@ -1116,7 +1121,7 @@ export default function AdminPage() {
 
           <div className="w-full sm:w-auto mt-4 sm:mt-0">
             <h2 className="text-xs font-black text-red-600 uppercase tracking-[4px] mb-1">Fitmania Command Center</h2>
-            <p className="text-4xl md:text-5xl font-black italic underline decoration-red-600 decoration-8 underline-offset-8 tracking-tighter uppercase">{activeTab === 'overview' ? 'Operaciones' : activeTab === 'attendance' ? 'Asistencia' : activeTab}</p>
+            <p className="text-4xl md:text-5xl font-black italic underline decoration-red-600 decoration-8 underline-offset-8 tracking-tighter uppercase">{activeTab === 'overview' ? 'Operaciones' : activeTab === 'attendance' ? 'Asistencia' : activeTab === 'system' ? 'Sistema' : activeTab === 'community' ? 'Comunidad' : activeTab}</p>
           </div>
 
           <div className="flex items-center gap-6 w-full sm:w-auto self-end sm:self-auto">
@@ -1146,6 +1151,8 @@ export default function AdminPage() {
         <div className="mb-20">
           {activeTab === 'overview' && renderOverview()}
           {activeTab === 'attendance' && <AttendanceTab />}
+          {activeTab === 'system' && <SystemTab />}
+          {activeTab === 'community' && <CommunityTab />}
           {activeTab === 'users' && renderUsers()}
           {activeTab === 'inventory' && renderInventory()}
           {activeTab === 'planes' && renderPlanes()}

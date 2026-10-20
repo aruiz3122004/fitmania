@@ -100,6 +100,9 @@ export async function POST(request: NextRequest) {
         ...authorizedBy,
       });
 
+      // F3-26: último ingreso del socio (lista de socios en riesgo de abandono).
+      tx.update(userRef, { lastEntryAt: now });
+
       // F2-03: agregados del día en la misma transacción (mapa de concurrencia, medias, diario).
       recordEntryInDailyStats(firestore, tx, {
         date: dateStr,
