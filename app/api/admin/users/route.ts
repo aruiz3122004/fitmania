@@ -2,17 +2,17 @@ import { NextResponse } from 'next/server';
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { listAllAuthUsers } from '@/lib/admin-users';
 
 export async function GET(request: Request) {
   const isAdmin = await verifyAdminRequest(request);
   if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   try {
-    const auth = getAdminAuth();
     const db = getAdminFirestore();
 
-    // Obtener usuarios de Auth
-    const listUsersResult = await auth.listUsers(1000);
+    // Obtener usuarios de Auth (todas las páginas; antes se cortaba en 1000 — F2-20)
+    const authUsers = await listAllAuthUsers();
     
     // Obtener todos los documentos de la colección users en Firestore
     const snapshot = await db.collection('users').get();
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       firestoreUsers[doc.id] = doc.data();
     });
 
-    const users = listUsersResult.users.map(user => {
+    const users = authUsers.map(user => {
       const fsData = firestoreUsers[user.uid] || {};
       return {
         uid: user.uid,
@@ -52,7 +52,14 @@ export async function PATCH(request: Request) {
 
   try {
     const { uid, plan, admin: setAdmin, receptionist: setReceptionist } = await request.json();
-    if (!uid) return NextResponse.json({ error: 'UID requerido' }, { status: 400 });
+    if (typeof uid !== 'string' || !uid || uid.includes('/')) return NextResponse.json({ error: 'UID requerido' }, { status: 400 });
+    if ((setAdmin !== undefined && typeof setAdmin !== 'boolean') || (setReceptionist !== undefined && typeof setReceptionist !== 'boolean')) {
+      return NextResponse.json({ error: 'Los roles deben ser verdadero o falso.' }, { status: 400 });
+    }
+    // Evita que el admin se quite su propio rol por error y quede sin acceso al panel.
+    if (setAdmin === false && uid === isAdmin.uid) {
+      return NextResponse.json({ error: 'No puedes retirarte tu propio rol de administrador.' }, { status: 400 });
+    }
 
     const auth = getAdminAuth();
     const db = getAdminFirestore();
@@ -74,16 +81,35 @@ export async function PATCH(request: Request) {
       }
     }
 
-    // Actualizar campos en Firestore (especialmente el plan)
+    // Actualizar el plan con lista blanca de campos (F1-04): antes se guardaba
+    // el objeto recibido tal cual (`{ ...plan }`).
     const updates: any = {};
     if (plan !== undefined) {
       if (plan && typeof plan === 'object') {
-        const processedPlan = { ...plan };
-        if (typeof plan.inicio === 'string') processedPlan.inicio = new Date(plan.inicio);
-        if (typeof plan.expira === 'string') processedPlan.expira = new Date(plan.expira);
-        updates.plan = processedPlan;
+        const inicio = new Date(plan.inicio);
+        const expira = new Date(plan.expira);
+        if (Number.isNaN(inicio.getTime()) || Number.isNaN(expira.getTime()) || expira <= inicio) {
+          return NextResponse.json({ error: 'Fechas del plan inválidas (la expiración debe ser posterior al inicio).' }, { status: 400 });
+        }
+        const existingPlan = (await db.collection('users').doc(uid).get()).data()?.plan || {};
+        const nombre = typeof plan.nombre === 'string' && plan.nombre.trim()
+          ? plan.nombre.trim().slice(0, 100)
+          : existingPlan.nombre || 'Plan asignado por administración';
+        const precio = Number(plan.precio ?? existingPlan.precio ?? 0);
+        updates.plan = {
+          nombre,
+          precio: Number.isFinite(precio) && precio >= 0 ? precio : 0,
+          dias_total: Math.max(1, Math.round((expira.getTime() - inicio.getTime()) / 86400000)),
+          inicio,
+          expira,
+          planId: typeof plan.planId === 'string' ? plan.planId : existingPlan.planId || null,
+          // El acompañante se conserva desde la BD (no se acepta del body).
+          acompanante: existingPlan.acompanante || null,
+        };
+      } else if (plan === null) {
+        updates.plan = null; // Remover plan
       } else {
-        updates.plan = plan; // Si viene null (remover plan)
+        return NextResponse.json({ error: 'Plan inválido.' }, { status: 400 });
       }
     }
 

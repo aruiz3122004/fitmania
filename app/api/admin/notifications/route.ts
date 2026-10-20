@@ -30,7 +30,7 @@ export async function PATCH(request: Request) {
 
   try {
     const { id } = await request.json();
-    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+    if (typeof id !== 'string' || !id || id.includes('/')) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
 
     const db = getAdminFirestore();
     await db.collection('notifications').doc(id).update({ leido: true });
@@ -51,9 +51,10 @@ export async function DELETE(request: Request) {
   try {
     const db = getAdminFirestore();
     const snapshot = await db.collection('notifications').where('leido', '==', true).get();
-    const batch = db.batch();
-    snapshot.docs.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
+    // BulkWriter: sin el límite de 500 operaciones de un batch.
+    const writer = db.bulkWriter();
+    snapshot.docs.forEach(doc => writer.delete(doc.ref));
+    await writer.close();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

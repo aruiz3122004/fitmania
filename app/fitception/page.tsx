@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react'
 import { Toaster, toast } from 'sonner'
 
 import { ReceptionLoginForm } from '@/components/recepcion/reception-login-form'
-import { db, auth } from '@/lib/firebase'
-import { collection, getDocs, query, where } from 'firebase/firestore'
+import { auth } from '@/lib/firebase'
 import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
@@ -62,87 +61,52 @@ export default function ReceptionPage() {
     return () => { if (unsubscribeFirebase) unsubscribeFirebase(); };
   }, []);
 
-  const fetchUsers = async (isRetry = false) => {
+  // F2-18: el directorio y la ficha del socio vienen del servidor con datos mínimos
+  // (antes el navegador leía toda la colección `users`, con peso, altura y correo).
+  const fetchUsers = async () => {
     try {
-      const snap = await getDocs(collection(db, 'users'))
-      const users: any[] = []
-      snap.forEach(doc => {
-        users.push({ id: doc.id, ...doc.data() })
-      })
-      setUsersList(users)
-      setLoading(false)
-    } catch (e: any) {
-      console.error("Error al cargar usuarios:", e)
-      // Si es error de permisos y no hemos reintentado, refrescamos token y reintentamos
-      if (e.code === 'permission-denied' && !isRetry && auth.currentUser) {
-        console.log("Detectado error de permisos. Refrescando token...")
-        try {
-          await auth.currentUser.getIdToken(true)
-          return fetchUsers(true)
-        } catch (refreshErr) {
-          console.error("Error al refrescar token:", refreshErr)
-        }
+      const res = await fetch('/api/recepcion/members')
+      if (res.status === 401) {
+        setVisualState('login')
+        return
       }
-      toast.error('Error de permisos: Asegúrate de estar autorizado para recepción.')
+      if (!res.ok) throw new Error('members')
+      const data = await res.json()
+      setUsersList(Array.isArray(data.members) ? data.members : [])
+    } catch (e) {
+      console.error("Error al cargar socios:", e)
+      toast.error('No se pudo cargar el directorio de socios.')
     } finally {
-      if (!isRetry) setLoading(false)
+      setLoading(false)
     }
   }
 
   const handleScan = async (text: string) => {
-    if (!text) return;
-    const user = usersList.find(u => u.id === text)
-    if (user) {
-      setScannedUser(user)
+    const code = text?.trim()
+    if (!code) return;
+
+    setIsFetchingLogs(true)
+    try {
+      const res = await fetch(`/api/recepcion/members/${encodeURIComponent(code)}`)
+      if (res.status === 401) {
+        setVisualState('login')
+        return
+      }
+      if (!res.ok) {
+        toast.error(res.status === 404 ? 'Código QR inválido o socio no encontrado' : 'Error consultando el socio')
+        return
+      }
+      const data = await res.json()
+      setScannedUser(data.member)
+      setUserOrders(Array.isArray(data.orders) ? data.orders : [])
+      setUserCheckIns(Array.isArray(data.checkIns) ? data.checkIns : [])
       setShowScanner(false)
       toast.success('Usuario encontrado')
-
-      // Fetch additional logs
-      setIsFetchingLogs(true)
-      try {
-        // Orders: Fetch all user orders and sort locally to avoid index requirement
-        const ordersQuery = query(
-          collection(db, 'orders'),
-          where('uid', '==', user.id)
-        )
-        const ordersSnap = await getDocs(ordersQuery)
-        const orders: any[] = []
-        ordersSnap.forEach(d => orders.push({ id: d.id, ...d.data() }))
-        
-        // Sort by 'fecha' descending and take top 5
-        const sortedOrders = orders.sort((a, b) => {
-          const timeA = a.fecha?.seconds || 0
-          const timeB = b.fecha?.seconds || 0
-          return timeB - timeA
-        }).slice(0, 5)
-        
-        setUserOrders(sortedOrders)
-
-        // Check-ins: Fetch all user check-ins and sort locally
-        const checkinsQuery = query(
-          collection(db, 'checkIns'),
-          where('userId', '==', user.id)
-        )
-        const checkinsSnap = await getDocs(checkinsQuery)
-        const checkins: any[] = []
-        checkinsSnap.forEach(d => checkins.push({ id: d.id, ...d.data() }))
-        
-        // Sort by 'timestamp' descending and take top 5
-        const sortedCheckins = checkins.sort((a, b) => {
-          const timeA = a.timestamp?.seconds || 0
-          const timeB = b.timestamp?.seconds || 0
-          return timeB - timeA
-        }).slice(0, 5)
-        
-        setUserCheckIns(sortedCheckins)
-
-      } catch (err) {
-        console.error("Error fetching user logs:", err)
-      } finally {
-        setIsFetchingLogs(false)
-      }
-    } else {
-      toast.error('Código QR Invalido o Usuario no encontrado')
+    } catch (err) {
+      console.error("Error consultando socio:", err)
+      toast.error('Error consultando el socio')
+    } finally {
+      setIsFetchingLogs(false)
     }
   }
 
@@ -386,7 +350,7 @@ export default function ReceptionPage() {
                               <p className="text-xs font-black text-green-500">${order.total}</p>
                             </div>
                             <p className="text-[10px] text-zinc-300 font-medium truncate">
-                              {order.items?.map((it: any) => it.nombre).join(', ')}
+                              {order.concepto || order.items?.map((it: any) => it.nombre).join(', ')}
                             </p>
                           </div>
                         ))

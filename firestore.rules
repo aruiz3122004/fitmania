@@ -11,9 +11,13 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.admin == true;
     }
 
-    function isReceptionist() {
-      return isSignedIn() && request.auth.token.receptionist == true;
+    // F1-06: publicar en el foro exige correo verificado.
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
     }
+
+    // Recepción NO accede a Firestore desde el navegador: todo pasa por /api/recepcion/*
+    // (el servidor verifica el claim `receptionist` y devuelve datos mínimos).
 
     // Campos del perfil que el propio usuario puede escribir. `plan` NUNCA está aquí:
     // solo lo escribe el servidor (webhook de pagos / panel admin vía Admin SDK).
@@ -22,13 +26,11 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      // TODO(F3-05): retirar isReceptionist() cuando recepción consuma un endpoint con proyección mínima.
-      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin() || isReceptionist());
-      // F1-05 (B2): el alta solo admite campos conocidos y el plan debe ir vacío.
-      allow create: if isAdmin() || (isSignedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(editableProfileKeys().concat(['uid', 'email', 'plan', 'createdAt']))
-        && request.resource.data.get('plan', null) == null
-        && request.resource.data.get('uid', uid) == uid);
+      // F2-18: recepción ya no lee `users` directo; usa /api/recepcion/members (datos mínimos).
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      // F1-06: el perfil lo crea el servidor (/api/users/register) con el plan vacío;
+      // el cliente no puede crear su documento (cerraba B2: autoasignarse un plan).
+      allow create: if isAdmin();
       allow update: if isAdmin() || (isSignedIn() && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(editableProfileKeys()));
       allow delete: if isAdmin();
@@ -47,7 +49,8 @@ service cloud.firestore {
     function isOwnCommentAppend() {
       let before = resource.data.get('comentarios', []);
       let after = request.resource.data.get('comentarios', []);
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comentarios'])
+      return isVerified()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comentarios'])
         && after.size() == before.size() + 1
         && after[before.size()].autor_id == request.auth.uid
         && after[before.size()].contenido is string
@@ -56,10 +59,10 @@ service cloud.firestore {
 
     match /posts/{postId} {
       allow read: if true;
-      allow create: if isSignedIn()
+      allow create: if isVerified()
         && request.resource.data.autor_id == request.auth.uid
         && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium',
-             'contenido', 'imagen_url', 'tipo_recurso', 'likes', 'comentarios', 'created_at'])
+             'contenido', 'imagen_url', 'imagen_public_id', 'tipo_recurso', 'likes', 'comentarios', 'created_at'])
         && request.resource.data.contenido is string
         && request.resource.data.contenido.size() <= 2000
         && request.resource.data.get('likes', []).size() == 0
@@ -75,8 +78,19 @@ service cloud.firestore {
     }
 
     match /pqrs/{pqrsId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin() || isReceptionist());
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
+      // F1-29: campos conocidos, autor y correo del token, tamaño acotado y estado inicial fijo.
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['tipo', 'mensaje', 'userId', 'userName', 'userEmail',
+             'fecha', 'hora', 'createdAt', 'status'])
+        && request.resource.data.userEmail == request.auth.token.email
+        && request.resource.data.mensaje is string
+        && request.resource.data.mensaje.size() > 0
+        && request.resource.data.mensaje.size() <= 3000
+        && request.resource.data.tipo is string
+        && request.resource.data.tipo.size() <= 40
+        && request.resource.data.status == 'pending';
       allow update, delete: if isAdmin();
     }
 
@@ -98,7 +112,7 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.uid || isAdmin() || isReceptionist());
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.uid || isAdmin());
       allow create: if false; // Solo el webhook de Stripe (Admin SDK) crea órdenes (T-08, auditoría M-3)
       allow update: if isAdmin();
     }
@@ -109,13 +123,13 @@ service cloud.firestore {
 
     // Registro de Entradas (Historial empresarial de ingresos)
     match /entry_logs/{logId} {
-      allow read: if isAdmin() || isReceptionist();
+      allow read: if isAdmin(); // Recepción consulta vía /api/recepcion/entry-log
       allow write: if false; // Solo el Admin SDK desde el servidor puede escribir aquí.
     }
 
     // Registro de Check-ins (Historial individual para el dashboard de recepción)
     match /checkIns/{checkInId} {
-      allow read: if isAdmin() || isReceptionist();
+      allow read: if isAdmin(); // Recepción consulta vía /api/recepcion/members/:uid
       allow write: if false; // F2-03: lo escribe el servidor junto con entry_logs (transacción).
     }
 

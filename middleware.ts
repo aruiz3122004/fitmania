@@ -78,6 +78,7 @@ function buildCsp(nonce: string): string {
     connect-src 'self' https://*.stripe.com https://*.googleapis.com https://*.firebaseio.com https://api.cloudinary.com https://res.cloudinary.com https://va.vercel-scripts.com;
     frame-src 'self' https://*.stripe.com https://*.firebaseapp.com;
     font-src 'self' data: https://fonts.gstatic.com;
+    media-src 'self' blob: https://res.cloudinary.com;
     worker-src 'self' blob:;
     object-src 'none';
     base-uri 'self';

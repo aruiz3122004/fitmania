@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
+import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
+import { listAllAuthUsers } from '@/lib/admin-users';
 
 export async function GET(request: Request) {
   try {
@@ -9,32 +10,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const auth = getAdminAuth();
     const db = getAdminFirestore();
 
-    // Listar todos los usuarios
-    const listUsersResult = await auth.listUsers(1000);
-    const users = listUsersResult.users.map(user => ({
-      uid: user.uid,
-      email: user.email,
-      creationTime: user.metadata.creationTime,
-      lastSignInTime: user.metadata.lastSignInTime,
-      admin: user.customClaims?.admin || false
-    }));
-
-    // Obtener estadísticas de firestore
-    const pqrsSnapshot = await db.collection('pqrs').get();
-    const totalPqrs = pqrsSnapshot.size;
+    // F2-20: totales sin transferir listas completas. `count()` cuesta 1 lectura
+    // por cada 1000 documentos (antes se leía toda la colección `pqrs`), y la
+    // lista de usuarios ya la entrega /api/admin/users.
+    const [authUsers, pqrsCount] = await Promise.all([
+      listAllAuthUsers(),
+      db.collection('pqrs').count().get(),
+    ]);
 
     return NextResponse.json({
-      totalUsers: users.length,
-      admins: users.filter(u => u.admin).length,
-      totalPqrs,
-      users 
+      totalUsers: authUsers.length,
+      admins: authUsers.filter((u) => u.customClaims?.admin).length,
+      totalPqrs: pqrsCount.data().count,
     }, { status: 200 });
 
   } catch (error: any) {
-    console.error('Error en API Admin Stats:', error);
     // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
     console.error('[/api/admin/stats]', error);
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });

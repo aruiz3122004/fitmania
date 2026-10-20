@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
+import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
 import { useAuthStore } from '@/lib/store'
 import { auth, db } from '@/lib/firebase'
 import { uploadToCloudinary } from '@/services/cloudinary'
@@ -131,7 +132,7 @@ export default function PerfilPage() {
 
     try {
       // Upload to Cloudinary
-      const resultado = await uploadToCloudinary(file)
+      const resultado = await uploadToCloudinary(file, 'avatar')
       const downloadURL = resultado.url
 
       // Update cloudinary storage
@@ -186,6 +187,7 @@ export default function PerfilPage() {
       <section className="mt-[72px] min-h-screen bg-muted py-16">
         <div className="max-w-[900px] mx-auto px-8">
           <SectionHeader label="TU PERFIL" title="CONFIGURACION" titleAccent="BASICA" />
+          <EmailVerificationBanner />
 
           <div className="bg-white border-3 border-secondary shadow-comic p-8">
             <div className="flex flex-col md:flex-row items-center gap-8 mb-8 pb-8 border-b-2 border-dashed border-gray-100">

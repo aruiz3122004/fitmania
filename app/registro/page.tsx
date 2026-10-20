@@ -6,10 +6,9 @@ import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { useAuthStore } from '@/lib/store'
-import { auth, db } from '@/lib/firebase'
-import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
-import { doc, setDoc } from 'firebase/firestore'
+import { auth } from '@/lib/firebase'
+import { avatarOptions } from '@/lib/avatar-utils'
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth'
 import { 
   Mail, 
   Lock, 
@@ -109,33 +108,40 @@ export default function RegistroPage() {
       }
 
       const credentials = await createUserWithEmailAndPassword(auth, formData.email, formData.password)
-      const avatarUrl = getAvatarUrlById(formData.avatar) || '/Imagenes/Avatares/Fitman.jpeg'
-      const userData = {
-        uid: credentials.user.uid,
-        username: formData.username,
-        email: formData.email,
-        gender: formData.gender,
-        avatar: formData.avatar,
-        photoURL: avatarUrl,
-        peso: formData.peso ? parseFloat(formData.peso) : undefined,
-        altura: formData.altura ? parseFloat(formData.altura) : undefined,
-        plan: null,
+
+      // F1-06: el perfil lo crea el servidor (uid/correo desde el token, plan vacío).
+      const idToken = await credentials.user.getIdToken()
+      const res = await fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({
+          username: formData.username,
+          gender: formData.gender,
+          avatar: formData.avatar,
+          peso: formData.peso || null,
+          altura: formData.altura || null,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // Sin perfil la cuenta queda inservible: se elimina para que pueda reintentar.
+        await credentials.user.delete().catch(() => {})
+        throw new Error(data.error || 'No se pudo crear tu perfil. Intenta de nuevo.')
       }
 
-      // Firestore rechaza valores `undefined`: se omiten los campos opcionales vacíos
-      // (si no, el alta falla después de crear la cuenta en Auth y deja un usuario huérfano).
-      const firestoreUserData = Object.fromEntries(
-        Object.entries(userData).filter(([, value]) => value !== undefined)
+      // Verificación de correo: requerida para pagar y publicar en el foro.
+      await sendEmailVerification(credentials.user).catch((e) =>
+        console.error('No se pudo enviar el correo de verificación:', e)
       )
 
-      await setDoc(doc(db, 'users', credentials.user.uid), {
-        ...firestoreUserData,
-        createdAt: new Date(),
+      setUser({
+        ...data.profile,
+        peso: data.profile.peso ?? undefined,
+        altura: data.profile.altura ?? undefined,
+        photoURL: data.profile.photoURL ?? undefined,
+        plan: null,
       })
 
-      setUser(userData)
-      
-      
       router.push('/')
     } catch (err: any) {
       if (err?.code === 'auth/email-already-in-use') {

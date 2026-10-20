@@ -25,6 +25,25 @@ const ADMIN_COPY_EMAIL = process.env.ADMIN_COPY_EMAIL || process.env.ADMIN_AUTHO
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
+/**
+ * Escapa texto antes de insertarlo en el HTML del correo. Nombres, conceptos y
+ * mensajes de PQRS los escribe el usuario; sin escapar se podía inyectar HTML
+ * (enlaces de phishing) en correos que además llegan en copia al administrador.
+ */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/** Igual que `escapeHtml`, conservando los saltos de línea del texto. */
+function escapeMultiline(value: unknown): string {
+  return escapeHtml(value).replace(/\r?\n/g, '<br/>')
+}
+
 interface SendMailOptions {
   from: string
   to: string
@@ -180,7 +199,7 @@ export async function sendPaymentSuccessEmail(data: PaymentEmailData) {
               <tr>
                 <td style="padding:40px;">
                   <p style="color:#333;font-size:16px;line-height:1.6;margin-top:0;">
-                    Hola <strong>${data.customerName}</strong>,<br/>
+                    Hola <strong>${escapeHtml(data.customerName)}</strong>,<br/>
                     gracias por hacer parte de nuestros servicios en <strong>Fitmania</strong>. Tu pago ha sido procesado correctamente.
                   </p>
 
@@ -193,19 +212,19 @@ export async function sendPaymentSuccessEmail(data: PaymentEmailData) {
                         <table width="100%" cellpadding="0" cellspacing="0">
                           <tr>
                             <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#666;font-size:14px;">Concepto</td>
-                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;font-weight:600;">${data.concept}</td>
+                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;font-weight:600;">${escapeHtml(data.concept)}</td>
                           </tr>
                           <tr>
                             <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#666;font-size:14px;">Banco</td>
-                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${data.bank}</td>
+                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${escapeHtml(data.bank)}</td>
                           </tr>
                           <tr>
                             <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#666;font-size:14px;">Fecha</td>
-                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${data.date}</td>
+                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${escapeHtml(data.date)}</td>
                           </tr>
                           <tr>
                             <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#666;font-size:14px;">ID Transacción</td>
-                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:12px;text-align:right;font-family:monospace;">${data.transactionId}</td>
+                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:12px;text-align:right;font-family:monospace;">${escapeHtml(data.transactionId)}</td>
                           </tr>
                           <tr>
                             <td style="padding:16px 0 8px;color:#1a1a2e;font-size:16px;font-weight:700;">TOTAL PAGADO</td>
@@ -279,7 +298,7 @@ export async function sendPaymentFailedEmail(data: Pick<PaymentEmailData, 'to' |
               <tr>
                 <td style="padding:40px;">
                   <p style="color:#333;font-size:16px;line-height:1.6;margin-top:0;">
-                    Hola <strong>${data.customerName}</strong>,
+                    Hola <strong>${escapeHtml(data.customerName)}</strong>,
                   </p>
                   <p style="color:#555;font-size:15px;line-height:1.8;">
                     No hemos detectado el movimiento mediante su cuenta bancaria. Si considera que se trata de un error, por favor diríjase a la página principal de Fitmania en la sección de <strong>PQRS</strong> ubicada en la página principal y háganos saber su inconformidad, o si lo desea, diríjase al punto físico de la tienda.
@@ -329,7 +348,7 @@ export async function sendOrderReceiptEmail(data: OrderReceiptData) {
 
   const itemsHtml = data.items.map(item => `
     <tr>
-      <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;">${item.nombre} x${item.cantidad}</td>
+      <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;">${escapeHtml(item.nombre)} x${escapeHtml(item.cantidad)}</td>
       <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(item.precio * item.cantidad)}</td>
     </tr>
   `).join('')
@@ -356,7 +375,7 @@ export async function sendOrderReceiptEmail(data: OrderReceiptData) {
           <p style="margin:5px 0 0;font-size:12px;opacity:0.8;">DETALLE DE TU COMPRA</p>
         </div>
         <div class="content">
-          <p>Hola <strong>${data.customerName}</strong>,</p>
+          <p>Hola <strong>${escapeHtml(data.customerName)}</strong>,</p>
           <p>Tu pedido ha sido procesado con éxito. Aquí tienes el detalle de tus productos:</p>
           
           <table class="receipt-table">
@@ -376,9 +395,9 @@ export async function sendOrderReceiptEmail(data: OrderReceiptData) {
           </table>
 
           <div style="background:#f9f9f9;padding:20px;border-radius:4px;font-size:13px;color:#666;">
-            <p style="margin:0;"><strong>Banco:</strong> ${data.bank}</p>
-            <p style="margin:5px 0;"><strong>Fecha:</strong> ${data.date}</p>
-            <p style="margin:5px 0;"><strong>ID Transacción:</strong> ${data.transactionId}</p>
+            <p style="margin:0;"><strong>Banco:</strong> ${escapeHtml(data.bank)}</p>
+            <p style="margin:5px 0;"><strong>Fecha:</strong> ${escapeHtml(data.date)}</p>
+            <p style="margin:5px 0;"><strong>ID Transacción:</strong> ${escapeHtml(data.transactionId)}</p>
           </div>
         </div>
         <div class="footer">
@@ -427,17 +446,17 @@ export async function sendPqrsReplyEmail(data: PqrsReplyData) {
           <p style="margin:5px 0 0;font-size:12px;opacity:0.8;">RESPUESTA A TU SOLICITUD</p>
         </div>
         <div class="content">
-          <p>Hola <strong>${data.customerName}</strong>,</p>
+          <p>Hola <strong>${escapeHtml(data.customerName)}</strong>,</p>
           <p>Hemos recibido tu PQRS y un administrador de Fitmania ha revisado tu caso. Aquí tienes nuestra respuesta:</p>
           
           <div class="quote">
             <strong>Tu comentario original:</strong><br/>
-            "${data.originalMessage}"
+            "${escapeMultiline(data.originalMessage)}"
           </div>
 
           <div class="response">
             <strong>Respuesta del Administrador:</strong><br/>
-            ${data.adminResponse}
+            ${escapeMultiline(data.adminResponse)}
           </div>
 
           <p>Esperamos que esta respuesta sea satisfactoria. Hemos marcado tu solicitud como <strong>RESUELTA</strong>.</p>

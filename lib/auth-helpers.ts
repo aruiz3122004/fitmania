@@ -50,22 +50,37 @@ export async function verifyAdminRequest(request: Request) {
 }
 
 /**
+ * Lista blanca OPCIONAL de correos de recepción (F1-14).
+ *
+ * Antes `RECEPTION_AUTHORIZED_EMAIL` admitía un único correo, lo que obligaba a
+ * compartir una cuenta entre recepcionistas (sin trazabilidad). Ahora:
+ *  - Si la variable no está definida, basta el claim `receptionist` (lo asigna solo el admin).
+ *  - Si está definida, admite varios correos separados por coma como restricción adicional.
+ */
+export function isReceptionEmailAllowed(email: string | undefined): boolean {
+  const raw = process.env.RECEPTION_AUTHORIZED_EMAIL;
+  if (!raw || !raw.trim()) return true;
+  if (!email) return false;
+  const allowed = raw.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return allowed.includes(email.toLowerCase());
+}
+
+/**
  * Verifica la sesión de recepción (T-10 + T-16).
  *
- * Requiere: session cookie válida y NO revocada + email autorizado + claim `receptionist`.
- * El claim ya NO se auto-otorga en el login; se gestiona centralmente desde el panel
- * admin o con `scripts/manage-claims.js` (auditoría A-5).
+ * Requiere: session cookie válida y NO revocada + claim `receptionist`
+ * (+ correo en la lista blanca opcional). El claim ya NO se auto-otorga en el
+ * login; se gestiona centralmente desde el panel admin (auditoría A-5).
  */
 export async function verifyReceptionRequest(request: Request) {
   const adminAuth = getAdminAuth();
-  const authorizedEmail = process.env.RECEPTION_AUTHORIZED_EMAIL;
 
   const sessionToken = parseCookies(request)['fitmania_reception_session'];
   if (!sessionToken) return null;
 
   try {
     const decoded = await adminAuth.verifySessionCookie(sessionToken, true);
-    if (!authorizedEmail || decoded.email?.toLowerCase() !== authorizedEmail.toLowerCase()) {
+    if (!isReceptionEmailAllowed(decoded.email)) {
       return null;
     }
     if (decoded.receptionist !== true) {

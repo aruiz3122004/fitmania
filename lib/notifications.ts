@@ -23,9 +23,20 @@ export async function generatePlanExpiryNotifications(
   const dateKey = getDateKeyInAppTz(now);
 
   const usersSnapshot = await db.collection('users').where('plan', '!=', null).get();
-  const batch = db.batch();
+
+  // F2-23: sin N+1 ni límite de 500. Antes se hacía un `get()` por socio para ver si
+  // el aviso ya existía y todo iba en un único batch (falla con >500 escrituras).
+  // Ahora `create()` con ID determinista falla solo si ya existe (idempotente) y
+  // BulkWriter agrupa y reintenta las escrituras sin tope.
+  const writer = db.bulkWriter();
+  writer.onWriteError((error) => {
+    if (error.code === 6 /* ALREADY_EXISTS: el aviso de hoy ya existe */) return false;
+    return error.failedAttempts < 3;
+  });
+
   let created = 0;
   let evaluated = 0;
+  const pending: Promise<unknown>[] = [];
 
   for (const doc of usersSnapshot.docs) {
     const userData = doc.data();
@@ -39,42 +50,34 @@ export async function generatePlanExpiryNotifications(
       (expirationDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    const planRef = db.collection('notifications');
-
-    // ID determinista por (tipo, uid, día) → idempotente: el job puede correr
-    // varias veces al día sin duplicar avisos.
+    let notifId: string | null = null;
+    let mensaje = '';
+    // ID determinista por (tipo, uid, día) → el job puede correr varias veces al día sin duplicar.
     if (diffDays <= 5 && diffDays > 1) {
-      const notifId = `plan5_${doc.id}_${dateKey}`;
-      const notifRef = planRef.doc(notifId);
-      const existing = await notifRef.get();
-      if (!existing.exists) {
-        batch.set(notifRef, {
-          tipo: 'plan_expiry',
-          mensaje: `El plan de ${userData.displayName || userData.username} vence en 5 días.`,
-          uid: doc.id,
-          leido: false,
-          fecha: new Date(),
-        });
-        created++;
-      }
+      notifId = `plan5_${doc.id}_${dateKey}`;
+      mensaje = `El plan de ${userData.displayName || userData.username} vence en ${diffDays} días.`;
     } else if (diffDays <= 1 && diffDays >= 0) {
-      const notifId = `plan1_${doc.id}_${dateKey}`;
-      const notifRef = planRef.doc(notifId);
-      const existing = await notifRef.get();
-      if (!existing.exists) {
-        batch.set(notifRef, {
+      notifId = `plan1_${doc.id}_${dateKey}`;
+      mensaje = `¡URGENTE! El plan de ${userData.displayName || userData.username} vence mañana.`;
+    }
+    if (!notifId) continue;
+
+    pending.push(
+      writer
+        .create(db.collection('notifications').doc(notifId), {
           tipo: 'plan_expiry',
-          mensaje: `¡URGENTE! El plan de ${userData.displayName || userData.username} vence mañana.`,
+          mensaje,
           uid: doc.id,
           leido: false,
           fecha: new Date(),
-        });
-        created++;
-      }
-    }
+        })
+        .then(() => { created++; })
+        .catch(() => { /* ya existía o falló tras reintentos: no se cuenta */ })
+    );
   }
 
-  if (created > 0) await batch.commit();
+  await writer.close();
+  await Promise.all(pending);
 
   return { created, evaluated };
 }

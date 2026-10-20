@@ -66,18 +66,18 @@
   - El middleware genera un UUID (`x-request-id`).
   - `lib/http.ts` responde `{ error, requestId }` y deja el detalle solo en los logs. Eliminar todo `error.message` de las respuestas.
   - **Criterio:** `grep "error.message" app/api` no devuelve respuestas al cliente.
-- [~] **F1-04 · Validación zod en todas las rutas** — `[CÓDIGO]` — M — Ref 4.7
+- [x] **F1-04 · Validación zod en todas las rutas** — `[CÓDIGO]` — M — Ref 4.7
   - Lista blanca de campos en `admin/planes`, `admin/products`, `admin/users`, `admin/pqrs/respond`, `recepcion/entry-log` y `admin/notifications`.
   - Tope `limit ≤ 200` en `admin/logs`.
   - **Criterio:** un campo no declarado devuelve 400 y no se escribe.
 
 ### 1B. Reglas de Firestore y datos de usuario
-- [~] **F1-05 · Endurecer las reglas de `users`** — `[CÓDIGO]` — M — Ref B2, 4.14
+- [x] **F1-05 · Endurecer las reglas de `users`** — `[CÓDIGO]` — M — Ref B2, 4.14
   - `create`: sin `plan`, o `plan == null`.
   - `update` del dueño: `affectedKeys().hasOnly(['username','avatar','photoURL','peso','altura','gender','notificationPrefs'])`.
   - Quitar `isReceptionist()` de la lectura.
   - **Criterio:** una prueba de reglas confirma que un cliente no puede crear ni editar `plan`, y que recepción no puede leer `users`.
-- [~] **F1-06 · Registro desde el servidor y verificación de correo** — `[CÓDIGO]` — M — Ref 4.1, 4.18
+- [x] **F1-06 · Registro desde el servidor y verificación de correo** — `[CÓDIGO]` — M — Ref 4.1, 4.18
   - Nuevo `POST /api/users/register`: crea el documento omitiendo campos vacíos (sin `undefined`).
   - Llamar a `sendEmailVerification` y exigir el correo verificado para comprar y publicar.
   - **Criterio:** el registro sin peso ni altura funciona, y una cuenta sin verificar no puede pagar ni publicar.
@@ -112,7 +112,7 @@
   - Activar Identity Platform. La API de login rechaza cuentas `admin` sin segundo factor.
   - Guardar códigos de respaldo offline.
   - **Criterio:** el login del admin exige el código TOTP.
-- [ ] **F1-14 · Recepción con una cuenta por persona** — `[CÓDIGO]` — S — Ref 4.18
+- [x] **F1-14 · Recepción con una cuenta por persona** — `[CÓDIGO]` — S — Ref 4.18
   - Eliminar `RECEPTION_AUTHORIZED_EMAIL` de `auth-helpers.ts`, `recepcion/login` y `auth/verify`. El claim `receptionist` basta.
   - **Criterio:** dos recepcionistas con cuentas distintas entran, y cada ingreso registra a su autor (F2-03).
 - [~] **F1-15 · Sesión de recepción por turno y arreglo de `role`** — `[CÓDIGO]` — S — Ref 4.13
@@ -156,7 +156,7 @@
   - Preset firmado: `jpg/png/webp`, ≤ 5 MB, conversión a WebP con ancho ≤ 1600. Video solo si se decide, con ≤ 20 MB y ≤ 30 s.
   - Agregar `https://api.cloudinary.com` a `connect-src`.
   - **Criterio:** una subida sin firma falla, y la subida desde el foro funciona en producción.
-- [ ] **F1-25 · Borrar archivos huérfanos** — `[CÓDIGO]` — S — Ref 4.21
+- [~] **F1-25 · Borrar archivos huérfanos** — `[CÓDIGO]` — S — Ref 4.21
   - Guardar `publicId` en el post y borrar en Cloudinary desde el servidor al eliminarlo.
   - **Criterio:** al eliminar un post desaparece su archivo en Cloudinary.
 - [~] **F1-26 · Auditoría con actor y cambios** — `[CÓDIGO]` — M — Ref 4.23
@@ -171,7 +171,7 @@
 - [ ] **F1-28 · Pruebas del webhook** — `[CÓDIGO]` — M — Ref 4.3
   - Casos: idempotencia, firma inválida, stock insuficiente y fallo con 5xx.
   - **Criterio:** la suite pasa en el CI.
-- [ ] **F1-29 · Reglas para `reportes` y `pqrs`** — `[CÓDIGO]` — S — Ref 4.20
+- [x] **F1-29 · Reglas para `reportes` y `pqrs`** — `[CÓDIGO]` — S — Ref 4.20
   - Validar campos y tamaños con `hasOnly`. `reportante_id == auth.uid`.
   - **Criterio:** cubierto en F1-27.
 - [ ] **F1-30 · Endurecer el CI de dependencias** — `[CÓDIGO]` — S — Ref 4.17 (A03)
@@ -225,7 +225,7 @@
   - **Criterio:** Cache Storage no contiene `/api/*` y el SW aparece registrado en producción.
 
 ### 2D. Observabilidad
-- [ ] **F2-10 · Endpoint `/api/health`** — `[CÓDIGO]` — S — Ref 4.8
+- [x] **F2-10 · Endpoint `/api/health`** — `[CÓDIGO]` — S — Ref 4.8
   - Comprueba Firestore, Redis y las variables críticas, y devuelve `200/503` con la latencia de cada uno.
   - **Criterio:** devuelve 503 si Firestore no responde.
 - [ ] **F2-11 · Sentry en cliente y servidor** — `[CÓDIGO]`+`[CFG]` — M — Ref 4.8
@@ -253,12 +253,12 @@
   - **Criterio:** `localStorage` no contiene datos del perfil ni del plan.
 
 ### 2F. Consumo de base de datos
-- [ ] **F2-18 · Recepción busca por UID** — `[CÓDIGO]` — S — Ref 4.6
+- [~] **F2-18 · Recepción busca por UID** — `[CÓDIGO]` — S — Ref 4.6
   - Una sola lectura por escaneo, en lugar de `getDocs(collection('users'))`.
   - **Criterio:** abrir recepción no lee la colección `users`.
 - [ ] **F2-19 · Calendario desde `daily_stats`** — `[CÓDIGO]` — S — Ref 4.6 — Depende de F2-03
   - **Criterio:** la consulta mensual hace como máximo 31 lecturas.
-- [ ] **F2-20 · Panel admin eficiente** — `[CÓDIGO]` — M — Ref 4.6, 4.10, 4.13
+- [~] **F2-20 · Panel admin eficiente** — `[CÓDIGO]` — M — Ref 4.6, 4.10, 4.13
   - `count()` para las PQRS, paginación con cursor en socios (sin `listUsers(1000)`) y carga de datos por pestaña.
   - **Criterio:** al abrir el admin se hacen solo las peticiones de la pestaña visible, y funciona con más de 1000 socios.
 - [ ] **F2-21 · Home renderizado en el servidor** — `[CÓDIGO]` — M — Ref 4.6, 4.24
@@ -267,10 +267,10 @@
 - [ ] **F2-22 · Paginación del foro con cursor** — `[CÓDIGO]` — S — Ref 4.6
   - Usar `startAfter` en lugar de aumentar el `limit`.
   - **Criterio:** "cargar más" lee solo la página nueva.
-- [ ] **F2-23 · Cron de vencimientos sin N+1** — `[CÓDIGO]` — S — Ref 4.6, 4.7
+- [x] **F2-23 · Cron de vencimientos sin N+1** — `[CÓDIGO]` — S — Ref 4.6, 4.7
   - `create()` con ID determinista (falla si ya existe) y `BulkWriter`.
   - **Criterio:** funciona con más de 500 socios.
-- [ ] **F2-24 · Cierres de periodo de ventas** — `[CÓDIGO]` — M — Ref 4.7
+- [~] **F2-24 · Cierres de periodo de ventas** — `[CÓDIGO]` — M — Ref 4.7
   - Reemplazar `archive-sales` por `sales_periods/{YYYY-MM}` con totales calculados. Las órdenes no se modifican.
   - **Criterio:** los ingresos de cada mes se pueden consultar después del cierre.
 
@@ -311,7 +311,7 @@
   - **Criterio:** se puede navegar por fecha desde el mapa.
 
 ### 3B. Recepción
-- [ ] **F3-05 · Directorio de socios por estado** — `[CÓDIGO]` — M — Ref 5.3
+- [~] **F3-05 · Directorio de socios por estado** — `[CÓDIGO]` — M — Ref 5.3
   - `GET /api/recepcion/members?status=&q=&cursor=` con proyección mínima (nombre, foto, estado, vencimiento, días restantes).
   - Filtros: Activos, Por vencer, Vencidos y Sin plan.
   - **Criterio:** la respuesta no incluye peso, altura ni correo completo.
@@ -367,7 +367,7 @@
   - **Criterio:** el admin resuelve un reporte y la acción queda auditada.
 
 ### 3F. SEO y rendimiento
-- [ ] **F3-18 · robots, sitemap y metadata por página** — `[CÓDIGO]` — S — Ref 4.24
+- [~] **F3-18 · robots, sitemap y metadata por página** — `[CÓDIGO]` — S — Ref 4.24
   - `app/robots.ts` (bloquea paneles, `/api`, `/perfil` y `/pago`), `app/sitemap.ts`, y `metadata` con Open Graph e imagen 1200×630 en cada página pública.
   - **Criterio:** Lighthouse SEO ≥ 90.
 - [ ] **F3-19 · Datos estructurados y Google Business** — `[CÓDIGO]`+`[EXT]` — S — Ref 4.24
@@ -469,3 +469,32 @@ Verificado: `tsc --noEmit` y `next build` pasan. Pruebas manuales con `next star
 1. Revisar y desplegar las reglas: `firebase deploy --only firestore:rules`. No se pudieron probar con el emulador (falta Java). Probarlas primero en staging o con el emulador.
 2. Desplegar la rama en Vercel (preview) y probar: registro sin peso, like y comentario en un post ajeno, acompañante, pago de plan de prueba (se activan los días de `days`), escaneo doble en recepción (debe responder "ya registró").
 3. Revisar que todos los planes existentes tengan `days`. Si falta, el webhook usa el respaldo por nombre (30/40/60).
+
+### 2026-10-20 (2.ª tanda) — misma rama `fix/fase1-criticos`
+
+Verificado: `next build` (incluye TypeScript) pasa. Con `next start`: `/api/health` responde `ok` (Firestore y Redis conectados); `robots.txt` y `sitemap.xml` (8 URLs) generados; títulos y canonical por página, `noindex` en perfil, pago, carrito y paneles; `/api/recepcion/members*`, `/api/users/register` y `/api/admin/pqrs/respond` exigen sesión; `/api/uploads/sign` responde 501 hasta configurar Cloudinary (el cliente usa el preset actual mientras tanto).
+
+| Tarea | Hecho | Pendiente |
+|---|---|---|
+| F1-04 | `admin/users` valida el plan (fechas, campos, el acompañante se conserva desde la BD), impide que el admin se quite su propio rol; `pqrs/respond` toma destinatario y mensaje del ticket; `notifications` valida el id | — |
+| F1-05 | Se retiró a recepción la lectura de `users`, `orders`, `checkIns`, `entry_logs` y `pqrs` en las reglas (todo pasa por la API) | — |
+| F1-06 | `POST /api/users/register` crea el perfil en el servidor (uid y correo del token, plan vacío, `create()` sin sobrescritura); las reglas prohíben al cliente crear su documento; se envía la verificación de correo; pagar y publicar o comentar exigen correo verificado; aviso "Verifica tu correo" en perfil y foro | Consentimiento de datos sensibles (F3-10) |
+| F1-14 | `RECEPTION_AUTHORIZED_EMAIL` ahora es opcional y admite varios correos separados por coma; sin ella basta el claim `receptionist` | — |
+| F1-24 | `POST /api/uploads/sign` (firma SHA-1, carpeta por usuario, formatos permitidos); el cliente valida tipo y tamaño (imagen 5 MB, video 20 MB) | **CFG:** definir `CLOUDINARY_API_KEY` y `CLOUDINARY_API_SECRET` y desactivar el preset sin firma |
+| F1-25 | Los posts guardan `imagen_public_id` | Borrado en Cloudinary al eliminar el post |
+| F1-29 | Reglas de `pqrs.create`: campos conocidos, correo igual al del token, mensaje ≤ 3000, estado inicial `pending` | — |
+| F2-10 | `GET /api/health` (Firestore, Redis y configuración; 200 o 503; sin exponer valores) | Conectar el monitor de uptime (F2-12) |
+| F2-18 / F3-05 | `GET /api/recepcion/members` (nombre, foto, plan) y `/members/:uid` (ficha con correo enmascarado, últimas 5 órdenes y 5 check-ins); recepción ya no usa el SDK de Firestore | Paginación y filtros por estado |
+| F2-20 | `listUsers` pagina todas las cuentas (antes se cortaba en 1000); `stats` usa `count()` y no duplica la lista de usuarios; las PQRS se ordenan por `createdAt` (antes por un texto de fecha) | Carga de datos por pestaña |
+| F2-23 | Cron de vencimientos sin N+1 (`create()` idempotente) y con BulkWriter | — |
+| F2-24 | `archive-sales` y la limpieza de notificaciones usan BulkWriter (sin el límite de 500) | Cierres de periodo |
+| F3-18 | `robots.ts`, `sitemap.ts`, `metadataBase`, plantilla de títulos, Open Graph y metadata o `noindex` por ruta | **CFG:** `NEXT_PUBLIC_SITE_URL` con el dominio; medir Lighthouse |
+
+**Hallazgos nuevos corregidos en esta tanda:**
+- **HTML inyectado en los correos:** nombres, conceptos, ítems y mensajes de PQRS se insertaban sin escapar en el HTML, y cada correo llega en copia al admin (vía de phishing). Ahora se escapan con `escapeHtml`.
+- **Videos del foro bloqueados por la CSP:** faltaba `media-src`; se agregó `https://res.cloudinary.com`.
+
+**Acciones pendientes del dueño (además de las de la tanda anterior):**
+1. Desplegar las reglas nuevas. Después de esto, **las cuentas sin correo verificado no pueden pagar ni publicar**. Las cuentas de prueba existentes deben verificar desde "Reenviar correo" en el perfil.
+2. Configurar en Vercel `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` y `NEXT_PUBLIC_SITE_URL`, y luego desactivar el preset sin firma en Cloudinary.
+3. Si hay más de una persona en recepción: asignar el claim desde el panel admin y dejar `RECEPTION_AUTHORIZED_EMAIL` vacía (o con la lista de correos separados por coma).

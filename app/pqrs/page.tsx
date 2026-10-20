@@ -228,6 +228,7 @@ export default function PQRSPage() {
                     value={mensaje}
                     onChange={(e) => setMensaje(e.target.value)}
                     placeholder="Describe tu peticion, queja, reclamo o sugerencia en detalle..."
+                    maxLength={3000}
                     className="w-full font-body text-gray-700 p-4 border-3 border-gray-200 focus:border-primary outline-none resize-none transition-colors"
                     rows={6}
                     required

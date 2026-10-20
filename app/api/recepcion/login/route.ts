@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { isReceptionEmailAllowed } from '@/lib/auth-helpers';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { resetRateLimitFor } from '@/lib/rate-limit-server';
 import { GATE_COOKIE, createGateToken, gateCookieOptions, getGateSecret } from '@/lib/gate-token';
@@ -20,14 +21,8 @@ export async function POST(request: Request) {
     // Verificar que el token Firebase es válido
     const decodedToken = await adminAuth.verifyIdToken(idToken);
 
-    // Verificar que el email está autorizado para recepción (sin hardcodear en el cliente)
-    const authorizedEmail = process.env.RECEPTION_AUTHORIZED_EMAIL;
-    if (!authorizedEmail) {
-      console.error('RECEPTION_AUTHORIZED_EMAIL no está configurada en las variables de entorno');
-      return NextResponse.json({ error: 'Configuración del servidor incompleta.' }, { status: 500 });
-    }
-
-    if (decodedToken.email?.toLowerCase() !== authorizedEmail.toLowerCase()) {
+    // F1-14: lista blanca opcional (varios correos); la autorización real es el claim.
+    if (!isReceptionEmailAllowed(decodedToken.email)) {
       await recordAuditLog({
         action: 'LOGIN_FAILED',
         category: 'AUTH_FAILURE',

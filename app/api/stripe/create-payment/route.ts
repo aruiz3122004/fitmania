@@ -24,6 +24,13 @@ export async function POST(req: NextRequest) {
     if (!decoded.email) {
       return NextResponse.json({ error: 'Tu cuenta no tiene un correo asociado.' }, { status: 400 })
     }
+    // F1-06: solo cuentas con correo verificado pueden pagar (recibos y facturas van a ese correo).
+    if (!decoded.email_verified) {
+      return NextResponse.json(
+        { error: 'Verifica tu correo antes de pagar. Revisa tu bandeja o reenvía el enlace desde tu perfil.', code: 'email_not_verified' },
+        { status: 403 }
+      )
+    }
 
     const body = await req.json()
     const { planId, items } = body

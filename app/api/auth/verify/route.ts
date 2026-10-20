@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { isReceptionEmailAllowed } from '@/lib/auth-helpers';
 
 /**
  * Endpoint interno para verificar si una cookie de sesión es válida.
@@ -43,8 +44,7 @@ export async function GET(request: Request) {
     }
 
     if (role === 'recepcion') {
-      const authorizedEmail = process.env.RECEPTION_AUTHORIZED_EMAIL;
-      if (!authorizedEmail || decodedToken.email?.toLowerCase() !== authorizedEmail.toLowerCase()) {
+      if (!isReceptionEmailAllowed(decodedToken.email)) {
         return NextResponse.json({ valid: false, reason: 'Email not authorized for reception' }, { status: 403 });
       }
       // T-16: el claim se gestiona centralmente y se valida en cada verificación.

@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
+import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
 import { useAuthStore } from '@/lib/store'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { db } from '@/lib/firebase'
@@ -232,6 +233,12 @@ function PostCard({
     try {
       await onAddComment(post.id, content)
       setNewComment('')
+    } catch (err: any) {
+      alert(
+        err?.code === 'permission-denied'
+          ? 'No se pudo comentar. Verifica tu correo (revisa tu bandeja o reenvía el enlace desde tu perfil).'
+          : 'No se pudo enviar el comentario. Intenta de nuevo.'
+      )
     } finally {
       setIsCommenting(false)
     }
@@ -653,6 +660,7 @@ function PostCard({
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Escribe un comentario..."
+                  maxLength={1000}
                   className="flex-1 min-w-0 font-body text-sm px-3 py-2 border-2 border-gray-200 focus:border-primary outline-none"
                 />
                 <button
@@ -677,6 +685,7 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [filePreview, setFilePreview] = useState<string | null>(null)
   const [isPublishing, setIsPublishing] = useState(false)
+  const [publishError, setPublishError] = useState('')
 
   // Cleanup object URL when component unmounts or file changes
   useEffect(() => {
@@ -693,11 +702,19 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
     const text = content.trim()
     if (!text || isPublishing) return
     setIsPublishing(true)
+    setPublishError('')
     try {
       await onPublish(text, selectedFile)
       setContent('')
       setSelectedFile(null)
       setFilePreview(null)
+    } catch (err: any) {
+      // Las reglas exigen correo verificado y máx. 2000 caracteres (F1-06 / F1-07).
+      setPublishError(
+        err?.code === 'permission-denied'
+          ? 'No se pudo publicar. Verifica tu correo (revisa tu bandeja o reenvía el enlace desde tu perfil).'
+          : err?.message || 'No se pudo publicar. Intenta de nuevo.'
+      )
     } finally {
       setIsPublishing(false)
     }
@@ -736,7 +753,11 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
             placeholder="Comparte tu experiencia de entrenamiento..."
             className="w-full font-body text-gray-700 p-3 border-2 border-gray-200 focus:border-primary outline-none resize-none"
             rows={3}
+            maxLength={2000}
           />
+          {publishError && (
+            <p role="alert" className="mt-2 font-label text-xs font-bold text-primary">{publishError}</p>
+          )}
           
           {filePreview && (
             <div className="relative mt-2 inline-block">
@@ -871,10 +892,12 @@ export default function ForoPage() {
     if (!user?.uid) return
 
     let imageUrl: string | null = null
+    let imagePublicId: string | null = null
     let resourceType: 'image' | 'video' = 'image'
     if (file) {
-      const resultado = await uploadToCloudinary(file)
+      const resultado = await uploadToCloudinary(file, 'forum')
       imageUrl = resultado.url
+      imagePublicId = resultado.publicId
       resourceType = resultado.resourceType as 'image' | 'video'
     }
 
@@ -887,6 +910,8 @@ export default function ForoPage() {
       autor_is_premium: isPremium,
       contenido: content,
       imagen_url: imageUrl,
+      // F1-25: permite borrar el archivo en Cloudinary cuando se elimine el post.
+      imagen_public_id: imagePublicId,
       tipo_recurso: resourceType,
       likes: [],
       comentarios: [],
@@ -927,6 +952,7 @@ export default function ForoPage() {
       <section className="mt-[72px] min-h-screen bg-muted py-16">
         <div className="max-w-[900px] mx-auto px-4 sm:px-8">
           <SectionHeader label="COMUNIDAD FITMANIA" title="NUESTRO" titleAccent="FORO" />
+          <EmailVerificationBanner />
           <NewsSlider />
           <CreatePostForm onPublish={handlePublish} />
           {posts.map((post) => (

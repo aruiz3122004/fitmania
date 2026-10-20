@@ -78,7 +78,7 @@ export function UserDropdown() {
     if (!file || !user?.uid || isSavingAvatar) return
     setIsSavingAvatar(true)
     try {
-      const resultado = await uploadToCloudinary(file)
+      const resultado = await uploadToCloudinary(file, 'avatar')
       await updateUserProfile({ photoURL: resultado.url })
     } catch (err) {
       console.error("Error al subir imagen:", err)
