@@ -5,6 +5,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // No anunciar el framework en las cabeceras (X-Powered-By).
+  poweredByHeader: false,
   turbopack: {
     root: __dirname,
   },

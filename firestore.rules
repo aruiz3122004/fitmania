@@ -16,6 +16,14 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
+    // Imágenes que se muestran a otros usuarios: solo Cloudinary del proyecto o
+    // archivos propios del sitio (evita URLs de rastreo o contenido externo).
+    function safeImageUrl(v) {
+      return v == null || v == ''
+        || (v is string && v.size() <= 500
+            && v.matches('^(https://res[.]cloudinary[.]com/.*|/Imagenes/.*)$'));
+    }
+
     // Recepción NO accede a Firestore desde el navegador: todo pasa por /api/recepcion/*
     // (el servidor verifica el claim `receptionist` y devuelve datos mínimos).
 
@@ -41,7 +49,9 @@ service cloud.firestore {
       allow create: if isAdmin();
       allow update: if isAdmin() || (isSignedIn() && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(editableProfileKeys())
-        && sensitiveWriteAllowed(uid));
+        && sensitiveWriteAllowed(uid)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['photoURL'])
+            || safeImageUrl(request.resource.data.photoURL)));
       allow delete: if isAdmin();
     }
 
@@ -72,12 +82,16 @@ service cloud.firestore {
              'contenido', 'imagen_url', 'imagen_public_id', 'tipo_recurso', 'likes', 'comentarios', 'created_at'])
         && request.resource.data.contenido is string
         && request.resource.data.contenido.size() <= 2000
+        && safeImageUrl(request.resource.data.get('imagen_url', null))
+        && safeImageUrl(request.resource.data.get('autor_avatar', null))
+        && request.resource.data.get('tipo_recurso', 'image') in ['image', 'video']
         && request.resource.data.get('likes', []).size() == 0
         && request.resource.data.get('comentarios', []).size() == 0;
       // Autor: edita su contenido y modera su post. Terceros: solo su like (los comentarios van en la subcolección).
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.autor_id == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contenido', 'likes', 'comentarios', 'autor_avatar'])
+            && safeImageUrl(request.resource.data.get('autor_avatar', null))
             && request.resource.data.contenido is string
             && request.resource.data.contenido.size() <= 2000)
         || (isSignedIn() && isOwnLikeToggle());
@@ -94,6 +108,7 @@ service cloud.firestore {
         && authorProfileMatches()
         && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium',
              'contenido', 'created_at'])
+        && safeImageUrl(request.resource.data.get('autor_avatar', null))
         && request.resource.data.contenido is string
         && request.resource.data.contenido.size() > 0
         && request.resource.data.contenido.size() <= 1000;
