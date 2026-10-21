@@ -376,7 +376,7 @@
 - [~] **F3-20 · Imágenes e íconos de la PWA** — `[CÓDIGO]` — M — Ref 4.13
   - Quitar `images.unoptimized`, convertir a WebP o AVIF, renombrar sin espacios y generar íconos 192, 512 y maskable reales.
   - **Criterio:** Lighthouse Performance ≥ 85 en móvil y manifest válido.
-- [ ] **F3-21 · Dividir el panel admin** — `[CÓDIGO]` — M — Ref 4.3
+- [~] **F3-21 · Dividir el panel admin** — `[CÓDIGO]` — M — Ref 4.3
   - Rutas o pestañas con carga diferida: socios, ventas, inventario, PQRS, auditoría y estadísticas.
   - **Criterio:** ningún archivo de página supera las 400 líneas.
 
@@ -601,3 +601,4 @@ Verificado: `next build` y `npm test` (22 pruebas, incluida la franja horaria de
 | F4-01 | `tools/load-test.js` (k6): 50 socios navegando + 30 ingresos en 15 min; p95 < 800 ms | **Ejecutar en staging** (no contra producción) |
 
 Verificado: `next build`, `npm test` (22/22) y `next start`. Todas las páginas responden 200 tras el override de grpc-js, y la salud reporta `config: ok`.
+| F3-21 | Sidebar, campana de notificaciones, modal de membresía y formateadores extraídos de `app/fitministration/page.tsx` (1274 → 1061 líneas); las pestañas nuevas ya nacen como componentes propios | Extraer las funciones `render*` restantes (comparten mucho estado: conviene hacerlo con pruebas de UI) |
