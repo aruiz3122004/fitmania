@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyReceptionRequest } from '@/lib/auth-helpers';
 import { projectMemberSummary } from '@/lib/reception-members';
+import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 
 /**
  * GET /api/recepcion/members — directorio de socios para recepción (F3-05, parcial).
@@ -13,6 +14,9 @@ import { projectMemberSummary } from '@/lib/reception-members';
 export async function GET(request: NextRequest) {
   const decoded = await verifyReceptionRequest(request);
   if (!decoded) return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+  // Freno a la extracción masiva si una sesión de recepción se compromete.
+  const rl = await limitAction(`members:${decoded.uid}`, 60, 3600);
+  if (!rl.ok) return tooManyRequests(rl.retryAfter);
 
   try {
     const snap = await getAdminFirestore()

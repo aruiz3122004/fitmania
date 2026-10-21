@@ -3,6 +3,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { formatInAppTz, getDateKeyInAppTz } from '@/lib/datetime';
+import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 
 /**
  * Exportes del panel admin en CSV (F2-29). Compatible con Excel (BOM UTF-8 y `;`).
@@ -46,6 +47,9 @@ function rangeDays(from: string, to: string) {
 export async function GET(request: Request) {
   const isAdmin = await verifyAdminRequest(request);
   if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  // Freno a la extracción masiva si una sesión de admin se compromete.
+  const rl = await limitAction(`export:${isAdmin.uid}`, 20, 3600);
+  if (!rl.ok) return tooManyRequests(rl.retryAfter, 'Límite de exportes por hora alcanzado.');
 
   try {
     const { searchParams } = new URL(request.url);

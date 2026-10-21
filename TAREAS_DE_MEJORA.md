@@ -103,7 +103,7 @@
 - [~] **F1-11 · Firebase App Check** — `[CÓDIGO]`+`[CFG]` — M — Ref 4.16
   - reCAPTCHA Enterprise, aplicado a Firestore y Auth.
   - **Criterio:** las peticiones sin token de App Check se rechazan en producción.
-- [~] **F1-12 · Rehacer la puerta del admin** — `[CÓDIGO]` — M — Ref 4.14
+- [x] **F1-12 · Rehacer la puerta del admin** — `[CÓDIGO]` — M — Ref 4.14
   - Cookie de puerta firmada con HMAC y con expiración, o eliminar la puerta (recomendado si F1-13 está hecho).
   - Si se mantiene la llave: hash SHA-256 + `timingSafeEqual`, enviada por POST, nunca en la URL.
   - El middleware valida la firma, no solo que la cookie exista.
@@ -603,3 +603,24 @@ Verificado: `next build` y `npm test` (22 pruebas, incluida la franja horaria de
 Verificado: `next build`, `npm test` (22/22) y `next start`. Todas las páginas responden 200 tras el override de grpc-js, y la salud reporta `config: ok`.
 | F3-21 | Sidebar, campana de notificaciones, modal de membresía y formateadores extraídos de `app/fitministration/page.tsx` (1274 → 1061 líneas); las pestañas nuevas ya nacen como componentes propios | Extraer las funciones `render*` restantes (comparten mucho estado: conviene hacerlo con pruebas de UI) |
 | F1-28 | Cálculo de renovación extraído a `lib/plan-math.ts` (función pura) y cubierto por 4 pruebas: plan vigente, vencido, sin plan y congelado (26 pruebas en total) | Pruebas de integración del webhook (firma, idempotencia, 5xx) con la pasarela definitiva |
+
+### 2026-10-20 (7.ª tanda) — endurecimiento de seguridad — misma rama `fix/fase1-criticos`
+
+Verificado con `next start`: una mutación con `Origin` ajeno recibe 403 y una del mismo origen sigue a la autenticación; el webhook no se afecta; la llave de la puerta redirige sin `?key=` y deja la cookie firmada; la CSP incluye `frame-ancestors` y `form-action`. `next build` y `npm test` (26/26) pasan.
+
+| Cambio | Detalle |
+|---|---|
+| CSRF | El middleware rechaza `POST/PUT/PATCH/DELETE` en `/api/*` con `Origin` ajeno (excepto webhook y cron) |
+| Cookies | Sesiones de paneles con `SameSite=Strict`; la cookie de la puerta queda `Lax` (si no, el enlace con llave desde otro sitio fallaría) |
+| F1-12 | La llave se valida y se redirige sin `?key=` (no queda en historial, Referer ni capturas) |
+| CSP / cabeceras | `frame-ancestors 'none'`, `form-action 'self'`; sin `X-Powered-By` |
+| Foro | Reglas: el nombre del autor debe ser el de su perfil, "premium" solo con plan vigente, imágenes solo de Cloudinary o `/Imagenes/` |
+| PQRS y reportes | Vía API (`/api/pqrs`, `/api/forum/reports`): datos del token, sin duplicados, 5 PQRS y 20 reportes por hora; creación directa cerrada en las reglas; aviso al admin |
+| Minimización | El admin ya no recibe peso ni altura; recepción ve correos enmascarados en historial y exportes |
+| Login | Mensajes que no revelan si una cuenta existe (login y "olvidé mi contraseña"); contraseña mínima de 8 con letras y números |
+| Secretos | Cron y log-block comparan el secreto en tiempo constante |
+| Extracción masiva | Límites: directorio de recepción 60/h, exportes del admin 20/h, descargas de recepción 30/h |
+| F2-26 | Retención automática en el cron: ingresos anonimizados a los 24 meses, correos 12 meses, notificaciones leídas 90 días, auditoría 5 años; plazos publicados en la política |
+| Errores | `app/error.tsx` (mensaje genérico + código de referencia) y `app/not-found.tsx` |
+
+**Acción del dueño:** configurar en Firebase Auth → Configuración → *Política de contraseñas* la misma regla (8 caracteres, letras y números) para que también aplique fuera de la app.

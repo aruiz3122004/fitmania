@@ -6,6 +6,7 @@ import { verifyReceptionRequest } from '@/lib/auth-helpers';
 import { getDateKeyInAppTz, formatInAppTz, getHourKeyInAppTz } from '@/lib/datetime';
 import { DAILY_STATS, recordEntryInDailyStats } from '@/lib/attendance';
 import { maskEmail } from '@/lib/reception-members';
+import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 import ExcelJS from 'exceljs';
 
 // T-19: límites de exportación para no agotar memoria/tiempo en la función serverless.
@@ -198,6 +199,10 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get('from'); // YYYY-MM-DD (rango, T-19)
     const to = searchParams.get('to');     // YYYY-MM-DD (rango, T-19)
     const isExport = format === 'json' || format === 'excel';
+    if (isExport) {
+      const rl = await limitAction(`reception-export:${decoded.uid}`, 30, 3600);
+      if (!rl.ok) return tooManyRequests(rl.retryAfter, 'Límite de descargas por hora alcanzado.');
+    }
 
     // T-19: la exportación NO debe cargar toda la colección en memoria.
     // Se exige un rango acotado: un día (`date`) o `from` + `to`.
