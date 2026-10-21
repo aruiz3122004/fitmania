@@ -66,3 +66,4 @@ function getAdminApp(): admin.app.App {
 // que la inicialización ocurra dentro del flujo de la petición (SSR/API).
 export const getAdminAuth = () => getAdminApp().auth();
 export const getAdminFirestore = () => getAdminApp().firestore();
+export const getAdminMessaging = () => getAdminApp().messaging();

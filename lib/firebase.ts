@@ -13,5 +13,8 @@ const firebaseConfig = {
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
 
+/** App de Firebase del cliente (la usa Cloud Messaging para las notificaciones push). */
+export const firebaseApp = app
+
 export const auth = getAuth(app)
 export const db = getFirestore(app)

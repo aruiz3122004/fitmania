@@ -2,6 +2,7 @@ import type { Firestore } from 'firebase-admin/firestore';
 import { formatInAppTz, getDateKeyInAppTz } from '@/lib/datetime';
 import { sendPlanReminderEmail } from '@/services/mail';
 import { SITE_URL } from '@/lib/site';
+import { sendPendingNewsPush, sendPushToUser } from '@/lib/push-server';
 
 /**
  * T-18 (auditoría): la generación de notificaciones de "plan por vencer" se
@@ -44,6 +45,7 @@ export async function generatePlanExpiryNotifications(
   // F3-22: recordatorio al SOCIO (antes solo se avisaba al admin). Se envía solo si el
   // aviso del día se creó en esta ejecución → como máximo un correo por umbral.
   const reminders: Parameters<typeof sendPlanReminderEmail>[0][] = [];
+  const pushes: { uid: string; daysLeft: number; planName: string; url: string }[] = [];
 
   for (const doc of usersSnapshot.docs) {
     const userData = doc.data();
@@ -80,6 +82,12 @@ export async function generatePlanExpiryNotifications(
         })
         .then(() => {
           created++;
+          pushes.push({
+            uid: doc.id,
+            daysLeft: diffDays,
+            planName: plan.nombre || 'tu plan',
+            url: plan.planId ? `/pago?planId=${encodeURIComponent(plan.planId)}` : '/planes',
+          });
           if (userData.email) {
             reminders.push({
               to: userData.email,
@@ -108,6 +116,18 @@ export async function generatePlanExpiryNotifications(
       console.error('[cron] No se pudo enviar el recordatorio de plan a', reminder.to, error);
     }
   }
+
+  // F3-14: también por push (transaccional: se permite a cualquier hora).
+  for (const p of pushes) {
+    await sendPushToUser(p.uid, 'reminders', {
+      title: p.daysLeft <= 1 ? '⏰ Tu plan vence mañana' : `🔔 Tu plan vence en ${p.daysLeft} días`,
+      body: `Renueva ${p.planName} y los días se suman a los que te quedan.`,
+      url: p.url,
+    }, db);
+  }
+
+  // Noticias publicadas fuera de la franja legal que quedaron pendientes de push.
+  await sendPendingNewsPush(db).catch((err) => console.error('[cron] push de noticias:', err));
 
   return { created, evaluated, emailed };
 }

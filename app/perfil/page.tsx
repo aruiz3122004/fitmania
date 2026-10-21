@@ -6,6 +6,7 @@ import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
 import { PrivacySection } from '@/components/profile/privacy-section'
+import { PushSettings } from '@/components/profile/push-settings'
 import { useAuthStore } from '@/lib/store'
 import { auth, db } from '@/lib/firebase'
 import { uploadToCloudinary } from '@/services/cloudinary'
@@ -296,6 +297,8 @@ export default function PerfilPage() {
             </button>
 
             {status && <p className="mt-4 font-label text-sm text-gray-600">{status}</p>}
+
+            <PushSettings />
 
             <PrivacySection
               onSensitiveChange={(granted) => {

@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { sendPushToUser } from '@/lib/push-server';
 import type { Query } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyReceptionRequest } from '@/lib/auth-helpers';
@@ -148,6 +149,20 @@ export async function POST(request: NextRequest) {
           duplicate: true,
         },
         { status: 409 }
+      );
+    }
+
+    // F3-14: aviso al socio (también alerta antifraude si alguien usa su pase).
+    if (!deferredSource) {
+      const hora = formatInAppTz(now, { hour: '2-digit', minute: '2-digit', hour12: false });
+      after(() =>
+        sendPushToUser(userId, 'entries', {
+          title: '✅ Ingreso registrado',
+          body: result.hasPlanActivo
+            ? `Bienvenido a FITMANIA. Ingreso registrado a las ${hora}.`
+            : `Ingreso registrado a las ${hora}. Tu plan no está vigente: renuévalo en la app.`,
+          url: '/perfil',
+        })
       );
     }
 

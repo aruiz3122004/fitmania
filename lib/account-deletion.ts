@@ -66,9 +66,10 @@ export async function deleteMemberAccount(db: Firestore, auth: Auth, uid: string
     emails.docs.forEach((doc) => writer.delete(doc.ref));
   }
 
-  // 7. Perfil.
-  writer.delete(db.collection('users').doc(uid));
   await writer.close();
+
+  // 7. Perfil con sus subcolecciones (dispositivos para notificaciones push).
+  await db.recursiveDelete(db.collection('users').doc(uid));
 
   // 8. Cuenta de autenticación (al final: si algo falla antes, el usuario puede reintentar).
   try {

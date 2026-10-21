@@ -8,7 +8,7 @@
 //   - Estáticos versionados (/_next/static) e imágenes: caché primero.
 //
 // Cambiar CACHE_NAME invalida todo lo guardado por versiones anteriores.
-const CACHE_NAME = 'fitmania-v3'
+const CACHE_NAME = 'fitmania-v4'
 const OFFLINE_FALLBACK = '/offline'
 
 const NEVER_CACHE_PREFIXES = ['/api/', '/fitministration', '/fitception', '/pago']
@@ -80,4 +80,38 @@ self.addEventListener('fetch', (event) => {
     )
   }
   // Todo lo demás: comportamiento normal del navegador (sin caché del SW).
+})
+
+// F3-13: notificaciones push (Firebase Cloud Messaging con este service worker).
+// El servidor duplica título, cuerpo y URL en `data` para leerlos aquí.
+self.addEventListener('push', (event) => {
+  let payload = {}
+  try {
+    payload = event.data ? event.data.json() : {}
+  } catch {
+    payload = { data: { title: 'FITMANIA', body: event.data ? event.data.text() : '' } }
+  }
+  const data = payload.data || {}
+  const notification = payload.notification || {}
+  const title = data.title || notification.title || 'FITMANIA'
+  const options = {
+    body: data.body || notification.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    data: { url: data.url || (payload.fcmOptions && payload.fcmOptions.link) || '/' },
+  }
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const target = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin)
+  if (target.origin !== self.location.origin) return
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((c) => new URL(c.url).pathname === target.pathname)
+      if (existing) return existing.focus()
+      return self.clients.openWindow(target.href)
+    })
+  )
 })

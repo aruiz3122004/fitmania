@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
+import { sendPendingNewsPush } from '@/lib/push-server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
 import { recordAuditLog } from '@/lib/audit-logger';
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
       createdAt: new Date(),
       createdBy: isAdmin.email || null,
     });
+    if (data.published) after(() => sendPendingNewsPush());
     await recordAuditLog({ action: 'CREATE_NEWS', category: 'ADMIN_ACTION', details: `Noticia creada: ${data.titulo}`, adminEmail: isAdmin.email, targetId: ref.id, request });
     return NextResponse.json({ success: true, id: ref.id });
   } catch (error) {
@@ -104,7 +106,8 @@ export async function PATCH(request: Request) {
   try {
     await getAdminFirestore().collection('news').doc(id).update({ ...data, updatedAt: new Date() });
     await recordAuditLog({ action: 'UPDATE_NEWS', category: 'ADMIN_ACTION', details: `Noticia ${id} actualizada: ${Object.keys(data).join(', ')}`, adminEmail: isAdmin.email, targetId: id, request });
-    // TODO(F3-14): al publicar, enviar push a los suscritos al tema "news".
+    // F3-14: si se publicó, push al tema "news" (fuera de la franja legal lo envía el cron).
+    if (data.published === true) after(() => sendPendingNewsPush());
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[/api/admin/news PATCH]', error);
