@@ -4,6 +4,7 @@ import { Hero } from '@/components/home/hero'
 import { Footer } from '@/components/layout/footer'
 import dynamic from 'next/dynamic'
 import { getPublicPlanes, getPublicProducts } from '@/lib/public-catalog'
+import { GymJsonLd } from '@/components/seo/gym-json-ld'
 
 const Planes = dynamic(() => import('@/components/home/planes').then(m => m.Planes))
 const Productos = dynamic(() => import('@/components/home/productos').then(m => m.Productos))
@@ -18,6 +19,7 @@ export default async function HomePage() {
   const [planes, products] = await Promise.all([getPublicPlanes(), getPublicProducts()])
   return (
     <main>
+      <GymJsonLd />
       <Topbar />
       <Hero />
       <Planes initialPlanes={planes} />

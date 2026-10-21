@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { auth } from '@/lib/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithOptionalTotp, promptTotpCode } from '@/lib/mfa-client';
 import Image from 'next/image';
 import {
   ShieldCheck,
@@ -80,7 +80,8 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
 
     try {
       // 1. Autenticar con Firebase (client-side)
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      // F1-13: si la cuenta tiene verificación en dos pasos, se pide el código TOTP.
+      const userCredential = await signInWithOptionalTotp(email, password, promptTotpCode);
 
       // 2. Verificar claim de admin antes de enviar al servidor
       const idTokenResult = await userCredential.user.getIdTokenResult();

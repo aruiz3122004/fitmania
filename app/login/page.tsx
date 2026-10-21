@@ -8,7 +8,8 @@ import { Footer } from '@/components/layout/footer'
 import { useAuthStore } from '@/lib/store'
 import { auth, db } from '@/lib/firebase'
 import { getAvatarUrlById } from '@/lib/avatar-utils'
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'
+import { sendPasswordResetEmail } from 'firebase/auth'
+import { signInWithOptionalTotp, promptTotpCode } from '@/lib/mfa-client'
 import { doc, getDoc } from 'firebase/firestore'
 import { 
   Mail, 
@@ -90,7 +91,8 @@ export default function LoginPage() {
         return
       }
 
-      const credentials = await signInWithEmailAndPassword(auth, email, password)
+      // F1-13: si la cuenta tiene verificación en dos pasos, se pide el código TOTP.
+      const credentials = await signInWithOptionalTotp(email, password, promptTotpCode)
       let userData: any = null;
       
       try {

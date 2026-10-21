@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/store'
 import { auth } from '@/lib/firebase'
-import { signInWithEmailAndPassword } from 'firebase/auth'
+import { signInWithOptionalTotp, promptTotpCode } from '@/lib/mfa-client'
 import { 
   ShieldCheck, 
   Mail, 
@@ -75,7 +75,8 @@ export function ReceptionLoginForm({ onSuccessAction }: { onSuccessAction: () =>
 
     try {
       // 1. Autenticar con Firebase (client-side)
-      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      // F1-13: si la cuenta tiene verificación en dos pasos, se pide el código TOTP.
+      const userCredential = await signInWithOptionalTotp(email, password, promptTotpCode)
 
       // 2. Obtener el ID Token y enviarlo al servidor
       const idToken = await userCredential.user.getIdToken()

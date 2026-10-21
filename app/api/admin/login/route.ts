@@ -34,6 +34,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Acceso denegado: no tienes privilegios de administrador.' }, { status: 403 });
     }
 
+    // F1-13: con ADMIN_REQUIRE_MFA=true el token debe venir de un inicio de sesión con
+    // segundo factor (TOTP). Activarlo DESPUÉS de inscribir el TOTP del admin.
+    if (process.env.ADMIN_REQUIRE_MFA === 'true' && !(decodedToken.firebase as any)?.sign_in_second_factor) {
+      await recordAuditLog({
+        action: 'LOGIN_FAILED',
+        category: 'AUTH_FAILURE',
+        details: `Acceso denegado a panel Admin: falta la verificación en dos pasos. Correo: ${decodedToken.email}`,
+        adminEmail: decodedToken.email,
+        targetId: decodedToken.uid,
+        request: request,
+      });
+      return NextResponse.json(
+        { error: 'El panel exige verificación en dos pasos. Configúrala e inicia sesión con tu código.', code: 'mfa_required' },
+        { status: 403 }
+      );
+    }
+
     // Crear session cookie de Firebase (revocable y verificable server-side) en lugar
     // de guardar el ID token crudo (T-15, auditoría A-4).
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {

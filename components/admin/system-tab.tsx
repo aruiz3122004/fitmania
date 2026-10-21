@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Activity, Database, Download, Loader2, Play, FlaskConical } from 'lucide-react';
 import { toast } from 'sonner';
+import { MfaPanel } from '@/components/admin/mfa-panel';
 
 /**
  * Pestaña "Sistema" del admin: salud de dependencias (F2-10), exportes (F2-29)
@@ -86,6 +87,8 @@ export function SystemTab() {
 
   return (
     <div className="space-y-8">
+      <MfaPanel />
+
       <div className={card}>
         <h3 className="font-black uppercase italic text-xl mb-4 flex items-center gap-2"><Activity className="w-5 h-5" /> Salud del sistema</h3>
         {!health ? (
