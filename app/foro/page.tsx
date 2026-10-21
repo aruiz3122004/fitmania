@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
@@ -23,7 +23,11 @@ import {
   deleteDoc,
   where,
   limit,
-  getCountFromServer
+  getCountFromServer,
+  getDocs,
+  startAfter,
+  type QueryDocumentSnapshot,
+  type DocumentData
 } from 'firebase/firestore'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import {
@@ -859,69 +863,86 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
 
 export default function ForoPage() {
   const { user } = useAuthStore()
-  const [posts, setPosts] = useState<ForumPost[]>([])
-  const [pageLimit, setPageLimit] = useState(5)
+  // F2-22: la primera página se escucha en tiempo real y las siguientes se piden con
+  // cursor (`startAfter`). Antes "cargar más" subía el `limit` del listener y volvía a
+  // leer todas las publicaciones cada vez.
+  const PAGE_SIZE = 5
+  const MAX_POSTS = 50
+  const [livePosts, setLivePosts] = useState<ForumPost[]>([])
+  const [olderPosts, setOlderPosts] = useState<ForumPost[]>([])
+  const [cursor, setCursor] = useState<QueryDocumentSnapshot<DocumentData> | null>(null)
   const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const olderLoadedRef = useRef(0)
 
-  useEffect(() => {
-    // Definimos el limite de 30 días para descartar basura antigua en memoria
+  const toForumPost = (docItem: QueryDocumentSnapshot<DocumentData>): ForumPost => {
+    const raw = docItem.data() as any
+    return {
+      id: docItem.id,
+      autor_id: raw.autor_id,
+      autor_username: raw.autor_username,
+      autor_avatar: raw.autor_avatar || '',
+      autor_is_premium: !!raw.autor_is_premium,
+      contenido: raw.contenido || '',
+      imagen_url: raw.imagen_url || null,
+      tipo_recurso: raw.tipo_recurso || 'image',
+      likes: Array.isArray(raw.likes) ? raw.likes : [],
+      comentarios: Array.isArray(raw.comentarios)
+        ? raw.comentarios.map((c: any) => ({
+          id: c.id,
+          autor_id: c.autor_id || '',
+          autor_username: c.autor_username,
+          autor_avatar: c.autor_avatar || '',
+          autor_is_premium: !!c.autor_is_premium,
+          contenido: c.contenido,
+          created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
+        }))
+        : [],
+      created_at: raw.created_at?.toDate ? raw.created_at.toDate() : new Date(),
+    }
+  }
+
+  const baseQuery = () => {
+    // Límite de 30 días para no cargar publicaciones antiguas.
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    return [collection(db, 'posts'), where('created_at', '>=', thirtyDaysAgo), orderBy('created_at', 'desc')] as const
+  }
 
-    const postsRef = collection(db, 'posts')
-    // Pedimos (pageLimit + 1) para saber si hay un elemento extra en la paginación siguiente
-    const postsQuery = query(
-      postsRef, 
-      where('created_at', '>=', thirtyDaysAgo),
-      orderBy('created_at', 'desc'), 
-      limit(pageLimit + 1)
-    )
-
-    const unsubscribe = onSnapshot(postsQuery, (snapshot) => {
-      let isMore = false;
-      const docsToProcess = [...snapshot.docs]
-      
-      if (docsToProcess.length > pageLimit) {
-        isMore = true;
-        docsToProcess.pop(); // Remove the extra doc so we only render current limit
+  useEffect(() => {
+    const [ref, ...constraints] = baseQuery()
+    // Se pide uno extra para saber si existe una página siguiente.
+    const unsubscribe = onSnapshot(query(ref, ...constraints, limit(PAGE_SIZE + 1)), (snapshot) => {
+      const docs = snapshot.docs.slice(0, PAGE_SIZE)
+      setLivePosts(docs.map(toForumPost))
+      // El cursor de la primera página solo aplica si aún no se cargaron páginas antiguas.
+      if (olderLoadedRef.current === 0) {
+        setHasMore(snapshot.docs.length > PAGE_SIZE)
+        setCursor(docs[docs.length - 1] ?? null)
       }
-      setHasMore(isMore);
-
-      const data: ForumPost[] = docsToProcess.map((docItem) => {
-        const raw = docItem.data() as any
-        return {
-          id: docItem.id,
-          autor_id: raw.autor_id,
-          autor_username: raw.autor_username,
-          autor_avatar: raw.autor_avatar || '',
-          autor_is_premium: !!raw.autor_is_premium,
-          contenido: raw.contenido || '',
-          imagen_url: raw.imagen_url || null,
-          tipo_recurso: raw.tipo_recurso || 'image',
-          likes: Array.isArray(raw.likes) ? raw.likes : [],
-          comentarios: Array.isArray(raw.comentarios)
-            ? raw.comentarios.map((c: any) => ({
-              id: c.id,
-              autor_id: c.autor_id || '',
-              autor_username: c.autor_username,
-              autor_avatar: c.autor_avatar || '',
-              autor_is_premium: !!c.autor_is_premium,
-              contenido: c.contenido,
-              created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
-            }))
-            : [],
-          created_at: raw.created_at?.toDate ? raw.created_at.toDate() : new Date(),
-        }
-      })
-      setPosts(data)
     })
-
     return () => unsubscribe()
-  }, [pageLimit])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const handleLoadMore = () => {
-    if (pageLimit < 50) {
-      setPageLimit((prev) => prev + 5)
+  const posts: ForumPost[] = [
+    ...livePosts,
+    ...olderPosts.filter((p) => !livePosts.some((l) => l.id === p.id)),
+  ]
+
+  const handleLoadMore = async () => {
+    if (!cursor || loadingMore || posts.length >= MAX_POSTS) return
+    setLoadingMore(true)
+    try {
+      const [ref, ...constraints] = baseQuery()
+      const snap = await getDocs(query(ref, ...constraints, startAfter(cursor), limit(PAGE_SIZE + 1)))
+      const docs = snap.docs.slice(0, PAGE_SIZE)
+      olderLoadedRef.current += docs.length
+      setOlderPosts((prev) => [...prev, ...docs.map(toForumPost)])
+      setCursor(docs[docs.length - 1] ?? cursor)
+      setHasMore(snap.docs.length > PAGE_SIZE)
+    } finally {
+      setLoadingMore(false)
     }
   }
 
@@ -935,6 +956,10 @@ export default function ForoPage() {
     await updateDoc(postRef, {
       likes: hasLiked ? arrayRemove(user.uid) : arrayUnion(user.uid),
     })
+    setOlderPosts((prev) => prev.map((p) => p.id !== postId ? p : {
+      ...p,
+      likes: hasLiked ? p.likes.filter((id) => id !== user.uid) : [...p.likes, user.uid],
+    }))
   }
 
   const handlePublish = async (content: string, file: File | null) => {
@@ -1046,17 +1071,17 @@ export default function ForoPage() {
               }}
             />
           ))}
-          {hasMore && pageLimit < 50 && (
+          {hasMore && posts.length < MAX_POSTS && (
             <div className="flex justify-center mt-10">
               <button 
                 onClick={handleLoadMore}
                 className="bg-transparent text-primary border-3 border-primary font-label font-bold px-10 py-3 uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-comic-sm hover:-translate-y-1"
               >
-                Cargar Más Publicaciones
+                {loadingMore ? 'Cargando…' : 'Cargar Más Publicaciones'}
               </button>
             </div>
           )}
-          {pageLimit >= 50 && hasMore && (
+          {posts.length >= MAX_POSTS && hasMore && (
             <div className="flex justify-center mt-10 p-6 bg-white border-3 border-secondary shadow-comic-sm text-center">
               <p className="font-label font-bold text-sm text-secondary uppercase tracking-widest">
                 Has alcanzado el límite (10 páginas).<br/> <a href="/foro" className="text-primary underline mt-2 inline-block">Refrescar Publicaciones Nuevas</a>

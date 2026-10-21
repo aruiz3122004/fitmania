@@ -18,11 +18,19 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24 # ejecuta TypeScript nativo en las pruebas (node --test)
           cache: npm
 
       - name: Instalar dependencias
         run: npm ci
+
+      # F1-01 / F1-27: tipos y pruebas de la lógica de seguridad (puerta de paneles,
+      # pase firmado, validación de campos del admin, IP confiable).
+      - name: Verificación de tipos
+        run: npm run typecheck
+
+      - name: Pruebas unitarias
+        run: npm test
 
       # T-13 (auditoría A-2): el build FALLA si hay vulnerabilidades CRÍTICAS
       # en dependencias de producción. Las altas/moderadas se reportan aparte.
