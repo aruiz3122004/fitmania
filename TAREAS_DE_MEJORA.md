@@ -100,7 +100,7 @@
   - Aplicar en: login de paneles, checkout, registro, publicaciones y firma de subidas.
   - Fail-closed en los endpoints de admin.
   - **Criterio:** no hay forma de reiniciar el contador sin autenticarse, y 30 socios bajo la misma IP no se bloquean entre ellos.
-- [ ] **F1-11 · Firebase App Check** — `[CÓDIGO]`+`[CFG]` — M — Ref 4.16
+- [~] **F1-11 · Firebase App Check** — `[CÓDIGO]`+`[CFG]` — M — Ref 4.16
   - reCAPTCHA Enterprise, aplicado a Firestore y Auth.
   - **Criterio:** las peticiones sin token de App Check se rechazan en producción.
 - [~] **F1-12 · Rehacer la puerta del admin** — `[CÓDIGO]` — M — Ref 4.14
@@ -108,7 +108,7 @@
   - Si se mantiene la llave: hash SHA-256 + `timingSafeEqual`, enviada por POST, nunca en la URL.
   - El middleware valida la firma, no solo que la cookie exista.
   - **Criterio:** poner a mano `fitmania_admin_gate=true` o una `fitmania_session` falsa ya no deja pasar.
-- [ ] **F1-13 · MFA TOTP obligatorio para el admin** — `[CÓDIGO]`+`[CFG]` — M — Ref 4.18
+- [~] **F1-13 · MFA TOTP obligatorio para el admin** — `[CÓDIGO]`+`[CFG]` — M — Ref 4.18
   - Activar Identity Platform. La API de login rechaza cuentas `admin` sin segundo factor.
   - Guardar códigos de respaldo offline.
   - **Criterio:** el login del admin exige el código TOTP.
@@ -211,10 +211,10 @@
   - Cola de ingresos offline con IDs deterministas y sincronización al reconectar.
   - Indicador "OFFLINE — N pendientes".
   - **Criterio:** 30 min sin red no pierden ingresos y no generan duplicados.
-- [~] **F2-07 · Contingencia en papel** — `[CÓDIGO]` — S — Ref 4.11
+- [x] **F2-07 · Contingencia en papel** — `[CÓDIGO]` — S — Ref 4.11
   - Plantilla imprimible y carga posterior en el admin (`source: manual`).
   - **Criterio:** se puede cargar una planilla con su hora real.
-- [ ] **F2-08 · Runbook** — `[CÓDIGO]` — S — Ref 4.11
+- [~] **F2-08 · Runbook** — `[CÓDIGO]` — S — Ref 4.11
   - `docs/runbook.md`: qué hacer si cae Vercel, Firebase, la pasarela o internet; cómo restaurar; cómo rotar una clave; contactos.
   - **Criterio:** el documento está revisado por el dueño.
 
@@ -258,7 +258,7 @@
   - **Criterio:** abrir recepción no lee la colección `users`.
 - [x] **F2-19 · Calendario desde `daily_stats`** — `[CÓDIGO]` — S — Ref 4.6 — Depende de F2-03
   - **Criterio:** la consulta mensual hace como máximo 31 lecturas.
-- [~] **F2-20 · Panel admin eficiente** — `[CÓDIGO]` — M — Ref 4.6, 4.10, 4.13
+- [x] **F2-20 · Panel admin eficiente** — `[CÓDIGO]` — M — Ref 4.6, 4.10, 4.13
   - `count()` para las PQRS, paginación con cursor en socios (sin `listUsers(1000)`) y carga de datos por pestaña.
   - **Criterio:** al abrir el admin se hacen solo las peticiones de la pestaña visible, y funciona con más de 1000 socios.
 - [x] **F2-21 · Home renderizado en el servidor** — `[CÓDIGO]` — M — Ref 4.6, 4.24
@@ -270,19 +270,19 @@
 - [x] **F2-23 · Cron de vencimientos sin N+1** — `[CÓDIGO]` — S — Ref 4.6, 4.7
   - `create()` con ID determinista (falla si ya existe) y `BulkWriter`.
   - **Criterio:** funciona con más de 500 socios.
-- [~] **F2-24 · Cierres de periodo de ventas** — `[CÓDIGO]` — M — Ref 4.7
+- [x] **F2-24 · Cierres de periodo de ventas** — `[CÓDIGO]` — M — Ref 4.7
   - Reemplazar `archive-sales` por `sales_periods/{YYYY-MM}` con totales calculados. Las órdenes no se modifican.
   - **Criterio:** los ingresos de cada mes se pueden consultar después del cierre.
 
 ### 2G. Trazabilidad y datos personales
-- [~] **F2-25 · Movimientos de inventario y eventos de correo** — `[CÓDIGO]` — M — Ref 4.23
+- [x] **F2-25 · Movimientos de inventario y eventos de correo** — `[CÓDIGO]` — M — Ref 4.23
   - Colecciones `inventory_movements` (venta, ajuste, conteo, con actor) y `email_events` (enviado o fallido).
   - **Criterio:** todo cambio de stock tiene su movimiento asociado.
 - [x] **F2-26 · Retención y borrado de socios** — `[CÓDIGO]` — M — Ref 4.1
   - Al borrar un socio: anonimizar posts, comentarios y entradas; conservar las órdenes 10 años.
   - Job que anonimiza entradas de más de 24 meses.
   - **Criterio:** después de borrar un socio no queda su PII fuera de `orders`.
-- [ ] **F2-27 · Inventario de servicios** — `[CÓDIGO]` — S — Ref 4.12
+- [~] **F2-27 · Inventario de servicios** — `[CÓDIGO]` — S — Ref 4.12
   - `docs/servicios.md`: dueño, plan, límites, costo, rotación de credenciales y soporte.
   - **Criterio:** el documento está completo para los 7 servicios.
 - [ ] **F2-28 · Importador CSV de productos** — `[CÓDIGO]` — M — Ref 4.10
@@ -321,7 +321,7 @@
 - [x] **F3-07 · Conteo físico con aprobación del admin** — `[CÓDIGO]` — M — Ref 5.4
   - Recepción reporta en `inventory_counts` y el admin aprueba el ajuste, que queda en `inventory_movements`.
   - **Criterio:** el stock solo cambia cuando el admin aprueba.
-- [~] **F3-08 · Alertas de inventario en tiempo real al admin** — `[CÓDIGO]` — S — Ref 5.4
+- [x] **F3-08 · Alertas de inventario en tiempo real al admin** — `[CÓDIGO]` — S — Ref 5.4
   - `onSnapshot` de las notificaciones no leídas y push (F3-13) cuando el stock cruza el umbral.
   - **Criterio:** una venta que cruza el umbral avisa al admin en menos de 10 s.
 
@@ -343,17 +343,17 @@
   - **Criterio:** cada pago aprobado en staging genera su factura de prueba.
 
 ### 3D. Notificaciones push
-- [ ] **F3-13 · Infraestructura push (FCM)** — `[CÓDIGO]` — L — Ref 5.7 — Depende de F2-09
+- [~] **F3-13 · Infraestructura push (FCM)** — `[CÓDIGO]` — L — Ref 5.7 — Depende de F2-09
   - Handler `push` y `notificationclick` en el SW, y tokens en `users/{uid}/push_tokens` con limpieza de los inválidos.
   - Guía de instalación en iOS (16.4 o superior, PWA en pantalla de inicio).
   - **Criterio:** llega un push de prueba en Android, en escritorio y en un iPhone con la PWA instalada.
-- [ ] **F3-14 · Disparadores de push** — `[CÓDIGO]` — M — Ref 5.7
+- [x] **F3-14 · Disparadores de push** — `[CÓDIGO]` — M — Ref 5.7
   - Ingreso registrado → socio (también como alerta antifraude).
   - Noticia publicada → tema `news`.
   - Plan por vencer (5 y 1 días) → **socio**.
   - Stock bajo, pago fallido o webhook en error → admin.
   - **Criterio:** cada disparador se probó en staging.
-- [ ] **F3-15 · Preferencias de notificación y Ley 2300** — `[CÓDIGO]` — S — Ref 5.7
+- [x] **F3-15 · Preferencias de notificación y Ley 2300** — `[CÓDIGO]` — S — Ref 5.7
   - `users/{uid}.notificationPrefs` editable en el perfil, con caché local. El servidor las respeta.
   - Los mensajes promocionales solo salen en la franja legal.
   - **Criterio:** desactivar "noticias" detiene ese tipo de push, y un domingo no sale ningún promocional.
@@ -370,7 +370,7 @@
 - [~] **F3-18 · robots, sitemap y metadata por página** — `[CÓDIGO]` — S — Ref 4.24
   - `app/robots.ts` (bloquea paneles, `/api`, `/perfil` y `/pago`), `app/sitemap.ts`, y `metadata` con Open Graph e imagen 1200×630 en cada página pública.
   - **Criterio:** Lighthouse SEO ≥ 90.
-- [ ] **F3-19 · Datos estructurados y Google Business** — `[CÓDIGO]`+`[EXT]` — S — Ref 4.24
+- [~] **F3-19 · Datos estructurados y Google Business** — `[CÓDIGO]`+`[EXT]` — S — Ref 4.24
   - JSON-LD `ExerciseGym` con dirección en Barranquilla, horario y teléfono. Perfil de Google Business vinculado.
   - **Criterio:** el Rich Results Test da válido.
 - [~] **F3-20 · Imágenes e íconos de la PWA** — `[CÓDIGO]` — M — Ref 4.13
@@ -565,3 +565,26 @@ Verificado: `next build` pasa en cada commit; `npm test` (19 pruebas) pasa; con 
 3. Admin → Sistema: simular y ejecutar las migraciones 001, 002 y 003.
 4. Stripe: suscribir el webhook a `charge.refunded`.
 5. Completar `lib/legal.ts` y enviar las páginas legales al abogado.
+
+### 2026-10-20 (5.ª tanda) — misma rama `fix/fase1-criticos`
+
+Verificado: `next build` y `npm test` (22 pruebas, incluida la franja horaria de la Ley 2300) pasan en cada commit.
+
+| Tarea | Hecho | Pendiente |
+|---|---|---|
+| F1-11 | App Check con reCAPTCHA Enterprise en el cliente si existe la clave; CSP ampliada | **CFG:** crear la clave, definir `NEXT_PUBLIC_RECAPTCHA_ENTERPRISE_SITE_KEY` y activar el enforcement en Firebase |
+| F1-13 | Inscripción TOTP en Admin → Sistema; los logins piden el código si la cuenta lo tiene; `ADMIN_REQUIRE_MFA=true` lo exige en el panel | **CFG:** habilitar TOTP en Identity Platform, inscribir al admin y activar la variable. El código se pide con un diálogo simple del navegador (mejorable) |
+| F2-07 | `/planilla-ingresos` imprimible y carga posterior con hora real en Recepción → Historial | — |
+| F2-08 | `docs/runbook.md` (Vercel, Firebase, internet de la sede, papel, pagos, seguridad, restauración, rotación) | Completar contactos |
+| F2-20 | Admin: el arranque ya no pide `stats` ni `notifications`; auditoría y planes por pestaña | — |
+| F2-24 | `sales_periods/{YYYY-MM}`: cierre mensual inmutable (planes, web, mostrador por medio de pago, reembolsos, neto) | — |
+| F2-25 | `email_events` (enviado/fallido) desde el punto único de envío; se borra al suprimir la cuenta | — |
+| F2-27 | `docs/servicios.md` con variables, límites y qué hacer si falla cada servicio | Completar dueños y planes |
+| F3-08 | Campana del admin en tiempo real (`onSnapshot`) | — |
+| F3-13 / F3-14 / F3-15 | Push con FCM: activación por dispositivo, preferencias (ingresos, vencimientos, noticias), guía para iPhone; disparadores en ingreso, vencimiento y noticias (franja Ley 2300; fuera de ella las envía el cron) | **CFG:** `NEXT_PUBLIC_FIREBASE_VAPID_KEY`. Festivos no excluidos aún |
+| F3-19 | JSON-LD `ExerciseGym` en el home | **EXT:** perfil de Google Business; confirmar el horario real en `components/seo/gym-json-ld.tsx` |
+
+**Acciones pendientes del dueño (nuevas):**
+1. Firebase → Cloud Messaging → certificado Web Push → `NEXT_PUBLIC_FIREBASE_VAPID_KEY`.
+2. Identity Platform → habilitar TOTP → inscribirse en Admin → Sistema → luego `ADMIN_REQUIRE_MFA=true`.
+3. Completar contactos en `docs/runbook.md` y dueños en `docs/servicios.md`; imprimir 5 planillas para recepción.
