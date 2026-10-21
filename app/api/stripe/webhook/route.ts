@@ -7,6 +7,7 @@ import {
 } from '@/services/mail'
 import { getAdminFirestore } from '@/lib/firebase-admin'
 import { formatInAppTz } from '@/lib/datetime'
+import { computeRenewalExpiry } from '@/lib/plan-math'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-03-25.dahlia',
@@ -297,15 +298,14 @@ export async function POST(req: NextRequest) {
                 ? new Date(existingPlan.expira)
                 : null
 
-            // Renovación: sumar los días al vencimiento vigente si no venció; si ya venció, desde hoy
-            const base = existingExpira && existingExpira.getTime() > now.getTime()
-              ? existingExpira
-              : new Date()
-            const expira = new Date(base)
-            expira.setDate(base.getDate() + dias)
-            // F3-25: renovar un plan congelado suma también los días congelados a favor.
-            const frozenMs = Number(existingPlan?.frozen?.remainingMs) || 0
-            if (frozenMs > 0) expira.setTime(expira.getTime() + frozenMs)
+            // Renovación (B3 / F3-25): suma al vencimiento vigente o desde hoy si venció, más los
+            // días congelados a favor. Lógica pura y probada en lib/plan-math.ts.
+            const expira = computeRenewalExpiry({
+              existingExpira,
+              dias,
+              frozenMs: Number(existingPlan?.frozen?.remainingMs) || 0,
+              now,
+            })
 
             // `set` con merge: no falla si el documento del usuario no existe.
             transaction.set(userRef, {

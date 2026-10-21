@@ -168,7 +168,7 @@
 - [~] **F1-27 · Pruebas de reglas en el CI** — `[CÓDIGO]` — M — Ref 4.3
   - `@firebase/rules-unit-testing` con el emulador, cubriendo `users`, `posts` (y sus subcolecciones), `pqrs`, `orders`, `entry_logs` y `reportes`.
   - **Criterio:** el CI falla si una regla se relaja.
-- [ ] **F1-28 · Pruebas del webhook** — `[CÓDIGO]` — M — Ref 4.3
+- [~] **F1-28 · Pruebas del webhook** — `[CÓDIGO]` — M — Ref 4.3
   - Casos: idempotencia, firma inválida, stock insuficiente y fallo con 5xx.
   - **Criterio:** la suite pasa en el CI.
 - [x] **F1-29 · Reglas para `reportes` y `pqrs`** — `[CÓDIGO]` — S — Ref 4.20
@@ -602,3 +602,4 @@ Verificado: `next build` y `npm test` (22 pruebas, incluida la franja horaria de
 
 Verificado: `next build`, `npm test` (22/22) y `next start`. Todas las páginas responden 200 tras el override de grpc-js, y la salud reporta `config: ok`.
 | F3-21 | Sidebar, campana de notificaciones, modal de membresía y formateadores extraídos de `app/fitministration/page.tsx` (1274 → 1061 líneas); las pestañas nuevas ya nacen como componentes propios | Extraer las funciones `render*` restantes (comparten mucho estado: conviene hacerlo con pruebas de UI) |
+| F1-28 | Cálculo de renovación extraído a `lib/plan-math.ts` (función pura) y cubierto por 4 pruebas: plan vigente, vencido, sin plan y congelado (26 pruebas en total) | Pruebas de integración del webhook (firma, idempotencia, 5xx) con la pasarela definitiva |
