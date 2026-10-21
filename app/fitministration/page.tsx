@@ -50,6 +50,7 @@ import { AttendanceTab } from '@/components/admin/attendance-tab';
 import { InventoryCountsPanel } from '@/components/admin/inventory-counts-panel';
 import { SystemTab } from '@/components/admin/system-tab';
 import { CommunityTab } from '@/components/admin/community-tab';
+import { ProductImport } from '@/components/admin/product-import';
 
 // --- HELPERS ---
 const formatCurrency = (val: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(val);
@@ -856,6 +857,7 @@ export default function AdminPage() {
   const renderInventory = () => (
     <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
       <InventoryCountsPanel onApplied={refreshAllData} />
+      <ProductImport onImported={refreshAllData} />
       <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 border-4 border-black rounded-2xl shadow-[6px_6px_0_0_rgba(0,0,0,1)] gap-6">
         <div>
           <h2 className="text-2xl font-black italic uppercase tracking-tighter">Suministros y Stock</h2>

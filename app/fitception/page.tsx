@@ -7,6 +7,7 @@ import { ReceptionLoginForm } from '@/components/recepcion/reception-login-form'
 import { auth } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
 import { useIdleLogout } from '@/lib/use-idle-logout'
+import { beep, daysLeft, useHidScanner } from '@/lib/scan-feedback'
 import { verifyPassOffline, ACCESS_TOKEN_PREFIX } from '@/lib/access-token-client'
 import { cacheMembers, cachedMembers, enqueueOfflineEntry, pendingOfflineEntries, syncOfflineEntries } from '@/lib/offline-entries'
 import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList, Package } from 'lucide-react'
@@ -256,6 +257,16 @@ export default function ReceptionPage() {
     }
   };
 
+  // F2-04: sonido distinto según el estado del plan del socio escaneado.
+  useEffect(() => {
+    if (!scannedUser) return
+    const left = daysLeft(scannedUser.plan?.expira?.seconds)
+    beep(left !== null && left > 0)
+  }, [scannedUser])
+
+  // F2-04: lectores QR USB (teclean el código + Enter) en la pestaña de escaneo.
+  useHidScanner(visualState === 'dashboard' && activeTab === 'scanner' && !scannedUser, (code) => handleScan(code))
+
   // F1-15: tras 30 min sin actividad se cierra el panel Y la cuenta de Firebase, para
   // que volver a entrar exija la contraseña (un equipo desatendido no queda abierto).
   useIdleLogout(visualState === 'dashboard', IDLE_TIMEOUT_MS, async () => {
@@ -410,6 +421,26 @@ export default function ReceptionPage() {
               </div>
             ) : (
               <div className="animate-in zoom-in-95 duration-300 w-full">
+                {(() => {
+                  const left = daysLeft(scannedUser.plan?.expira?.seconds)
+                  const active = left !== null && left > 0
+                  return (
+                    <div
+                      role="status"
+                      className={`mb-6 rounded-3xl border-4 border-black p-6 text-center text-white shadow-[8px_8px_0_0_rgba(0,0,0,1)] ${active ? 'bg-green-600' : 'bg-red-600'}`}
+                    >
+                      <p className="font-display italic text-5xl sm:text-6xl uppercase leading-none">{active ? 'ACTIVO' : scannedUser.plan ? 'VENCIDO' : 'SIN PLAN'}</p>
+                      <p className="font-black uppercase tracking-widest text-sm mt-2">
+                        {active
+                          ? `${left} día${left === 1 ? '' : 's'} restante${left === 1 ? '' : 's'}`
+                          : scannedUser.plan
+                            ? `Venció hace ${Math.abs(left ?? 0)} día${Math.abs(left ?? 0) === 1 ? '' : 's'}`
+                            : 'El socio no tiene membresía'}
+                        {scannedUser.offline ? ' · verificado sin conexión' : ''}
+                      </p>
+                    </div>
+                  )
+                })()}
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 p-6 sm:p-8 bg-zinc-50 border-4 border-black rounded-3xl mb-8 relative shadow-[8px_8px_0_0_rgba(0,0,0,1)] text-center sm:text-left">
                   {scannedUser.plan && new Date(scannedUser.plan.expira.seconds * 1000) > new Date() ? (
                     <div className="absolute -top-4 -right-4 w-12 h-12 bg-green-500 border-4 border-black rounded-full flex items-center justify-center animate-bounce shadow-[4px_4px_0_0_rgba(0,0,0,1)]">

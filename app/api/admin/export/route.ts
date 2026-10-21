@@ -36,7 +36,7 @@ function cell(value: unknown): string {
 }
 
 function toCsv(header: string[], rows: unknown[][]): string {
-  return '﻿' + [header, ...rows].map((r) => r.map(cell).join(';')).join('\r\n');
+  return '\uFEFF' + [header, ...rows].map((r) => r.map(cell).join(';')).join('\r\n');
 }
 
 function rangeDays(from: string, to: string) {
