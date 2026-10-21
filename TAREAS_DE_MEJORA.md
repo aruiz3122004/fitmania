@@ -62,7 +62,7 @@
 - [ ] **F1-02 · Validar las variables de entorno al arrancar** — `[CÓDIGO]` — S — Ref 4.7, 4.12
   - `lib/env.ts` con zod. Si falta una variable crítica, el arranque falla con un mensaje claro.
   - **Criterio:** quitar una variable crítica rompe el build o el arranque y nombra la variable.
-- [~] **F1-03 · `requestId` y manejador de errores común** — `[CÓDIGO]` — M — Ref 4.7, 4.9
+- [x] **F1-03 · `requestId` y manejador de errores común** — `[CÓDIGO]` — M — Ref 4.7, 4.9
   - El middleware genera un UUID (`x-request-id`).
   - `lib/http.ts` responde `{ error, requestId }` y deja el detalle solo en los logs. Eliminar todo `error.message` de las respuestas.
   - **Criterio:** `grep "error.message" app/api` no devuelve respuestas al cliente.
@@ -81,7 +81,7 @@
   - Nuevo `POST /api/users/register`: crea el documento omitiendo campos vacíos (sin `undefined`).
   - Llamar a `sendEmailVerification` y exigir el correo verificado para comprar y publicar.
   - **Criterio:** el registro sin peso ni altura funciona, y una cuenta sin verificar no puede pagar ni publicar.
-- [~] **F1-07 · Foro con subcolecciones y reglas validadas** — `[CÓDIGO]` — L — Ref 4.20
+- [x] **F1-07 · Foro con subcolecciones y reglas validadas** — `[CÓDIGO]` — L — Ref 4.20
   - Comentarios en `posts/{id}/comments/{cid}` y likes en `posts/{id}/likes/{uid}`.
   - Reglas: `contenido.size() <= 2000`, `keys().hasOnly`, `autor_id == auth.uid`. Eliminar `autor_is_premium` declarado por el cliente.
   - Migrar los comentarios embebidos (ver F2-14).
@@ -94,7 +94,7 @@
   - **Criterio:** cambiar la foto hace una sola escritura.
 
 ### 1C. Autenticación y rate limiting
-- [~] **F1-10 · Rate limiting real en el servidor** — `[CÓDIGO]` — M — Ref B5, 4.16
+- [x] **F1-10 · Rate limiting real en el servidor** — `[CÓDIGO]` — M — Ref B5, 4.16
   - Eliminar `/api/security/success`, `/api/security/attempt` y `lib/rate-limit-client.ts`.
   - Usar `@upstash/ratelimit` (sliding window) con clave `uid`, o `IP + endpoint` para anónimos.
   - Aplicar en: login de paneles, checkout, registro, publicaciones y firma de subidas.
@@ -137,10 +137,10 @@
   - En una transacción: `pending → approved`, activar el plan con `planes/{planId}.durationDays`, descontar el stock con verificación y crear la orden con el precio del snapshot.
   - **Responder 5xx si algo falla.**
   - **Criterio:** reenviar el mismo evento 3 veces deja un solo efecto, y un fallo forzado provoca el reintento de la pasarela.
-- [ ] **F1-20 · Stock insuficiente al aprobar el pago** — `[CÓDIGO]` — M — Ref 4.9
+- [x] **F1-20 · Stock insuficiente al aprobar el pago** — `[CÓDIGO]` — M — Ref 4.9
   - Si al aprobar no alcanza el stock: reembolso automático, notificación al admin y correo al cliente.
   - **Criterio:** dos compras simultáneas del último artículo terminan en una venta y un reembolso.
-- [ ] **F1-21 · Reembolsos y contracargos** — `[CÓDIGO]` — M — Ref 4.15
+- [x] **F1-21 · Reembolsos y contracargos** — `[CÓDIGO]` — M — Ref 4.15
   - Eventos de reembolso o anulación: revierten el plan (descuenta los días) o el stock, y dejan auditoría.
   - **Criterio:** un reembolso de prueba revierte el efecto y queda en `audit_logs`.
 - [ ] **F1-22 · Conciliación de pagos pendientes** — `[CÓDIGO]` — S — Ref 4.15
@@ -156,7 +156,7 @@
   - Preset firmado: `jpg/png/webp`, ≤ 5 MB, conversión a WebP con ancho ≤ 1600. Video solo si se decide, con ≤ 20 MB y ≤ 30 s.
   - Agregar `https://api.cloudinary.com` a `connect-src`.
   - **Criterio:** una subida sin firma falla, y la subida desde el foro funciona en producción.
-- [~] **F1-25 · Borrar archivos huérfanos** — `[CÓDIGO]` — S — Ref 4.21
+- [x] **F1-25 · Borrar archivos huérfanos** — `[CÓDIGO]` — S — Ref 4.21
   - Guardar `publicId` en el post y borrar en Cloudinary desde el servidor al eliminarlo.
   - **Criterio:** al eliminar un post desaparece su archivo en Cloudinary.
 - [~] **F1-26 · Auditoría con actor y cambios** — `[CÓDIGO]` — M — Ref 4.23
@@ -165,7 +165,7 @@
   - **Criterio:** cada acción del admin muestra quién la hizo y qué cambió.
 
 ### 1F. Pruebas
-- [ ] **F1-27 · Pruebas de reglas en el CI** — `[CÓDIGO]` — M — Ref 4.3
+- [~] **F1-27 · Pruebas de reglas en el CI** — `[CÓDIGO]` — M — Ref 4.3
   - `@firebase/rules-unit-testing` con el emulador, cubriendo `users`, `posts` (y sus subcolecciones), `pqrs`, `orders`, `entry_logs` y `reportes`.
   - **Criterio:** el CI falla si una regla se relaja.
 - [ ] **F1-28 · Pruebas del webhook** — `[CÓDIGO]` — M — Ref 4.3
@@ -201,17 +201,17 @@
   - Pantalla completa verde (ACTIVO) o roja (VENCIDO o SIN PLAN), sonido distinto y días restantes.
   - Soporte para lector HID. Revisar `res.ok` antes de confirmar.
   - **Criterio:** si la API falla, la UI no dice "registrado".
-- [ ] **F2-05 · QR firmado y dinámico** — `[CÓDIGO]` — L — Ref B6, 4.11
+- [x] **F2-05 · QR firmado y dinámico** — `[CÓDIGO]` — L — Ref B6, 4.11
   - `GET /api/me/access-token` emite cada 24 h un token Ed25519 con `{uid, planExpira, iat, exp}`.
   - La PWA lo guarda y muestra el token más un código TOTP de 30 s.
   - Recepción verifica con la clave pública.
   - **Criterio:** una captura de más de 30 s se rechaza, y un QR válido se verifica sin red.
-- [ ] **F2-06 · Modo offline de recepción** — `[CÓDIGO]` — L — Ref 4.11 — Depende de F2-05
+- [x] **F2-06 · Modo offline de recepción** — `[CÓDIGO]` — L — Ref 4.11 — Depende de F2-05
   - Caché en IndexedDB de socios activos (uid, nombre, vencimiento), refrescada cada hora.
   - Cola de ingresos offline con IDs deterministas y sincronización al reconectar.
   - Indicador "OFFLINE — N pendientes".
   - **Criterio:** 30 min sin red no pierden ingresos y no generan duplicados.
-- [ ] **F2-07 · Contingencia en papel** — `[CÓDIGO]` — S — Ref 4.11
+- [~] **F2-07 · Contingencia en papel** — `[CÓDIGO]` — S — Ref 4.11
   - Plantilla imprimible y carga posterior en el admin (`source: manual`).
   - **Criterio:** se puede cargar una planilla con su hora real.
 - [ ] **F2-08 · Runbook** — `[CÓDIGO]` — S — Ref 4.11
@@ -219,7 +219,7 @@
   - **Criterio:** el documento está revisado por el dueño.
 
 ### 2C. PWA
-- [~] **F2-09 · Reescribir el service worker** — `[CÓDIGO]` — M — Ref 4.5
+- [x] **F2-09 · Reescribir el service worker** — `[CÓDIGO]` — M — Ref 4.5
   - Navegación network-first con `/offline` de respaldo; estáticos cache-first; **`/api/*` nunca se cachea**.
   - Aviso "Nueva versión disponible". Registro desde un componente cliente y eliminación del `<script>` inline de `layout.tsx`.
   - **Criterio:** Cache Storage no contiene `/api/*` y el SW aparece registrado en producción.
@@ -234,21 +234,21 @@
 - [ ] **F2-12 · Uptime, página de estado y alertas** — `[CFG]` — S — Ref 4.8
   - Monitoreo cada 1 min de `/api/health` y `/`, con alerta por correo o WhatsApp al admin.
   - **Criterio:** una caída simulada genera la alerta en menos de 3 min.
-- [ ] **F2-13 · Salud del negocio en el panel** — `[CÓDIGO]` — M — Ref 4.8
+- [x] **F2-13 · Salud del negocio en el panel** — `[CÓDIGO]` — M — Ref 4.8
   - `system/cron.lastRun`, eventos de pago fallidos, `email_events` fallidos y última sincronización offline.
   - **Criterio:** el panel muestra una alerta si el cron no corre en 26 h.
 
 ### 2E. Esquema y migraciones
-- [ ] **F2-14 · Framework de migraciones** — `[CÓDIGO]` — M — Ref 4.4
+- [x] **F2-14 · Framework de migraciones** — `[CÓDIGO]` — M — Ref 4.4
   - `migrations/NNN_*.ts` con `--dry-run` y la colección `_migrations`. Campo `schemaVersion`.
   - **Criterio:** volver a correr una migración no tiene efecto.
-- [ ] **F2-15 · Índices versionados** — `[CÓDIGO]` — S — Ref 4.4
+- [x] **F2-15 · Índices versionados** — `[CÓDIGO]` — S — Ref 4.4
   - `firestore.indexes.json` en `firebase.json`. Crear índices compuestos y quitar los ordenamientos en memoria (`public/products`, `entry-log`).
   - **Criterio:** `firebase deploy --only firestore` despliega reglas e índices.
-- [ ] **F2-16 · Normalizar el esquema** — `[CÓDIGO]` — M — Ref 4.1
+- [x] **F2-16 · Normalizar el esquema** — `[CÓDIGO]` — M — Ref 4.1
   - `docs/schema.md` y `lib/types.ts`. Un solo idioma en los campos (`name`, `price`, `stock`, `durationDays`, `lowStockThreshold`), con su migración.
   - **Criterio:** no quedan respaldos `precio ?? price` en el código.
-- [ ] **F2-17 · Quitar `persist` de `useAuthStore`** — `[CÓDIGO]` — S — Ref 4.1
+- [x] **F2-17 · Quitar `persist` de `useAuthStore`** — `[CÓDIGO]` — S — Ref 4.1
   - Usar `onSnapshot` de `users/{uid}` como fuente de verdad.
   - **Criterio:** `localStorage` no contiene datos del perfil ni del plan.
 
@@ -261,10 +261,10 @@
 - [~] **F2-20 · Panel admin eficiente** — `[CÓDIGO]` — M — Ref 4.6, 4.10, 4.13
   - `count()` para las PQRS, paginación con cursor en socios (sin `listUsers(1000)`) y carga de datos por pestaña.
   - **Criterio:** al abrir el admin se hacen solo las peticiones de la pestaña visible, y funciona con más de 1000 socios.
-- [ ] **F2-21 · Home renderizado en el servidor** — `[CÓDIGO]` — M — Ref 4.6, 4.24
+- [x] **F2-21 · Home renderizado en el servidor** — `[CÓDIGO]` — M — Ref 4.6, 4.24
   - Planes y productos como Server Components con `revalidate`. Eliminar los `onSnapshot` públicos.
   - **Criterio:** el HTML inicial ya contiene planes y productos.
-- [ ] **F2-22 · Paginación del foro con cursor** — `[CÓDIGO]` — S — Ref 4.6
+- [x] **F2-22 · Paginación del foro con cursor** — `[CÓDIGO]` — S — Ref 4.6
   - Usar `startAfter` en lugar de aumentar el `limit`.
   - **Criterio:** "cargar más" lee solo la página nueva.
 - [x] **F2-23 · Cron de vencimientos sin N+1** — `[CÓDIGO]` — S — Ref 4.6, 4.7
@@ -278,7 +278,7 @@
 - [~] **F2-25 · Movimientos de inventario y eventos de correo** — `[CÓDIGO]` — M — Ref 4.23
   - Colecciones `inventory_movements` (venta, ajuste, conteo, con actor) y `email_events` (enviado o fallido).
   - **Criterio:** todo cambio de stock tiene su movimiento asociado.
-- [ ] **F2-26 · Retención y borrado de socios** — `[CÓDIGO]` — M — Ref 4.1
+- [x] **F2-26 · Retención y borrado de socios** — `[CÓDIGO]` — M — Ref 4.1
   - Al borrar un socio: anonimizar posts, comentarios y entradas; conservar las órdenes 10 años.
   - Job que anonimiza entradas de más de 24 meses.
   - **Criterio:** después de borrar un socio no queda su PII fuera de `orders`.
@@ -288,7 +288,7 @@
 - [ ] **F2-28 · Importador CSV de productos** — `[CÓDIGO]` — M — Ref 4.10
   - Validación por fila y vista previa antes de confirmar.
   - **Criterio:** el catálogo inicial se carga desde un CSV.
-- [ ] **F2-29 · Exportes del admin** — `[CÓDIGO]` — M — Ref 4.1, 5.5
+- [x] **F2-29 · Exportes del admin** — `[CÓDIGO]` — M — Ref 4.1, 5.5
   - Socios, órdenes y entradas por rango, en CSV y Excel.
   - **Criterio:** cada exporte respeta los topes de filas y de días.
 
@@ -326,16 +326,16 @@
   - **Criterio:** una venta que cruza el umbral avisa al admin en menos de 10 s.
 
 ### 3C. Legal
-- [ ] **F3-09 · Páginas legales** — `[CÓDIGO]`+`[LEGAL]` — M — Ref 5.6 — Depende de F0-08
+- [~] **F3-09 · Páginas legales** — `[CÓDIGO]`+`[LEGAL]` — M — Ref 5.6 — Depende de F0-08
   - Rutas: `/legal/privacidad`, `/legal/terminos` (con retracto y reversión), `/legal/cookies` y `/legal/autorizacion-datos`.
   - Enlaces en el footer, el registro y el checkout.
   - **Criterio:** textos aprobados por el abogado y publicados.
-- [ ] **F3-10 · Consentimientos en el registro** — `[CÓDIGO]` — M — Ref 5.6
+- [x] **F3-10 · Consentimientos en el registro** — `[CÓDIGO]` — M — Ref 5.6
   - Casilla obligatoria de términos y política, y casilla separada y opcional para datos sensibles.
   - Guardar `consents/{uid}_{tipo}` con versión, fecha, IP y user-agent.
   - Si el socio es menor de edad, pedir la autorización del representante.
   - **Criterio:** sin el consentimiento sensible no se guardan peso ni altura.
-- [ ] **F3-11 · Derechos del titular en autoservicio** — `[CÓDIGO]` — M — Ref 5.6
+- [x] **F3-11 · Derechos del titular en autoservicio** — `[CÓDIGO]` — M — Ref 5.6
   - "Descargar mis datos" (JSON), "Eliminar mi cuenta" (usa F2-26) y "Revocar autorización". PQRS con tipo "Datos personales".
   - **Criterio:** el usuario completa los tres flujos sin intervención del admin.
 - [ ] **F3-12 · Facturación electrónica** — `[CÓDIGO]`+`[EXT]` — L — Ref 4.15 — Depende de F0-08 y F1-19
@@ -359,10 +359,10 @@
   - **Criterio:** desactivar "noticias" detiene ese tipo de push, y un domingo no sale ningún promocional.
 
 ### 3E. Foro y contenido
-- [ ] **F3-16 · Noticias administrables** — `[CÓDIGO]` — M — Ref 4.20
+- [x] **F3-16 · Noticias administrables** — `[CÓDIGO]` — M — Ref 4.20
   - Colección `news` (crear, programar, despublicar) desde el admin, reemplazando el array `noticias` del código.
   - **Criterio:** una noticia nueva aparece en el foro y dispara un push.
-- [ ] **F3-17 · Moderación de reportes** — `[CÓDIGO]` — M — Ref 4.20
+- [x] **F3-17 · Moderación de reportes** — `[CÓDIGO]` — M — Ref 4.20
   - Pestaña "Reportes" en el admin, auto-ocultar el post al llegar a N reportes y notificar al admin. Eliminar el `console.log` simulado.
   - **Criterio:** el admin resuelve un reporte y la acción queda auditada.
 
@@ -373,7 +373,7 @@
 - [ ] **F3-19 · Datos estructurados y Google Business** — `[CÓDIGO]`+`[EXT]` — S — Ref 4.24
   - JSON-LD `ExerciseGym` con dirección en Barranquilla, horario y teléfono. Perfil de Google Business vinculado.
   - **Criterio:** el Rich Results Test da válido.
-- [ ] **F3-20 · Imágenes e íconos de la PWA** — `[CÓDIGO]` — M — Ref 4.13
+- [~] **F3-20 · Imágenes e íconos de la PWA** — `[CÓDIGO]` — M — Ref 4.13
   - Quitar `images.unoptimized`, convertir a WebP o AVIF, renombrar sin espacios y generar íconos 192, 512 y maskable reales.
   - **Criterio:** Lighthouse Performance ≥ 85 en móvil y manifest válido.
 - [ ] **F3-21 · Dividir el panel admin** — `[CÓDIGO]` — M — Ref 4.3
@@ -381,19 +381,19 @@
   - **Criterio:** ningún archivo de página supera las 400 líneas.
 
 ### 3G. Adiciones recomendadas
-- [ ] **F3-22 · Recordatorio de renovación con enlace de pago** — `[CÓDIGO]` — S — Ref 6.2
+- [x] **F3-22 · Recordatorio de renovación con enlace de pago** — `[CÓDIGO]` — S — Ref 6.2
   - Push y correo al socio con enlace directo al pago de su mismo plan.
   - **Criterio:** el enlace abre el checkout del plan correcto.
-- [ ] **F3-23 · Ventas presenciales (POS) desde recepción** — `[CÓDIGO]` — M — Ref 6.5
+- [x] **F3-23 · Ventas presenciales (POS) desde recepción** — `[CÓDIGO]` — M — Ref 6.5
   - Registrar en `orders` con `channel: pos` y descontar el stock.
   - **Criterio:** el inventario cuadra sumando las ventas web y las de mostrador.
-- [ ] **F3-24 · Cierre de caja diario de recepción** — `[CÓDIGO]` — M — Ref 6.4
+- [x] **F3-24 · Cierre de caja diario de recepción** — `[CÓDIGO]` — M — Ref 6.4
   - Resumen del turno: ingresos, ventas POS y diferencias de inventario.
   - **Criterio:** el cierre se puede exportar y queda auditado.
-- [ ] **F3-25 · Congelamiento de plan** — `[CÓDIGO]` — M — Ref 6.3
+- [x] **F3-25 · Congelamiento de plan** — `[CÓDIGO]` — M — Ref 6.3
   - El admin pausa un plan con motivo y fecha, y los días a favor se suman al reactivarlo.
   - **Criterio:** el vencimiento se recalcula correctamente.
-- [ ] **F3-26 · Lista de socios en riesgo de abandono** — `[CÓDIGO]` — S — Ref 6.6
+- [x] **F3-26 · Lista de socios en riesgo de abandono** — `[CÓDIGO]` — S — Ref 6.6
   - Socios activos sin ingresos en 14 días, en una vista del admin.
   - **Criterio:** la lista coincide con los datos de `entry_logs`.
 - [ ] **F3-27 · Sistema multi-sede (si sigue el plan B2B)** — `[CÓDIGO]` — L — Ref 4.22
@@ -521,3 +521,47 @@ Verificado: `next build` pasa. Con `next start`: `/api/admin/attendance` y `/api
 1. Tras desplegar, en Admin → Asistencia pulsar **"Recalcular"** una vez para generar los agregados de los ingresos ya registrados.
 2. Revisar el umbral de alerta de cada producto (por defecto 5) en el modal de productos.
 3. Probar en el preview: ingreso → el mapa y el diario lo reflejan; conteo desde recepción → aparece en el admin → "Aplicar" ajusta el stock; 30 min sin actividad en recepción → vuelve al login.
+
+### 2026-10-20 (4.ª tanda) — misma rama `fix/fase1-criticos`
+
+Verificado: `next build` pasa en cada commit; `npm test` (19 pruebas) pasa; con `next start` el home y `/planes` llegan con el catálogo en el HTML, las páginas legales responden 200 y todos los endpoints nuevos responden 401 sin sesión. La firma y verificación del pase se probaron en servidor y navegador (pase válido, alterado, vencido y UID plano). Los flujos con sesión van a la lista de pruebas del preview.
+
+| Tarea | Hecho | Pendiente |
+|---|---|---|
+| F1-03 | `x-request-id` por request (middleware) guardado en `audit_logs` y devuelto en la respuesta | — |
+| F1-07 | Comentarios en `posts/{id}/comments` con reglas propias (el autor edita y borra el suyo; el autor del post y el admin moderan); los antiguos del array se siguen mostrando | Ejecutar la migración 001 |
+| F1-10 | Contadores separados `panel`/`public` (la IP compartida del gimnasio ya no bloquea al admin), paneles fail-closed; `limitAction` por usuario en pago, alta, subidas, pase, datos personales y escaneo | — |
+| F1-20 | Reembolso parcial automático de unidades vendidas sin stock (idempotente) | — |
+| F1-21 | `charge.refunded`: reembolso total revierte los días del plan o repone el stock; el parcial se registra | **CFG:** suscribir el webhook a `charge.refunded` |
+| F1-25 | Borrado de posts por API (`/api/forum/posts/:id`) con comentarios y archivo de Cloudinary | — |
+| F1-27 | `tests/*.test.mts` con `node:test` (puerta, pase firmado, validación, IP); `npm run typecheck` y `npm test` en el CI (Node 24) | Pruebas de reglas (requiere Java para el emulador) |
+| F2-05 | Pase QR firmado Ed25519 (5 min con red, 24 h de respaldo), `/api/recepcion/scan`; `tools/generate-qr-keys.mjs` | **CFG:** generar claves; activar `QR_REQUIRE_SIGNED=true` cuando todos tengan la app nueva |
+| F2-06 | Recepción sin red: verificación local con la clave pública, directorio guardado, cola de ingresos con `clientId` idempotente y sincronización automática; indicador de pendientes | Solo funciona si el panel ya estaba abierto cuando se cayó la red |
+| F2-07 | `entry-log` acepta ingresos diferidos `manual`/`offline` hasta 7 días atrás | Pantalla para cargar la planilla en papel |
+| F2-09 | `/offline`, aviso "Nueva versión disponible" (sin recargas forzadas) | — |
+| F2-13 | `system/cron.lastRun`; `/api/health` marca el cron si no corrió en 26 h; pestaña Sistema del admin | — |
+| F2-14 | `lib/migrations.ts` (001 comentarios, 002 `days` de planes, 003 `precio`) con simulación y registro en `_migrations` | Ejecutarlas desde Admin → Sistema |
+| F2-15 / F2-16 | `firestore.indexes.json` (incluye el índice de grupo de colección de `comments`) y `docs/schema.md` | Desplegar los índices |
+| F2-17 | `localStorage` solo guarda uid, nombre y avatar; el perfil se escucha en tiempo real | — |
+| F2-21 | Catálogo del home, `/planes` y `/tienda` renderizado en servidor (caché de 60 s) | — |
+| F2-22 | Foro: primera página en tiempo real y siguientes con `startAfter` | — |
+| F2-26 | Supresión de cuenta compartida (socio y admin): borra perfil, publicaciones, comentarios y likes; anonimiza ingresos, PQRS y reportes; conserva órdenes | — |
+| F2-29 | Exportes CSV (socios, ventas, ingresos) con protección contra inyección de fórmulas | — |
+| F3-09 | `/legal/privacidad`, `/legal/terminos`, `/legal/cookies`; datos del responsable en `lib/legal.ts`; enlaces en footer y sitemap | **LEGAL:** completar NIT, razón social, dirección y correo, y hacer revisar los textos |
+| F3-10 | Registro: términos obligatorios y autorización de datos sensibles separada; `consents/*` con versión, IP y navegador; reglas: peso/altura solo con autorización | — |
+| F3-11 | Perfil → "Privacidad y datos": revocar autorización, descargar mis datos, eliminar cuenta; PQRS con tipo "Datos personales" | — |
+| F3-16 / F3-17 | Pestaña Comunidad: noticias (publicar, programar, despublicar) y moderación de reportes agrupados por publicación | — |
+| F3-20 | `tools/optimize-images.mjs`: `/public` de 6,6 a 4,7 MB sin cambiar referencias; íconos PWA 192/512/maskable | Medir Lighthouse; se mantiene `unoptimized` a propósito (ver nota) |
+| F3-22 | Recordatorio de renovación por correo al socio (5 y 1 días) con enlace a su plan | — |
+| F3-23 / F3-24 | Recepción → Caja: ventas en mostrador (stock validado, precio del servidor) y cierre de caja con diferencia y aviso al admin | — |
+| F3-25 | Congelar o reactivar plan con días a favor; renovar un plan congelado suma esos días | — |
+| F3-26 | Socios activos sin venir en N días (Asistencia) | — |
+
+**Nota F3-20:** se mantiene `images.unoptimized`. Abrir el optimizador de Vercel a cualquier dominio (las imágenes de productos pueden ser URLs externas) lo convertiría en un proxy de imágenes abusable. Las imágenes locales ya quedaron optimizadas en origen.
+
+**Acciones pendientes del dueño (además de las anteriores):**
+1. `node tools/generate-qr-keys.mjs` → poner `QR_SIGNING_PRIVATE_KEY` y `NEXT_PUBLIC_QR_PUBLIC_KEY` en Vercel. Sin ellas el QR sigue siendo el UID.
+2. Desplegar reglas **e índices**: `firebase deploy --only firestore` (el índice de `comments` es necesario para exportar o eliminar datos de un socio).
+3. Admin → Sistema: simular y ejecutar las migraciones 001, 002 y 003.
+4. Stripe: suscribir el webhook a `charge.refunded`.
+5. Completar `lib/legal.ts` y enviar las páginas legales al abogado.

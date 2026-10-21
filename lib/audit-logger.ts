@@ -23,14 +23,18 @@ export async function recordAuditLog(options: AuditLogOptions) {
 
     // Extraer IP de headers de next/headers o del objeto Request manual
     let ip = 'unknown';
+    let requestId: string | null = null;
     
     // F1-26: IP confiable (x-vercel-forwarded-for); `x-forwarded-for` es falsificable.
     try {
-      ip = getClientIp(await headers());
+      const h = await headers();
+      ip = getClientIp(h);
+      requestId = h.get('x-request-id');
     } catch {
       // Fallback si no estamos en contexto aplicable para next/headers
       if (options.request) {
          ip = getClientIp(options.request.headers);
+         requestId = options.request.headers.get('x-request-id');
       }
     }
 
@@ -41,6 +45,7 @@ export async function recordAuditLog(options: AuditLogOptions) {
       adminEmail: options.adminEmail || 'SYSTEM/ANON',
       targetId: options.targetId || null,
       ip: ip,
+      requestId, // F1-03: correlación con los logs del servidor
       timestamp: new Date(),
     };
 

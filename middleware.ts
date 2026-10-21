@@ -113,11 +113,21 @@ function applySecurityHeaders(response: NextResponse, csp: string) {
 }
 
 // Deja pasar y propaga el nonce a Next.js (necesario para el SSR de páginas).
+// F1-03: ID de correlación por request. Llega a las rutas (auditoría, logs) en el
+// header `x-request-id` y se devuelve al cliente para cruzar un error con los logs.
+function withRequestId(requestHeaders: Headers): string {
+  const requestId = crypto.randomUUID();
+  requestHeaders.set('x-request-id', requestId);
+  return requestId;
+}
+
 function nextWithNonce(request: NextRequest, nonce: string, csp: string) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);
+  const requestId = withRequestId(requestHeaders);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set('x-request-id', requestId);
   return applySecurityHeaders(response, csp);
 }
 
@@ -126,6 +136,7 @@ function rewriteWithNonce(request: NextRequest, destination: URL, nonce: string,
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);
+  withRequestId(requestHeaders);
   const response = NextResponse.rewrite(destination, { request: { headers: requestHeaders } });
   return applySecurityHeaders(response, csp);
 }
