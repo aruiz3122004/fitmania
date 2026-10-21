@@ -388,19 +388,8 @@ export default function AdminPage() {
       setConnectionError('Error de conexión con el Servidor / Base de Datos. Verifica las variables de entorno en Vercel.');
     };
 
-    fetch('/api/admin/stats')
-      .then(res => {
-        if (!res.ok) throw new Error('Stats failure');
-        return res.json();
-      })
-      .then(setStats)
-      .catch(handleFetchError);
-
-    fetch('/api/admin/notifications')
-      .then(res => res.json())
-      .then(data => Array.isArray(data) ? setNotifications(data) : setNotifications([]))
-      .catch(handleFetchError);
-
+    // F2-20: solo lo que necesita el resumen. Las notificaciones llegan en tiempo real
+    // (onSnapshot) y los logs y planes se cargan al abrir su pestaña.
     fetch('/api/admin/users')
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setUsersList(data) : setUsersList([]))
@@ -421,16 +410,29 @@ export default function AdminPage() {
       .then(data => Array.isArray(data) ? setOrdersList(data) : setOrdersList([]))
       .catch(handleFetchError);
 
+    if (activeTab === 'audit') loadAuditLogs();
+    if (activeTab === 'planes') loadPlanes();
+  };
+
+  const loadAuditLogs = () =>
     fetch('/api/admin/logs')
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setAuditLogsList(data) : setAuditLogsList([]))
-      .catch(handleFetchError);
+      .catch((err) => console.error('Error cargando auditoría:', err));
 
+  const loadPlanes = () =>
     fetch('/api/admin/planes')
       .then(res => res.json())
       .then(data => Array.isArray(data) ? setPlanesList(data) : setPlanesList([]))
-      .catch(handleFetchError);
-  };
+      .catch((err) => console.error('Error cargando planes:', err));
+
+  // Carga diferida por pestaña (F2-20).
+  useEffect(() => {
+    if (visualState !== 'dashboard') return;
+    if (activeTab === 'audit') loadAuditLogs();
+    if (activeTab === 'planes') loadPlanes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, visualState]);
 
   const handleLogout = async () => {
     // Cerrar SOLO la sesión del panel (cookie HttpOnly `fitmania_session` del servidor).
