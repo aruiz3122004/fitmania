@@ -59,7 +59,7 @@
 - [x] **F1-01 · Quitar `ignoreBuildErrors` y corregir los tipos** — `[CÓDIGO]` — M — Ref 4.3
   - En `next.config.mjs`. Agregar `eslint` y `tsc --noEmit` al workflow de CI.
   - **Criterio:** `npm run build` y el CI pasan sin ignorar errores.
-- [ ] **F1-02 · Validar las variables de entorno al arrancar** — `[CÓDIGO]` — S — Ref 4.7, 4.12
+- [x] **F1-02 · Validar las variables de entorno al arrancar** — `[CÓDIGO]` — S — Ref 4.7, 4.12
   - `lib/env.ts` con zod. Si falta una variable crítica, el arranque falla con un mensaje claro.
   - **Criterio:** quitar una variable crítica rompe el build o el arranque y nombra la variable.
 - [x] **F1-03 · `requestId` y manejador de errores común** — `[CÓDIGO]` — M — Ref 4.7, 4.9
@@ -174,7 +174,7 @@
 - [x] **F1-29 · Reglas para `reportes` y `pqrs`** — `[CÓDIGO]` — S — Ref 4.20
   - Validar campos y tamaños con `hasOnly`. `reportante_id == auth.uid`.
   - **Criterio:** cubierto en F1-27.
-- [ ] **F1-30 · Endurecer el CI de dependencias** — `[CÓDIGO]` — S — Ref 4.17 (A03)
+- [x] **F1-30 · Endurecer el CI de dependencias** — `[CÓDIGO]` — S — Ref 4.17 (A03)
   - Activar Dependabot y que `npm audit` falle con vulnerabilidades `high`.
   - **Criterio:** se abren PRs automáticos y el CI bloquea los `high`.
 
@@ -197,7 +197,7 @@
   - En la misma transacción escribe `entry_logs` (`authorizedByUid`, `authorizedByEmail`, `source`, `deviceId`) e incrementa `daily_stats` y `byHour`.
   - Eliminar las escrituras del cliente a `checkIns` y la colección en las reglas.
   - **Criterio:** escanear dos veces registra uno, y el cliente no puede alterar `hasPlanActivo`.
-- [ ] **F2-04 · Pantalla de resultado del escaneo** — `[CÓDIGO]` — M — Ref 4.13
+- [x] **F2-04 · Pantalla de resultado del escaneo** — `[CÓDIGO]` — M — Ref 4.13
   - Pantalla completa verde (ACTIVO) o roja (VENCIDO o SIN PLAN), sonido distinto y días restantes.
   - Soporte para lector HID. Revisar `res.ok` antes de confirmar.
   - **Criterio:** si la API falla, la UI no dice "registrado".
@@ -285,7 +285,7 @@
 - [~] **F2-27 · Inventario de servicios** — `[CÓDIGO]` — S — Ref 4.12
   - `docs/servicios.md`: dueño, plan, límites, costo, rotación de credenciales y soporte.
   - **Criterio:** el documento está completo para los 7 servicios.
-- [ ] **F2-28 · Importador CSV de productos** — `[CÓDIGO]` — M — Ref 4.10
+- [x] **F2-28 · Importador CSV de productos** — `[CÓDIGO]` — M — Ref 4.10
   - Validación por fila y vista previa antes de confirmar.
   - **Criterio:** el catálogo inicial se carga desde un CSV.
 - [x] **F2-29 · Exportes del admin** — `[CÓDIGO]` — M — Ref 4.1, 5.5
@@ -404,7 +404,7 @@
 
 ## FASE 4 — Validación y congelamiento (22 dic – 3 ene)
 
-- [ ] **F4-01 · Prueba de carga k6 de la hora pico** — `[CÓDIGO]` — M — Ref 4.10
+- [~] **F4-01 · Prueba de carga k6 de la hora pico** — `[CÓDIGO]` — M — Ref 4.10
   - Escenario: 30 ingresos en 15 min, 50 usuarios navegando y 5 pagos concurrentes, en staging.
   - **Criterio:** p95 < 800 ms y 0 errores.
 - [ ] **F4-02 · Simulacro del plan B** — `[EXT]` — S — Ref 4.11
@@ -588,3 +588,16 @@ Verificado: `next build` y `npm test` (22 pruebas, incluida la franja horaria de
 1. Firebase → Cloud Messaging → certificado Web Push → `NEXT_PUBLIC_FIREBASE_VAPID_KEY`.
 2. Identity Platform → habilitar TOTP → inscribirse en Admin → Sistema → luego `ADMIN_REQUIRE_MFA=true`.
 3. Completar contactos en `docs/runbook.md` y dueños en `docs/servicios.md`; imprimir 5 planillas para recepción.
+
+### 2026-10-20 (6.ª tanda) — misma rama `fix/fase1-criticos`
+
+| Tarea | Hecho | Pendiente |
+|---|---|---|
+| F1-02 | `lib/env.ts` + `instrumentation.ts`: al iniciar se listan las variables faltantes (solo nombres); `/api/health` incluye `config` | — |
+| F1-03 (extra) | `onRequestError` registra los errores del servidor en JSON con `x-request-id` (base hasta tener Sentry, F2-11) | — |
+| F1-30 | Dependabot (npm semanal, Actions mensual); el CI falla con vulnerabilidades **altas**; override de `@grpc/grpc-js` 1.14.6 → 0 altas en producción (quedan 9 moderadas) | Revisar las moderadas cuando haya parche |
+| F2-04 | Franja ACTIVO/VENCIDO/SIN PLAN con días restantes, sonido distinto y lector QR USB | — |
+| F2-28 | Importador CSV con plantilla, simulación por fila y alta o actualización por nombre | — |
+| F4-01 | `tools/load-test.js` (k6): 50 socios navegando + 30 ingresos en 15 min; p95 < 800 ms | **Ejecutar en staging** (no contra producción) |
+
+Verificado: `next build`, `npm test` (22/22) y `next start`. Todas las páginas responden 200 tras el override de grpc-js, y la salud reporta `config: ok`.
