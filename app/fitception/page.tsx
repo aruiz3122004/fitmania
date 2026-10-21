@@ -14,6 +14,7 @@ import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import EntryHistoryTab from '@/components/recepcion/entry-history-tab'
 import InventoryTab from '@/components/recepcion/inventory-tab'
+import CashTab from '@/components/recepcion/cash-tab'
 
 const Scanner = dynamic(() => import('@yudiel/react-qr-scanner').then((mod) => mod.Scanner), {
   ssr: false,
@@ -351,6 +352,13 @@ export default function ReceptionPage() {
           <Package className="w-4 h-4 mx-auto mb-1 sm:hidden" />
           Inventario
         </button>
+        <button
+          onClick={() => setActiveTab('cash')}
+          className={`flex-1 max-w-[180px] py-4 rounded-t-2xl font-black uppercase text-xs sm:text-sm border-t-4 border-x-4 border-black transition-all ${activeTab === 'cash' ? 'bg-white shadow-[0_-4px_0_0_rgba(22,163,74,1)]' : 'bg-green-200 text-green-800 border-b-4 hover:bg-green-300'}`}
+        >
+          <ShoppingCart className="w-4 h-4 mx-auto mb-1 sm:hidden" />
+          Caja
+        </button>
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-8">
@@ -531,6 +539,10 @@ export default function ReceptionPage() {
 
         {activeTab === 'inventory' && (
           <InventoryTab />
+        )}
+
+        {activeTab === 'cash' && (
+          <CashTab />
         )}
 
         {/* Members Directory Tab */}

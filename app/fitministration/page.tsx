@@ -649,7 +649,7 @@ export default function AdminPage() {
     const rows = ordersList.map(o => [
       `"${o.customerName || 'N/A'}"`,
       `"${formatDate(o.fecha)}"`,
-      `"${o.banco || 'N/A'}"`,
+      `"${o.banco || (o.channel === 'pos' ? `Mostrador (${o.paymentMethod})` : 'N/A')}"`,
       `"${o.total || 0}"`,
       `"${(o.items || []).map((i:any) => i.nombre).join(' | ')}"`
     ].join(','));
