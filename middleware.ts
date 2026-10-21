@@ -72,7 +72,7 @@ function buildCsp(nonce: string): string {
   // Producción: 'nonce' + 'strict-dynamic' (sin 'unsafe-inline' ni 'unsafe-eval').
   // Desarrollo: Next/webpack requieren 'unsafe-eval' e inline para el HMR.
   const scriptSrc = isProd
-    ? `'self' 'nonce-${nonce}' 'strict-dynamic' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com`
+    ? `'self' 'nonce-${nonce}' 'strict-dynamic' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://www.google.com https://www.gstatic.com https://va.vercel-scripts.com`
     : `'self' 'nonce-${nonce}' 'unsafe-eval' 'unsafe-inline' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com`;
 
   // style-src conserva 'unsafe-inline': la app usa atributos `style=` de React y
@@ -83,7 +83,7 @@ function buildCsp(nonce: string): string {
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     img-src 'self' blob: data: https://res.cloudinary.com https://*.googleusercontent.com https://*.stripe.com https://*.firebaseapp.com;
     connect-src 'self' https://*.stripe.com https://*.googleapis.com https://*.firebaseio.com https://api.cloudinary.com https://res.cloudinary.com https://va.vercel-scripts.com;
-    frame-src 'self' https://*.stripe.com https://*.firebaseapp.com;
+    frame-src 'self' https://*.stripe.com https://*.firebaseapp.com https://www.google.com https://recaptcha.google.com;
     font-src 'self' data: https://fonts.gstatic.com;
     media-src 'self' blob: https://res.cloudinary.com;
     worker-src 'self' blob:;
