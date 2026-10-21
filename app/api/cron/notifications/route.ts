@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { generatePlanExpiryNotifications } from '@/lib/notifications';
+import { applyRetention } from '@/lib/retention';
 import { timingSafeEqualStrings } from '@/lib/gate-token';
 
 // T-18: job programado (Vercel Cron) que genera las notificaciones de planes por
@@ -25,12 +26,17 @@ export async function GET(request: Request) {
   try {
     const db = getAdminFirestore();
     const result = await generatePlanExpiryNotifications(db);
+    // F2-26: política de retención (por lotes; si falla no afecta los avisos).
+    const retention = await applyRetention(db).catch((err) => {
+      console.error('[cron] Error aplicando la retención de datos:', err);
+      return null;
+    });
     // F2-13: registro de la última ejecución (el panel alerta si el cron deja de correr).
     await db.collection('system').doc('cron').set(
-      { notifications: { lastRun: new Date(), ...result } },
+      { notifications: { lastRun: new Date(), ...result }, retention: retention ? { lastRun: new Date(), ...retention } : null },
       { merge: true }
     );
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, ...result, retention });
   } catch (error: any) {
     console.error('Error generando notificaciones programadas:', error);
     // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.

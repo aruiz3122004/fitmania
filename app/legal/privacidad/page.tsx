@@ -59,6 +59,15 @@ export default function PrivacidadPage() {
         <strong> eliminar tu cuenta</strong>. Los registros de compras se conservan por el término que exige la ley contable
         (Código de Comercio, art. 60).</p>
 
+      <h2>4.1 Tiempo de conservación</h2>
+      <ul>
+        <li>Perfil, plan y publicaciones: mientras la cuenta esté activa (puedes eliminarla cuando quieras).</li>
+        <li>Registro de ingresos a la sede: 24 meses identificados; después se conservan solo como estadística anónima.</li>
+        <li>Registro de correos enviados: 12 meses.</li>
+        <li>Compras y soportes de pago: 10 años, por obligación contable.</li>
+        <li>Registros de seguridad (auditoría): 5 años.</li>
+      </ul>
+
       <h2>5. Procedimiento para consultas y reclamos</h2>
       <ul>
         <li>Canales: sección PQRS (tipo &quot;Datos personales&quot;) o el correo {e.correoDatos}.</li>
