@@ -17,14 +17,16 @@ function formatPrice(price: number) {
   return price.toLocaleString('es-CO')
 }
 
-export function Planes() {
-  const [planes, setPlanes] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+export function Planes({ initialPlanes }: { initialPlanes?: any[] | null } = {}) {
+  // F2-21: si el servidor ya entregó los planes, no se abre un listener de Firestore.
+  const [planes, setPlanes] = useState<any[]>(initialPlanes || [])
+  const [loading, setLoading] = useState(!initialPlanes)
   const [showModal, setShowModal] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<any | null>(null)
   const router = useRouter()
 
   useEffect(() => {
+    if (initialPlanes) return
     const q = query(collection(db, 'planes'), orderBy('price', 'asc'))
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const plansData = snapshot.docs.map(doc => ({
@@ -36,7 +38,7 @@ export function Planes() {
     })
 
     return () => unsubscribe()
-  }, [])
+  }, [initialPlanes])
 
   const handlePay = (plan: any) => {
     // Redirigir enviando solo el ID del plan. 

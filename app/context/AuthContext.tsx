@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import type { User } from 'firebase/auth'
 import { auth, db } from '@/lib/firebase'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, onSnapshot } from 'firebase/firestore'
 import { getAvatarUrlById } from '@/lib/avatar-utils'
 import { useAuthStore } from '@/lib/store'
 
@@ -24,53 +24,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setEnrichedUser = useAuthStore((s) => s.setUser)
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+    let unsubProfile: (() => void) | null = null
+
+    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser)
       setLoading(false)
+      unsubProfile?.()
+      unsubProfile = null
 
       if (!firebaseUser) {
         setEnrichedUser(null)
         return
       }
 
-      try {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid))
-        const raw = userDoc.data()
-        const avatarId = raw?.avatar || 'fitman'
-        const resolvedUrl = getAvatarUrlById(avatarId)
-        const photoURL = resolvedUrl || raw?.photoURL || getAvatarUrlById('fitman')
+      // F2-17: el perfil se lee de Firestore en tiempo real (no de localStorage), así
+      // una renovación confirmada por el webhook se refleja sin recargar.
+      unsubProfile = onSnapshot(
+        doc(db, 'users', firebaseUser.uid),
+        (userDoc) => {
+          const raw = userDoc.data()
+          const avatarId = raw?.avatar || 'fitman'
+          const resolvedUrl = getAvatarUrlById(avatarId)
+          const photoURL = resolvedUrl || raw?.photoURL || getAvatarUrlById('fitman')
 
-        setEnrichedUser({
-          uid: firebaseUser.uid,
-          username: raw?.username || firebaseUser.email?.split('@')[0] || 'Usuario',
-          email: firebaseUser.email || raw?.email || '',
-          gender: raw?.gender,
-          avatar: avatarId,
-          photoURL: photoURL,
-          peso: raw?.peso,
-          altura: raw?.altura,
-          plan: raw?.plan
-            ? {
-                ...raw.plan,
-                inicio: raw.plan.inicio?.toDate?.() || new Date(raw.plan.inicio),
-                expira: raw.plan.expira?.toDate?.() || new Date(raw.plan.expira),
-              }
-            : null,
-        })
-      } catch (error) {
-        console.error('Error al cargar perfil desde Firestore:', error)
-        setEnrichedUser({
-          uid: firebaseUser.uid,
-          username: firebaseUser.email?.split('@')[0] || 'Usuario',
-          email: firebaseUser.email || '',
-          avatar: 'fitman',
-          photoURL: getAvatarUrlById('fitman'),
-          plan: null,
-        })
-      }
+          setEnrichedUser({
+            uid: firebaseUser.uid,
+            username: raw?.username || firebaseUser.email?.split('@')[0] || 'Usuario',
+            email: firebaseUser.email || raw?.email || '',
+            gender: raw?.gender,
+            avatar: avatarId,
+            photoURL: photoURL,
+            peso: raw?.peso,
+            altura: raw?.altura,
+            plan: raw?.plan
+              ? {
+                  ...raw.plan,
+                  inicio: raw.plan.inicio?.toDate?.() || new Date(raw.plan.inicio),
+                  expira: raw.plan.expira?.toDate?.() || new Date(raw.plan.expira),
+                }
+              : null,
+          })
+        },
+        (error) => {
+          console.error('Error al cargar perfil desde Firestore:', error)
+          setEnrichedUser({
+            uid: firebaseUser.uid,
+            username: firebaseUser.email?.split('@')[0] || 'Usuario',
+            email: firebaseUser.email || '',
+            avatar: 'fitman',
+            photoURL: getAvatarUrlById('fitman'),
+            plan: null,
+          })
+        }
+      )
     })
 
-    return () => unsub()
+    return () => {
+      unsubProfile?.()
+      unsub()
+    }
   }, [setEnrichedUser])
 
   return (

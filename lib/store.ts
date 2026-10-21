@@ -194,6 +194,22 @@ export const useAuthStore = create<AuthStore>()(
     }),
     {
       name: 'fitmania-auth',
+      version: 2,
+      // F2-17: en el navegador solo se guarda lo mínimo para pintar la UI al recargar.
+      // Correo, peso, altura y plan se leen de Firestore (AuthContext) en cada sesión.
+      partialize: (state) => ({
+        isAuthenticated: state.isAuthenticated,
+        user: state.user
+          ? { uid: state.user.uid, username: state.user.username, avatar: state.user.avatar, photoURL: state.user.photoURL, email: '' }
+          : null,
+      }) as unknown as AuthStore,
+      // Versiones anteriores guardaban el perfil completo: se descarta al migrar.
+      migrate: (persisted: any) => ({
+        isAuthenticated: !!persisted?.isAuthenticated,
+        user: persisted?.user
+          ? { uid: persisted.user.uid, username: persisted.user.username, avatar: persisted.user.avatar, photoURL: persisted.user.photoURL, email: '' }
+          : null,
+      }) as unknown as AuthStore,
     }
   )
 )

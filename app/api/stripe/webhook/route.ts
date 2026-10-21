@@ -303,6 +303,9 @@ export async function POST(req: NextRequest) {
               : new Date()
             const expira = new Date(base)
             expira.setDate(base.getDate() + dias)
+            // F3-25: renovar un plan congelado suma también los días congelados a favor.
+            const frozenMs = Number(existingPlan?.frozen?.remainingMs) || 0
+            if (frozenMs > 0) expira.setTime(expira.getTime() + frozenMs)
 
             // `set` con merge: no falla si el documento del usuario no existe.
             transaction.set(userRef, {
@@ -313,6 +316,7 @@ export async function POST(req: NextRequest) {
                 dias_total: dias,
                 inicio: now,
                 expira: expira,
+                frozen: null,
               },
             }, { merge: true })
 

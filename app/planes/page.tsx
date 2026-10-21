@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Topbar } from '@/components/layout/topbar'
 import { Planes } from '@/components/home/planes'
 import { Footer } from '@/components/layout/footer'
+import { getPublicPlanes } from '@/lib/public-catalog'
 
 export const metadata: Metadata = {
   title: 'Planes de membresía',
@@ -9,12 +10,13 @@ export const metadata: Metadata = {
   alternates: { canonical: '/planes' },
 }
 
-export default function PlanesPage() {
+export default async function PlanesPage() {
+  const planes = await getPublicPlanes()
   return (
     <main>
       <Topbar />
       <div className="mt-[72px]">
-        <Planes />
+        <Planes initialPlanes={planes} />
       </div>
       <Footer />
     </main>

@@ -185,12 +185,25 @@ function cn(...inputs: any[]) {
   return inputs.filter(Boolean).join(' ');
 }
 
-export function Productos() {
-  const [groupedProducts, setGroupedProducts] = useState<Record<string, Product[]>>({});
-  const [loading, setLoading] = useState(true);
+function groupByCategory(products: Product[]): Record<string, Product[]> {
+  const grouped: Record<string, Product[]> = {};
+  for (const prod of products) {
+    if (!grouped[prod.categoria]) grouped[prod.categoria] = [];
+    grouped[prod.categoria].push(prod);
+  }
+  return grouped;
+}
+
+export function Productos({ initialProducts }: { initialProducts?: Product[] | null } = {}) {
+  // F2-21: con datos del servidor no se abre un listener de Firestore por visitante.
+  const [groupedProducts, setGroupedProducts] = useState<Record<string, Product[]>>(
+    initialProducts ? groupByCategory(initialProducts) : {}
+  );
+  const [loading, setLoading] = useState(!initialProducts);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialProducts) return;
     // Simplificamos la consulta para evitar errores de índices compuestos faltantes
     const q = query(collection(db, 'products'), orderBy('nombre', 'asc'));
     
@@ -213,7 +226,7 @@ export function Productos() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [initialProducts]);
 
   if (loading) {
     return (

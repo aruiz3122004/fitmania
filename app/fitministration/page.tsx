@@ -464,6 +464,30 @@ export default function AdminPage() {
     });
   };
 
+  // F3-25: congelar / reactivar el plan conservando los días a favor.
+  const handleToggleFreeze = async (u: any) => {
+    const frozen = !!u.plan?.frozen;
+    let reason = '';
+    if (!frozen) {
+      reason = window.prompt('Motivo del congelamiento (incapacidad, viaje…):') || '';
+      if (!reason.trim()) return;
+    } else if (!window.confirm('¿Reactivar el plan sumando los días congelados?')) {
+      return;
+    }
+    const res = await fetch('/api/admin/users/freeze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: u.uid, action: frozen ? 'unfreeze' : 'freeze', reason }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(data.error || 'No se pudo actualizar el plan.');
+      return;
+    }
+    toast.success(frozen ? 'Plan reactivado.' : `Plan congelado (${data.remainingDays} días a favor).`);
+    refreshAllData();
+  };
+
   const handleRemovePlan = (uid: string) => {
     setConfirmModal({
       isOpen: true,
@@ -782,8 +806,15 @@ export default function AdminPage() {
                         <span className="bg-yellow-400 text-black border-2 border-black px-3 py-1 rounded-lg text-[10px] font-black uppercase italic shadow-[2px_2px_0_0_rgba(0,0,0,1)]">
                           {u.plan.nombre}
                         </span>
-                        <span className="text-[10px] font-bold text-red-500 mt-1 uppercase">Vence: {formatDate(u.plan.expira)}</span>
+                        {u.plan.frozen ? (
+                          <span className="text-[10px] font-black text-blue-600 mt-1 uppercase">Congelado · {Math.ceil((u.plan.frozen.remainingMs || 0) / 86400000)} días a favor</span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-red-500 mt-1 uppercase">Vence: {formatDate(u.plan.expira)}</span>
+                        )}
                       </div>
+                      <button onClick={() => handleToggleFreeze(u)} className="opacity-0 group-hover:opacity-100 px-2 py-1 border-2 border-black rounded text-[9px] font-black uppercase bg-white hover:bg-blue-50 transition-all" title={u.plan.frozen ? 'Reactivar plan' : 'Congelar plan'}>
+                        {u.plan.frozen ? 'Reactivar' : 'Congelar'}
+                      </button>
                       <button onClick={() => handleRemovePlan(u.uid)} className="opacity-0 group-hover:opacity-100 p-2 text-zinc-400 hover:text-red-500 transition-all" title="Remover Membresía"><RotateCcw className="w-4 h-4" /></button>
                     </div>
                   ) : (

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Topbar } from '@/components/layout/topbar'
 import { Productos } from '@/components/home/productos'
 import { Footer } from '@/components/layout/footer'
+import { getPublicProducts } from '@/lib/public-catalog'
 
 export const metadata: Metadata = {
   title: 'Tienda fitness',
@@ -9,12 +10,13 @@ export const metadata: Metadata = {
   alternates: { canonical: '/tienda' },
 }
 
-export default function TiendaPage() {
+export default async function TiendaPage() {
+  const products = await getPublicProducts()
   return (
     <main>
       <Topbar />
       <div className="mt-[72px]">
-        <Productos />
+        <Productos initialProducts={products as any} />
       </div>
       <Footer />
     </main>
