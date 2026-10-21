@@ -4,19 +4,26 @@
 // respuestas privadas de /api/admin/* y servía precios/stock/HTML viejos para
 // siempre. Estrategia actual:
 //   - /api/* y paneles internos: NUNCA se cachean (siempre red).
-//   - Navegaciones (HTML): red primero; si no hay red, la última copia o '/'.
+//   - Navegaciones (HTML): red primero; si no hay red, la última copia o '/offline'.
 //   - Estáticos versionados (/_next/static) e imágenes: caché primero.
 //
 // Cambiar CACHE_NAME invalida todo lo guardado por versiones anteriores.
-const CACHE_NAME = 'fitmania-v2'
-const OFFLINE_FALLBACK = '/'
+const CACHE_NAME = 'fitmania-v3'
+const OFFLINE_FALLBACK = '/offline'
 
 const NEVER_CACHE_PREFIXES = ['/api/', '/fitministration', '/fitception', '/pago']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.add(OFFLINE_FALLBACK)).catch(() => {}).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll([OFFLINE_FALLBACK, '/perfil'])).catch(() => {})
   )
+  // La activación espera a que el usuario acepte "Nueva versión disponible" (SKIP_WAITING),
+  // salvo la primera instalación (sin SW previo), que se activa de inmediato.
+  if (!self.registration.active) self.skipWaiting()
+})
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting()
 })
 
 self.addEventListener('activate', (event) => {

@@ -55,8 +55,8 @@ export const metadata: Metadata = {
   },
   manifest: '/manifest.json',
   icons: {
-    icon: '/Imagenes/Avatares/FitmanNEW.png',
-    apple: '/Imagenes/Avatares/FitmanNEW.png',
+    icon: '/icons/icon-192.png',
+    apple: '/icons/icon-192.png',
   },
   appleWebApp: {
     capable: true,
