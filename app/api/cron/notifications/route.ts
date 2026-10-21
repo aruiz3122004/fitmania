@@ -9,6 +9,8 @@ import { generatePlanExpiryNotifications } from '@/lib/notifications';
 // variable de entorno `CRON_SECRET` está definida en el proyecto. Si no lo está,
 // la ruta responde 401 (nunca queda abierta).
 export const dynamic = 'force-dynamic';
+// Envía recordatorios por correo (F3-22): margen para varios envíos secuenciales.
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
@@ -21,6 +23,11 @@ export async function GET(request: Request) {
   try {
     const db = getAdminFirestore();
     const result = await generatePlanExpiryNotifications(db);
+    // F2-13: registro de la última ejecución (el panel alerta si el cron deja de correr).
+    await db.collection('system').doc('cron').set(
+      { notifications: { lastRun: new Date(), ...result } },
+      { merge: true }
+    );
     return NextResponse.json({ success: true, ...result });
   } catch (error: any) {
     console.error('Error generando notificaciones programadas:', error);

@@ -477,3 +477,53 @@ export async function sendPqrsReplyEmail(data: PqrsReplyData) {
     html,
   })
 }
+interface PlanReminderData {
+  to: string
+  customerName: string
+  planName: string
+  daysLeft: number
+  expiresOn: string
+  renewUrl: string
+}
+
+/**
+ * Recordatorio de renovación al socio (F3-22). Correo transaccional del servicio
+ * (no promocional): informa el vencimiento y enlaza al pago de su mismo plan.
+ */
+export async function sendPlanReminderEmail(data: PlanReminderData) {
+  const urgent = data.daysLeft <= 1
+  const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8" /></head>
+    <body style="font-family:'Segoe UI',Arial,sans-serif;line-height:1.6;color:#333;">
+      <div style="max-width:600px;margin:0 auto;padding:20px;border:1px solid #e0e0e0;">
+        <div style="background:#1a1a2e;color:#fff;padding:20px;text-align:center;">
+          <h1 style="margin:0;color:#D32F2F;">FIT<span style="color:#f5c518;">MANIA</span></h1>
+          <p style="margin:5px 0 0;font-size:12px;opacity:0.8;">${urgent ? 'TU PLAN VENCE MAÑANA' : 'TU PLAN ESTÁ POR VENCER'}</p>
+        </div>
+        <div style="padding:30px;">
+          <p>Hola <strong>${escapeHtml(data.customerName)}</strong>,</p>
+          <p>Tu plan <strong>${escapeHtml(data.planName)}</strong> vence el <strong>${escapeHtml(data.expiresOn)}</strong>
+            (${data.daysLeft <= 0 ? 'hoy' : data.daysLeft === 1 ? 'en 1 día' : `en ${data.daysLeft} días`}).</p>
+          <p>Si renuevas antes del vencimiento, los nuevos días se suman a los que te quedan: no pierdes ninguno.</p>
+          <p style="text-align:center;margin:30px 0;">
+            <a href="${escapeHtml(data.renewUrl)}" style="background:#D32F2F;color:#fff;padding:14px 28px;text-decoration:none;font-weight:bold;border:3px solid #1a1a2e;">RENOVAR MI PLAN</a>
+          </p>
+          <p>¡Te esperamos en el gimnasio!<br/><strong>El equipo de Fitmania</strong></p>
+        </div>
+        <div style="font-size:12px;color:#999;text-align:center;margin-top:30px;">
+          Recibes este correo porque tienes un plan activo en Fitmania. © 2026 Fitmania.
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+
+  await sendWithRetry({
+    from: MAIL_FROM,
+    to: data.to,
+    subject: urgent ? '⏰ Tu plan Fitmania vence mañana' : '🔔 Tu plan Fitmania está por vencer',
+    html,
+  })
+}

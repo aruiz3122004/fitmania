@@ -44,7 +44,18 @@ export async function GET() {
   // Configuración mínima para cobrar, enviar correos y correr el cron.
   checks.payments = { critical: true, ok: !!process.env.STRIPE_SECRET_KEY && !!process.env.STRIPE_WEBHOOK_SECRET };
   checks.email = { critical: false, ok: !!process.env.RESEND_API_KEY };
-  checks.cron = { critical: false, ok: !!process.env.CRON_SECRET };
+  // Cron: configurado y ejecutado en las últimas 26 h (corre una vez al día).
+  let cronOk = !!process.env.CRON_SECRET;
+  if (cronOk && checks.firestore.ok) {
+    try {
+      const cron = await getAdminFirestore().collection('system').doc('cron').get();
+      const lastRun = cron.data()?.notifications?.lastRun?.toDate?.() as Date | undefined;
+      cronOk = !!lastRun && Date.now() - lastRun.getTime() < 26 * 60 * 60 * 1000;
+    } catch {
+      cronOk = false;
+    }
+  }
+  checks.cron = { critical: false, ok: cronOk };
 
   const healthy = Object.values(checks).every((c) => c.ok || !c.critical);
   const degraded = Object.values(checks).some((c) => !c.ok);

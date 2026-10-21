@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
           const itemEntries = meta.items.split(',') // Formato "id:qty,id:qty"
           const orderRef = db.collection('orders').doc(paymentIntent.id)
           let itemsToProcess: { id: string; nombre: string; precio: number; cantidad: number }[] = []
+          let oversold: { id: string; nombre: string; unidades: number; precio: number }[] = []
           let alreadyProcessed = false
 
           // Firestore exige TODAS las lecturas antes de TODAS las escrituras.
@@ -116,6 +117,7 @@ export async function POST(req: NextRequest) {
 
             // Se reconstruye en cada intento (la transacción puede reintentarse).
             itemsToProcess = []
+            oversold = []
             for (let i = 0; i < parsed.length; i++) {
               const item = parsed[i]
               const pSnap = productSnaps[i]
@@ -130,7 +132,13 @@ export async function POST(req: NextRequest) {
 
               const currentStock = Number(pData.stock) || 0
               if (currentStock < item.cantidad) {
-                // TODO(F1-20): reembolso automático cuando no alcanza el stock.
+                // F1-20: las unidades sin stock se reembolsan automáticamente tras la transacción.
+                oversold.push({
+                  id: item.id,
+                  nombre: pData.nombre,
+                  unidades: item.cantidad - Math.max(0, currentStock),
+                  precio: Number(pData.precio ?? pData.price) || 0,
+                })
                 transaction.set(db.collection('notifications').doc(), {
                   tipo: 'oversell',
                   mensaje: `¡Revisar! Se vendieron ${item.cantidad} de ${pData.nombre} con solo ${currentStock} en stock (orden ${paymentIntent.id}).`,
@@ -188,6 +196,38 @@ export async function POST(req: NextRequest) {
               fecha: new Date()
             })
           })
+
+          // F1-20: reembolso parcial automático de las unidades vendidas sin stock.
+          if (!alreadyProcessed && oversold.length > 0) {
+            const refundAmount = oversold.reduce((acc, o) => acc + o.unidades * o.precio, 0)
+            const cents = Math.min(Math.round(refundAmount * 100), paymentIntent.amount)
+            try {
+              const refund = await stripe.refunds.create(
+                { payment_intent: paymentIntent.id, amount: cents, reason: 'requested_by_customer', metadata: { motivo: 'sin_stock' } },
+                { idempotencyKey: `oversell-${paymentIntent.id}` }
+              )
+              await orderRef.update({
+                status: 'partially_refunded',
+                refund: { id: refund.id, amount: cents / 100, reason: 'sin_stock', items: oversold, at: new Date() },
+              })
+              await db.collection('notifications').add({
+                tipo: 'oversell',
+                mensaje: `Reembolso automático de ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(cents / 100)} a ${meta.customerName} por productos sin stock (orden ${paymentIntent.id}).`,
+                id_orden: paymentIntent.id,
+                leido: false,
+                fecha: new Date(),
+              })
+            } catch (refundErr: any) {
+              console.error('[webhook] Falló el reembolso automático por falta de stock:', refundErr?.message || refundErr)
+              await db.collection('notifications').add({
+                tipo: 'oversell',
+                mensaje: `¡ACCIÓN REQUERIDA! No se pudo reembolsar automáticamente la orden ${paymentIntent.id} (productos sin stock). Reembolsa manualmente desde la pasarela.`,
+                id_orden: paymentIntent.id,
+                leido: false,
+                fecha: new Date(),
+              })
+            }
+          }
 
           // Enviar recibo detallado (en segundo plano, sin bloquear la respuesta a Stripe).
           if (!alreadyProcessed) {
@@ -315,6 +355,71 @@ export async function POST(req: NextRequest) {
 
       if (processingFailed) {
         return NextResponse.json({ error: 'Error procesando el evento' }, { status: 500 })
+      }
+      break
+    }
+
+    // F1-21: reembolsos hechos desde la pasarela (o el automático por falta de stock).
+    // Reembolso TOTAL: se revierte el efecto (días del plan o stock). Parcial: se registra.
+    case 'charge.refunded': {
+      const charge = event.data.object as unknown as Stripe.Charge
+      const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
+      if (!piId) break
+      const orderRef = db.collection('orders').doc(piId)
+      try {
+        const outcome = await db.runTransaction(async (tx) => {
+          const orderSnap = await tx.get(orderRef)
+          if (!orderSnap.exists) return 'no_order'
+          const order = orderSnap.data()!
+          const amountRefunded = charge.amount_refunded / 100
+          if (!charge.refunded) {
+            tx.update(orderRef, { amountRefunded, status: order.status === 'refunded' ? 'refunded' : 'partially_refunded' })
+            return 'partial'
+          }
+          if (order.status === 'refunded') return 'already'
+
+          if (order.type === 'plan' && order.uid && order.uid !== 'anonimo') {
+            const userRef = db.collection('users').doc(order.uid)
+            const userSnap = await tx.get(userRef)
+            const plan = userSnap.data()?.plan
+            const expira = plan?.expira?.toDate ? plan.expira.toDate() : plan?.expira ? new Date(plan.expira) : null
+            const planSnap = order.planId ? await tx.get(db.collection('planes').doc(order.planId)) : null
+            const dias = Number(planSnap?.data()?.days) || Number(plan?.dias_total) || 30
+            if (expira) {
+              const nuevaExpira = new Date(expira)
+              nuevaExpira.setDate(nuevaExpira.getDate() - dias)
+              tx.update(userRef, { 'plan.expira': nuevaExpira })
+            }
+          } else if (Array.isArray(order.items)) {
+            const refs = order.items.map((it: any) => db.collection('products').doc(it.id))
+            const snaps: FirebaseFirestore.DocumentSnapshot[] = []
+            for (const ref of refs) snaps.push(await tx.get(ref))
+            order.items.forEach((it: any, i: number) => {
+              if (!snaps[i].exists) return
+              const before = Number(snaps[i].data()?.stock) || 0
+              tx.update(refs[i], { stock: before + (Number(it.cantidad) || 0) })
+              tx.set(db.collection('inventory_movements').doc(), {
+                productId: it.id, productName: it.nombre, type: 'refund_restock',
+                before, after: before + (Number(it.cantidad) || 0), delta: Number(it.cantidad) || 0,
+                orderId: piId, createdAt: new Date(),
+              })
+            })
+          }
+
+          tx.update(orderRef, { status: 'refunded', amountRefunded, refundedAt: new Date() })
+          tx.set(db.collection('notifications').doc(), {
+            tipo: 'refund',
+            mensaje: `Reembolso total de la orden ${piId} (${order.customerName || 'cliente'}): ${order.type === 'plan' ? 'se descontaron los días del plan' : 'se repuso el stock'}.`,
+            id_orden: piId,
+            leido: false,
+            fecha: new Date(),
+          })
+          return 'reverted'
+        })
+        console.log(`[webhook] charge.refunded ${piId}: ${outcome}`)
+      } catch (err: any) {
+        console.error('[webhook] Error procesando reembolso:', err?.message || err)
+        return NextResponse.json({ error: 'Error procesando el reembolso' }, { status: 500 })
       }
       break
     }

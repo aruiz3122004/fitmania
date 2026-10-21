@@ -1,5 +1,7 @@
 import type { Firestore } from 'firebase-admin/firestore';
-import { getDateKeyInAppTz } from '@/lib/datetime';
+import { formatInAppTz, getDateKeyInAppTz } from '@/lib/datetime';
+import { sendPlanReminderEmail } from '@/services/mail';
+import { SITE_URL } from '@/lib/site';
 
 /**
  * T-18 (auditoría): la generación de notificaciones de "plan por vencer" se
@@ -14,6 +16,8 @@ export interface NotificationGenerationResult {
   created: number;
   /** Cantidad de planes activos evaluados. */
   evaluated: number;
+  /** Recordatorios enviados por correo a los socios (F3-22). */
+  emailed: number;
 }
 
 export async function generatePlanExpiryNotifications(
@@ -37,6 +41,9 @@ export async function generatePlanExpiryNotifications(
   let created = 0;
   let evaluated = 0;
   const pending: Promise<unknown>[] = [];
+  // F3-22: recordatorio al SOCIO (antes solo se avisaba al admin). Se envía solo si el
+  // aviso del día se creó en esta ejecución → como máximo un correo por umbral.
+  const reminders: Parameters<typeof sendPlanReminderEmail>[0][] = [];
 
   for (const doc of usersSnapshot.docs) {
     const userData = doc.data();
@@ -71,7 +78,19 @@ export async function generatePlanExpiryNotifications(
           leido: false,
           fecha: new Date(),
         })
-        .then(() => { created++; })
+        .then(() => {
+          created++;
+          if (userData.email) {
+            reminders.push({
+              to: userData.email,
+              customerName: userData.username || 'Socio',
+              planName: plan.nombre || 'tu plan',
+              daysLeft: diffDays,
+              expiresOn: formatInAppTz(expirationDate, { day: 'numeric', month: 'long', year: 'numeric' }),
+              renewUrl: plan.planId ? `${SITE_URL}/pago?planId=${encodeURIComponent(plan.planId)}` : `${SITE_URL}/planes`,
+            });
+          }
+        })
         .catch(() => { /* ya existía o falló tras reintentos: no se cuenta */ })
     );
   }
@@ -79,5 +98,16 @@ export async function generatePlanExpiryNotifications(
   await writer.close();
   await Promise.all(pending);
 
-  return { created, evaluated };
+  // Envío secuencial (pocos por día) para no exceder el rate limit del proveedor de correo.
+  let emailed = 0;
+  for (const reminder of reminders) {
+    try {
+      await sendPlanReminderEmail(reminder);
+      emailed++;
+    } catch (error) {
+      console.error('[cron] No se pudo enviar el recordatorio de plan a', reminder.to, error);
+    }
+  }
+
+  return { created, evaluated, emailed };
 }
