@@ -24,7 +24,14 @@ try {
   console.error('Error al inicializar Upstash Redis:', error);
 }
 
-const MAX_ATTEMPTS = 15;
+// F1-10: contadores separados por grupo. Antes el login de socios y el de los paneles
+// compartían el contador por IP: con el WiFi del gimnasio (NAT, una sola IP pública)
+// los socios podían bloquear al administrador.
+//  - panel:  login de admin/recepción (pocos usuarios, límite estricto, fail-closed).
+//  - public: intentos de login/registro de socios (límite holgado por la IP compartida).
+// El pago ya no se cuenta aquí: tiene límite por usuario en el servidor.
+type AttemptGroup = 'panel' | 'public';
+const MAX_ATTEMPTS: Record<AttemptGroup, number> = { panel: 15, public: 60 };
 
 // Aviso único por instancia si el rate limiting queda apagado (auditoría A-1).
 // Sin Upstash el sistema es fail-open: se salta TODO el bloqueo sin avisar.
@@ -192,20 +199,21 @@ export default async function middleware(request: NextRequest) {
     // SIN autenticación, así que cualquiera podía anular su propio bloqueo. El reinicio
     // ahora lo hace el servidor tras un login de panel verificado (lib/rate-limit-server.ts).
 
-    const sensitiveEndpoints = [
-      '/api/admin/login',
-      '/api/recepcion/login',
-      '/api/stripe/create-payment',
-      '/api/security/attempt'  // Endpoint para consumir intentos en formularios públicos
-    ];
-
-    const isAttemptEndpoint = sensitiveEndpoints.some(ep => pathname.startsWith(ep));
+    const isPanelLogin = pathname.startsWith('/api/admin/login') || pathname.startsWith('/api/recepcion/login');
+    const isAttemptEndpoint = isPanelLogin || pathname === '/api/security/attempt';
     const isCheckEndpoint = pathname === '/api/security/check';
 
     if (isAttemptEndpoint || isCheckEndpoint) {
+      const group: AttemptGroup = isPanelLogin || (isCheckEndpoint && request.nextUrl.searchParams.get('group') === 'panel')
+        ? 'panel'
+        : 'public';
+      const limit = MAX_ATTEMPTS[group];
+      const attemptsKey = `fw_attempts_${group}_${ip}`;
+      const lockoutKey = `fw_lockout_${group}_${ip}`;
+      const levelKey = `fw_level_${group}_${ip}`;
       try {
         // A. Verificar si el usuario está bajo una condena actual
-        const lockoutTtl = await redis.ttl(`fw_lockout_${ip}`);
+        const lockoutTtl = await redis.ttl(lockoutKey);
 
         if (lockoutTtl > 0) {
           // Usuario bloqueado
@@ -213,7 +221,7 @@ export default async function middleware(request: NextRequest) {
             { error: 'Bloqueo de seguridad por excesos de intentos.', remaining: 0, secondsLeft: lockoutTtl },
             { status: 429 }
           );
-          resp.headers.set('X-RateLimit-Limit', MAX_ATTEMPTS.toString());
+          resp.headers.set('X-RateLimit-Limit', limit.toString());
           resp.headers.set('X-RateLimit-Remaining', '0');
           resp.headers.set('X-RateLimit-SecondsLeft', lockoutTtl.toString());
           return applySecurityHeaders(resp, csp);
@@ -221,27 +229,27 @@ export default async function middleware(request: NextRequest) {
 
         // B. Lectura inofensiva de estado (Renderizado inicial de la página)
         if (isCheckEndpoint) {
-          const currentAttempts = (await redis.get<number>(`fw_attempts_${ip}`)) || 0;
+          const currentAttempts = (await redis.get<number>(attemptsKey)) || 0;
           return applySecurityHeaders(NextResponse.json({
             success: true,
-            remaining: Math.max(0, MAX_ATTEMPTS - currentAttempts),
+            remaining: Math.max(0, limit - currentAttempts),
           }), csp);
         }
 
         // C. Ejecutar Intento Explicito (Pulsó ENTRAR o PAGAR)
-        const attempts = await redis.incr(`fw_attempts_${ip}`);
+        const attempts = await redis.incr(attemptsKey);
 
         // Limpiador básico: si es primer error asilar intentos tras 1 hora si el usuario desiste
-        if (attempts === 1) await redis.expire(`fw_attempts_${ip}`, 3600);
+        if (attempts === 1) await redis.expire(attemptsKey, 3600);
 
-        if (attempts > MAX_ATTEMPTS) {
+        if (attempts > limit) {
           // Ha superado el limite: asginar nivel de penalización
-          const level = await redis.incr(`fw_level_${ip}`);
-          if (level === 1) await redis.expire(`fw_level_${ip}`, 86400); // Récord base 24h
+          const level = await redis.incr(levelKey);
+          if (level === 1) await redis.expire(levelKey, 86400); // Récord base 24h
 
           const lockoutTime = getLockoutTime(level);
-          await redis.setex(`fw_lockout_${ip}`, lockoutTime, 'blocked'); // Activar cuenta regresiva
-          await redis.del(`fw_attempts_${ip}`); // Resetear contador para re-evaluación posterior al castigo
+          await redis.setex(lockoutKey, lockoutTime, 'blocked'); // Activar cuenta regresiva
+          await redis.del(attemptsKey); // Resetear contador para re-evaluación posterior al castigo
 
           // Registrar en auditoría asíncronamente
           // B-6: usar un secreto interno propio (no reutilizar UPSTASH_REDIS_REST_TOKEN).
@@ -254,7 +262,7 @@ export default async function middleware(request: NextRequest) {
                   'Content-Type': 'application/json',
                   'x-middleware-secret': internalSecret
                 },
-                body: JSON.stringify({ ip, attempts: MAX_ATTEMPTS, url: pathname })
+                body: JSON.stringify({ ip, attempts: limit, url: pathname })
               }).catch(() => {}); // Fire and forget
             } catch(e) {}
           }
@@ -263,14 +271,14 @@ export default async function middleware(request: NextRequest) {
             { error: 'Límite alcanzado, pasarela bloqueada.', remaining: 0, secondsLeft: lockoutTime },
             { status: 429 }
           );
-          resp.headers.set('X-RateLimit-Limit', MAX_ATTEMPTS.toString());
+          resp.headers.set('X-RateLimit-Limit', limit.toString());
           resp.headers.set('X-RateLimit-Remaining', '0');
           resp.headers.set('X-RateLimit-SecondsLeft', lockoutTime.toString());
           return applySecurityHeaders(resp, csp);
         }
 
         // D. Intento válido procesado (aún le quedan oportunidades)
-        const remaining = Math.max(0, MAX_ATTEMPTS - attempts);
+        const remaining = Math.max(0, limit - attempts);
 
         if (pathname === '/api/security/attempt') {
           // Interceptamos su llegada porque su único trabajo era alertar al middleware del click
@@ -278,14 +286,21 @@ export default async function middleware(request: NextRequest) {
         } else {
           // Si es un API Route propio (Stripe, Admin), lo dejamos pasar e inyectamos los headers
           const response = NextResponse.next();
-          response.headers.set('X-RateLimit-Limit', MAX_ATTEMPTS.toString());
+          response.headers.set('X-RateLimit-Limit', limit.toString());
           response.headers.set('X-RateLimit-Remaining', remaining.toString());
           return applySecurityHeaders(response, csp);
         }
 
       } catch (e) {
         console.error('Error procesando intentos con Redis:', e);
-        // Fail-open si redis falla catastroficamente
+        // Paneles: fail-closed (sin contador no se permite probar contraseñas de personal).
+        if (isPanelLogin) {
+          return applySecurityHeaders(
+            NextResponse.json({ error: 'Servicio de seguridad no disponible. Intenta en unos minutos.' }, { status: 503 }),
+            csp
+          );
+        }
+        // Formularios públicos: fail-open (Firebase Auth tiene su propia protección).
         return applySecurityHeaders(NextResponse.next(), csp);
       }
     }

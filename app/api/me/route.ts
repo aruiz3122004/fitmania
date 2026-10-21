@@ -3,6 +3,7 @@ import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyUserRequest } from '@/lib/auth-helpers';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { deleteMemberAccount } from '@/lib/account-deletion';
+import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 
 /**
  * Derechos del titular en autoservicio (F3-11, Ley 1581).
@@ -23,6 +24,9 @@ function serialize(value: any): any {
 export async function GET(request: Request) {
   const decoded = await verifyUserRequest(request);
   if (!decoded) return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+  // F1-10: operaciones pesadas, 5 por hora por usuario.
+  const rl = await limitAction(`me:${decoded.uid}`, 5, 3600);
+  if (!rl.ok) return tooManyRequests(rl.retryAfter);
 
   try {
     const db = getAdminFirestore();
@@ -67,6 +71,9 @@ export async function GET(request: Request) {
 export async function DELETE(request: Request) {
   const decoded = await verifyUserRequest(request);
   if (!decoded) return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+  // F1-10: operaciones pesadas, 5 por hora por usuario.
+  const rl = await limitAction(`me:${decoded.uid}`, 5, 3600);
+  if (!rl.ok) return tooManyRequests(rl.retryAfter);
 
   const body = await request.json().catch(() => null);
   if (body?.confirm !== 'ELIMINAR') {

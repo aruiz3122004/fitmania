@@ -13,9 +13,9 @@ export interface RateLimitStatus {
 /**
  * Consulta al servidor el estado actual del Rate Limit para la IP actual (SIN RESTAR INTENTOS).
  */
-export async function getRateLimitStatus(): Promise<RateLimitStatus> {
+export async function getRateLimitStatus(group: 'public' | 'panel' = 'public'): Promise<RateLimitStatus> {
   try {
-    const response = await fetch('/api/security/check', { method: 'GET' });
+    const response = await fetch(`/api/security/check?group=${group}`, { method: 'GET' });
     const data = await response.json();
 
     const remaining = data.remaining !== undefined ? data.remaining : parseInt(response.headers.get('X-RateLimit-Remaining') || '5');

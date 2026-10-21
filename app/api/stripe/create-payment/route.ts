@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin'
+import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-12-18.acacia' as any,
@@ -31,6 +32,10 @@ export async function POST(req: NextRequest) {
         { status: 403 }
       )
     }
+
+    // F1-10: límite por usuario (10 intentos de pago cada 10 minutos).
+    const rl = await limitAction(`pay:${decoded.uid}`, 10, 600)
+    if (!rl.ok) return tooManyRequests(rl.retryAfter, 'Demasiados intentos de pago. Espera unos minutos.')
 
     const body = await req.json()
     const { planId, items } = body

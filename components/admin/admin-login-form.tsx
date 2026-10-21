@@ -60,7 +60,7 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
 
     // 2. Cargar estado de rate limit
     const checkInitialStatus = async () => {
-      const status = await getRateLimitStatus();
+      const status = await getRateLimitStatus('panel');
       setRemainingAttempts(status.remaining);
       if (!status.success) {
         setIsBlocked(true);

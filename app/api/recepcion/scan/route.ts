@@ -3,6 +3,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyReceptionRequest } from '@/lib/auth-helpers';
 import { getMemberDetail } from '@/lib/reception-members';
 import { ACCESS_TOKEN_PREFIX, requireSignedAccess, verifyAccessToken } from '@/lib/access-token';
+import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 
 /**
  * POST /api/recepcion/scan { code } — resuelve el QR escaneado (F2-05).
@@ -19,6 +20,8 @@ const REASONS: Record<string, string> = {
 export async function POST(request: NextRequest) {
   const decoded = await verifyReceptionRequest(request);
   if (!decoded) return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+  const rl = await limitAction(`scan:${decoded.uid}`, 1200, 3600);
+  if (!rl.ok) return tooManyRequests(rl.retryAfter);
 
   const body = await request.json().catch(() => null);
   const code = typeof body?.code === 'string' ? body.code.trim() : '';

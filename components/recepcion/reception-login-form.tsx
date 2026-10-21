@@ -55,7 +55,7 @@ export function ReceptionLoginForm({ onSuccessAction }: { onSuccessAction: () =>
 
     // 2. Cargar estado de rate limit
     const checkStatus = async () => {
-      const status = await getRateLimitStatus()
+      const status = await getRateLimitStatus('panel')
       setRemainingAttempts(status.remaining)
       if (!status.success) {
         setIsBlocked(true)

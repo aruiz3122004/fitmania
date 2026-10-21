@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyUserRequest } from '@/lib/auth-helpers';
 import { createAccessToken, signedAccessEnabled } from '@/lib/access-token';
+import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 
 /**
  * GET /api/me/access-token?ttl=short|day — pase de acceso firmado del socio (F2-05).
@@ -13,6 +14,8 @@ const TTL = { short: 5 * 60, day: 24 * 60 * 60 } as const;
 export async function GET(request: Request) {
   const decoded = await verifyUserRequest(request);
   if (!decoded) return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+  const rl = await limitAction(`pass:${decoded.uid}`, 60, 3600);
+  if (!rl.ok) return tooManyRequests(rl.retryAfter);
   if (!signedAccessEnabled()) return NextResponse.json({ enabled: false });
 
   try {

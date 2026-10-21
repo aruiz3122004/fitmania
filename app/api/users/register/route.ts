@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils';
 import { recordConsent } from '@/lib/consents';
+import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
+import { getClientIp } from '@/lib/client-ip';
 
 /**
  * POST /api/users/register — crea el perfil del usuario recién registrado (F1-06).
@@ -21,6 +23,10 @@ function optionalNumber(value: unknown, min: number, max: number): number | null
 }
 
 export async function POST(request: Request) {
+  // F1-10: 10 altas por hora por IP (holgado por la IP compartida del gimnasio).
+  const rl = await limitAction(`register:ip:${getClientIp(request.headers)}`, 10, 3600);
+  if (!rl.ok) return tooManyRequests(rl.retryAfter, 'Demasiados registros desde esta red. Intenta más tarde.');
+
   const authHeader = request.headers.get('authorization');
   const idToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!idToken) return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });

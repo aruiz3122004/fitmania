@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 
 /**
  * POST /api/uploads/sign — firma una subida a Cloudinary (F1-24).
@@ -34,6 +35,10 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Sesión inválida o expirada.' }, { status: 401 });
   }
+
+  // F1-10: 30 subidas por hora por usuario.
+  const rl = await limitAction(`upload:${uid}`, 30, 3600);
+  if (!rl.ok) return tooManyRequests(rl.retryAfter, 'Alcanzaste el límite de subidas por hora.');
 
   const body = await request.json().catch(() => null);
   const resourceType = body?.resourceType === 'video' ? 'video' : 'image';
