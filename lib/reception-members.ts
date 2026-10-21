@@ -1,3 +1,5 @@
+import type { Firestore } from 'firebase-admin/firestore';
+
 /**
  * Proyecciones mínimas de socios para el panel de recepción (F2-18 / F3-05).
  *
@@ -53,5 +55,53 @@ export function projectMemberSummary(id: string, data: any) {
     username: String(data?.username || 'Socio'),
     photoURL: data?.photoURL || null,
     plan: projectPlan(data?.plan),
+  };
+}
+
+const HISTORY_LIMIT = 5;
+
+/**
+ * Ficha del socio para recepción: datos mínimos + últimas órdenes y check-ins.
+ * Devuelve null si el socio no existe.
+ */
+export async function getMemberDetail(db: Firestore, uid: string) {
+  const userSnap = await db.collection('users').doc(uid).get();
+  if (!userSnap.exists) return null;
+  const data = userSnap.data() || {};
+
+  // Sin orderBy para no exigir índices compuestos; se ordena en memoria (pocos docs por socio).
+  const [ordersSnap, checkInsSnap] = await Promise.all([
+    db.collection('orders').where('uid', '==', uid).get(),
+    db.collection('checkIns').where('userId', '==', uid).get(),
+  ]);
+
+  const byDateDesc = (a: Date | null, b: Date | null) => (b?.getTime() || 0) - (a?.getTime() || 0);
+
+  const orders = ordersSnap.docs
+    .map((d) => ({ id: d.id, raw: d.data() }))
+    .sort((a, b) => byDateDesc(toDateValue(a.raw.fecha), toDateValue(b.raw.fecha)))
+    .slice(0, HISTORY_LIMIT)
+    .map(({ id, raw }) => ({
+      id,
+      fecha: toSeconds(raw.fecha),
+      total: Number(raw.total) || 0,
+      concepto: raw.concepto || null,
+      items: Array.isArray(raw.items) ? raw.items.map((it: any) => ({ nombre: it.nombre, cantidad: it.cantidad })) : [],
+    }));
+
+  const checkIns = checkInsSnap.docs
+    .map((d) => ({ id: d.id, raw: d.data() }))
+    .sort((a, b) => byDateDesc(toDateValue(a.raw.timestamp), toDateValue(b.raw.timestamp)))
+    .slice(0, HISTORY_LIMIT)
+    .map(({ id, raw }) => ({ id, timestamp: toSeconds(raw.timestamp) }));
+
+  return {
+    member: {
+      ...projectMemberSummary(uid, data),
+      email: maskEmail(data.email),
+      createdAt: toSeconds(data.createdAt),
+    },
+    orders,
+    checkIns,
   };
 }

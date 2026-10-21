@@ -12,7 +12,7 @@ import { uploadToCloudinary } from '@/services/cloudinary'
 import { doc, updateDoc } from 'firebase/firestore'
 import { Save, UserCircle, Camera, Loader2, ShieldCheck, Clock, Calendar, QrCode, Users } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
-import QRCode from 'react-qr-code'
+import { AccessPass } from '@/components/profile/access-pass'
 import { usePanelAccess, enterPanel } from '@/lib/panel-access'
 
 const formatDate = (dateValue: any) => {
@@ -249,14 +249,8 @@ export default function PerfilPage() {
                 </div>
               </div>
 
-              {/* QR ACCESS PASS - UNIVERSAL */}
-              <div className="shrink-0 p-4 bg-white border-4 border-black rounded-3xl shadow-[6px_6px_0_0_rgba(22,163,74,1)] flex flex-col items-center group hover:scale-105 transition-transform">
-                <QRCode value={user?.uid || 'no-session'} size={100} />
-                <div className="mt-2 flex items-center gap-1">
-                  <QrCode className="w-3 h-3 text-green-600" />
-                  <span className="text-[9px] font-black text-black uppercase tracking-widest">Access Pass</span>
-                </div>
-              </div>
+              {/* F2-05: pase de acceso firmado y renovable (QR antiguo = UID fijo). */}
+              <AccessPass uid={user?.uid} />
             </div>
 
             <div className="grid sm:grid-cols-2 gap-4 mb-6">

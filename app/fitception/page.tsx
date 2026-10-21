@@ -7,6 +7,8 @@ import { ReceptionLoginForm } from '@/components/recepcion/reception-login-form'
 import { auth } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
 import { useIdleLogout } from '@/lib/use-idle-logout'
+import { verifyPassOffline, ACCESS_TOKEN_PREFIX } from '@/lib/access-token-client'
+import { cacheMembers, cachedMembers, enqueueOfflineEntry, pendingOfflineEntries, syncOfflineEntries } from '@/lib/offline-entries'
 import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList, Package } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
@@ -31,6 +33,31 @@ export default function ReceptionPage() {
   const [userOrders, setUserOrders] = useState<any[]>([])
   const [userCheckIns, setUserCheckIns] = useState<any[]>([])
   const [isFetchingLogs, setIsFetchingLogs] = useState(false)
+  // F2-06: ingresos pendientes de sincronizar y estado de la red.
+  const [pendingSync, setPendingSync] = useState(0)
+  const [isOnline, setIsOnline] = useState(true)
+
+  useEffect(() => {
+    setPendingSync(pendingOfflineEntries().length)
+    setIsOnline(navigator.onLine)
+    const trySync = async () => {
+      if (!navigator.onLine || pendingOfflineEntries().length === 0) return
+      const { synced, remaining } = await syncOfflineEntries()
+      setPendingSync(remaining)
+      if (synced > 0) toast.success(`${synced} ingreso(s) sin conexión sincronizado(s).`)
+    }
+    const goOnline = () => { setIsOnline(true); trySync() }
+    const goOffline = () => setIsOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    const timer = setInterval(trySync, 60_000)
+    trySync()
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+      clearInterval(timer)
+    }
+  }, [])
 
   useEffect(() => {
     // Verificar la sesión leyendo la cookie HttpOnly vía el servidor
@@ -77,50 +104,112 @@ export default function ReceptionPage() {
       }
       if (!res.ok) throw new Error('members')
       const data = await res.json()
-      setUsersList(Array.isArray(data.members) ? data.members : [])
+      const members = Array.isArray(data.members) ? data.members : []
+      setUsersList(members)
+      cacheMembers(members) // F2-06: directorio disponible sin conexión
     } catch (e) {
       console.error("Error al cargar socios:", e)
-      toast.error('No se pudo cargar el directorio de socios.')
+      const cached = cachedMembers()
+      if (cached) {
+        setUsersList(cached.members)
+        toast.warning('Sin conexión: usando el directorio guardado.')
+      } else {
+        toast.error('No se pudo cargar el directorio de socios.')
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  const handleScan = async (text: string) => {
+  // F2-06: sin red el pase firmado se verifica localmente con la clave pública.
+  const scanOffline = async (code: string) => {
+    if (code.startsWith(ACCESS_TOKEN_PREFIX)) {
+      const result = await verifyPassOffline(code)
+      if (!result.ok) {
+        toast.error(result.reason)
+        return
+      }
+      const p = result.payload
+      setScannedUser({
+        id: p.uid,
+        username: p.n,
+        photoURL: null,
+        plan: p.pe ? { nombre: p.p || 'Plan', expira: { seconds: Math.floor(p.pe / 1000) } } : null,
+        offline: true,
+      })
+    } else {
+      // QR antiguo (UID): solo si el socio está en el directorio guardado.
+      const member = (cachedMembers()?.members || []).find((m: any) => m.id === code)
+      if (!member) {
+        toast.error('Sin conexión: código no verificable.')
+        return
+      }
+      setScannedUser({ ...member, offline: true })
+    }
+    setUserOrders([])
+    setUserCheckIns([])
+    setShowScanner(false)
+    toast.warning('Modo sin conexión: el ingreso se sincronizará al volver la red.')
+  }
+
+  const handleScan = async (text: string, manual = false) => {
     const code = text?.trim()
     if (!code) return;
 
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      await scanOffline(code)
+      return
+    }
+
     setIsFetchingLogs(true)
     try {
-      const res = await fetch(`/api/recepcion/members/${encodeURIComponent(code)}`)
+      const res = await fetch('/api/recepcion/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, manual }),
+      })
       if (res.status === 401) {
         setVisualState('login')
         return
       }
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        toast.error(res.status === 404 ? 'Código QR inválido o socio no encontrado' : 'Error consultando el socio')
+        toast.error(data.error || (res.status === 404 ? 'Código QR inválido o socio no encontrado' : 'Error consultando el socio'))
         return
       }
-      const data = await res.json()
       setScannedUser(data.member)
       setUserOrders(Array.isArray(data.orders) ? data.orders : [])
       setUserCheckIns(Array.isArray(data.checkIns) ? data.checkIns : [])
       setShowScanner(false)
-      toast.success('Usuario encontrado')
+      toast.success(data.signed ? 'Pase verificado' : 'Usuario encontrado (QR antiguo)')
     } catch (err) {
+      // Error de red: se intenta la verificación local.
       console.error("Error consultando socio:", err)
-      toast.error('Error consultando el socio')
+      await scanOffline(code)
     } finally {
       setIsFetchingLogs(false)
     }
   }
 
   const handleSimulateScan = () => {
-    handleScan(simulatorId)
+    handleScan(simulatorId, true)
+  }
+
+  const queueOffline = () => {
+    enqueueOfflineEntry(scannedUser.id, scannedUser.username || 'Socio')
+    setPendingSync(pendingOfflineEntries().length)
+    toast.warning('Sin conexión: ingreso guardado en este equipo; se sincroniza al volver la red.')
+    setScannedUser(null)
+    setSimulatorId('')
   }
 
   const handleAuthorize = async () => {
     if (!scannedUser) return;
+
+    if (scannedUser.offline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      queueOffline()
+      return
+    }
 
     try {
       // El servidor registra entry_logs + checkIns en una transacción, deriva el estado
@@ -149,7 +238,8 @@ export default function ReceptionPage() {
       setScannedUser(null)
       setSimulatorId('')
     } catch (error) {
-      toast.error('Error al registrar acceso.')
+      // Se cayó la red al registrar: se guarda para sincronizar.
+      queueOffline()
     }
   }
 
@@ -219,9 +309,16 @@ export default function ReceptionPage() {
             <p className="font-label text-[10px] uppercase tracking-[3px] text-green-200">Fitmania Command Center</p>
           </div>
         </div>
-        <button onClick={handleLogout} className="flex items-center gap-2 bg-black text-white px-4 py-2 border-2 border-white rounded font-label text-xs uppercase font-bold hover:bg-zinc-800 transition-colors">
-          <LogOut className="w-4 h-4" /> Salir
-        </button>
+        <div className="flex items-center gap-3">
+          {(!isOnline || pendingSync > 0) && (
+            <span className={`px-3 py-2 border-2 border-black rounded font-label text-[10px] uppercase font-black ${isOnline ? 'bg-yellow-300 text-black' : 'bg-red-600 text-white'}`}>
+              {isOnline ? 'Sincronizando' : 'Sin conexión'}{pendingSync > 0 ? ` · ${pendingSync} pendiente(s)` : ''}
+            </span>
+          )}
+          <button onClick={handleLogout} className="flex items-center gap-2 bg-black text-white px-4 py-2 border-2 border-white rounded font-label text-xs uppercase font-bold hover:bg-zinc-800 transition-colors">
+            <LogOut className="w-4 h-4" /> Salir
+          </button>
+        </div>
       </header>
 
       {/* Tabs */}

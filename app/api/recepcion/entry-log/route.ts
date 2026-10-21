@@ -41,13 +41,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Datos incompletos.' }, { status: 400 });
     }
 
-    const now = new Date();
+    // F2-06 / F2-07: ingresos diferidos (sin conexión o cargados desde la planilla en
+    // papel) traen su hora real y un `clientId` único que hace idempotente el reintento.
+    const deferredSource = body?.source === 'offline' || body?.source === 'manual' ? body.source : null;
+    let now = new Date();
+    let clientId: string | null = null;
+    if (deferredSource) {
+      const occurred = new Date(body?.occurredAt);
+      const maxBackdate = 7 * 24 * 60 * 60 * 1000;
+      if (Number.isNaN(occurred.getTime()) || occurred.getTime() > now.getTime() + 5 * 60 * 1000 || now.getTime() - occurred.getTime() > maxBackdate) {
+        return NextResponse.json({ error: 'Fecha del ingreso diferido inválida (máximo 7 días atrás).' }, { status: 400 });
+      }
+      now = occurred;
+      clientId = typeof body?.clientId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(body.clientId) ? body.clientId : null;
+      if (!clientId) return NextResponse.json({ error: 'clientId inválido.' }, { status: 400 });
+    }
     // Formato YYYY-MM-DD en la zona horaria de la app (T-20: sin offsets manuales)
     const dateStr = getDateKeyInAppTz(now);
 
     const firestore = getAdminFirestore();
     const userRef = firestore.collection('users').doc(userId);
-    const entryRef = firestore.collection('entry_logs').doc();
+    const entryRef = clientId
+      ? firestore.collection('entry_logs').doc(`${deferredSource}_${clientId}`)
+      : firestore.collection('entry_logs').doc();
     const checkInRef = firestore.collection('checkIns').doc(entryRef.id);
     const sameDayQuery = firestore
       .collection('entry_logs')
@@ -57,6 +73,10 @@ export async function POST(request: NextRequest) {
     const result = await firestore.runTransaction(async (tx) => {
       const userSnap = await tx.get(userRef);
       if (!userSnap.exists) return { status: 'not_found' as const };
+      // Reintento de sincronización de un ingreso diferido ya registrado.
+      if (clientId && (await tx.get(entryRef)).exists) {
+        return { status: 'duplicate' as const, lastEntry: now };
+      }
 
       // Anti-duplicados dentro de la transacción (dos escaneos simultáneos no pasan ambos).
       const sameDay = await tx.get(sameDayQuery);
@@ -64,7 +84,8 @@ export async function POST(request: NextRequest) {
         .map((d) => toDate(d.data().timestamp))
         .filter((d): d is Date => !!d)
         .sort((a, b) => b.getTime() - a.getTime())[0];
-      if (lastEntry && now.getTime() - lastEntry.getTime() < DUPLICATE_WINDOW_MS) {
+      // abs(): un ingreso diferido puede ser anterior al último registrado.
+      if (lastEntry && Math.abs(now.getTime() - lastEntry.getTime()) < DUPLICATE_WINDOW_MS) {
         return { status: 'duplicate' as const, lastEntry };
       }
 
@@ -88,7 +109,7 @@ export async function POST(request: NextRequest) {
         planExpira: expira,
         timestamp: now,
         date: dateStr,
-        source: 'qr',
+        source: deferredSource || 'qr',
         ...authorizedBy,
       });
       // Copia para el historial individual del panel de recepción (antes la escribía el cliente).
@@ -101,7 +122,10 @@ export async function POST(request: NextRequest) {
       });
 
       // F3-26: último ingreso del socio (lista de socios en riesgo de abandono).
-      tx.update(userRef, { lastEntryAt: now });
+      const previousLast = toDate(user.lastEntryAt);
+      if (!previousLast || previousLast.getTime() < now.getTime()) {
+        tx.update(userRef, { lastEntryAt: now });
+      }
 
       // F2-03: agregados del día en la misma transacción (mapa de concurrencia, medias, diario).
       recordEntryInDailyStats(firestore, tx, {
