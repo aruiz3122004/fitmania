@@ -7,7 +7,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/fitministration', '/fitception', '/api/', '/perfil', '/pago', '/carrito'],
+      disallow: ['/fitministration', '/fitception', '/api/', '/perfil', '/pago', '/carrito', '/planilla-ingresos', '/offline'],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
   }

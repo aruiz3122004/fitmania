@@ -9,6 +9,8 @@
 // Sin dominio, Resend solo permite "onboarding@resend.dev" y solo hacia el
 // correo dueño de la cuenta (modo pruebas).
 
+import { getAdminFirestore } from '@/lib/firebase-admin'
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 
 /**
@@ -58,7 +60,27 @@ interface SendMailOptions {
  * fallos de red/timeout). Los errores definitivos (remitente sin dominio
  * verificado, destinatario inválido, etc.) se propagan de inmediato.
  */
+/** F2-25: rastro de cada correo (enviado o fallido) en `email_events`, sin el cuerpo. */
+async function logEmailEvent(event: { to: string; subject: string; status: 'sent' | 'failed'; attempts: number; providerId?: string; error?: string }) {
+  try {
+    await getAdminFirestore().collection('email_events').add({ ...event, createdAt: new Date() })
+  } catch (err) {
+    console.error('[mail] No se pudo registrar el evento de correo:', err)
+  }
+}
+
 async function sendWithRetry(mail: SendMailOptions, maxAttempts = 3) {
+  try {
+    const data = await sendWithRetryInner(mail, maxAttempts)
+    await logEmailEvent({ to: mail.to, subject: mail.subject, status: 'sent', attempts: data?.__attempt || 1, providerId: data?.id })
+    return data
+  } catch (err: any) {
+    await logEmailEvent({ to: mail.to || '', subject: mail.subject, status: 'failed', attempts: maxAttempts, error: String(err?.message || err).slice(0, 300) })
+    throw err
+  }
+}
+
+async function sendWithRetryInner(mail: SendMailOptions, maxAttempts: number) {
   if (!RESEND_API_KEY) {
     throw new Error('Falta RESEND_API_KEY en las variables de entorno.')
   }
@@ -102,7 +124,7 @@ async function sendWithRetry(mail: SendMailOptions, maxAttempts = 3) {
         console.log(
           `[mail] Enviado a ${to}${adminCopy ? ` (copia a ${adminCopy})` : ''} (id: ${data?.id || 'sin-id'}, intento ${attempt}/${maxAttempts})`
         )
-        return data
+        return { ...data, __attempt: attempt }
       }
 
       const bodyText = await res.text().catch(() => '')

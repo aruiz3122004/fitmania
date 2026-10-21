@@ -59,11 +59,18 @@ export async function deleteMemberAccount(db: Firestore, auth: Auth, uid: string
   pqrs.docs.forEach((doc) => { writer.update(doc.ref, { userName: ANON_NAME, userEmail: '', anonymizedAt: new Date() }); summary.pqrs++; });
   reports.docs.forEach((doc) => { writer.update(doc.ref, { reportante: ANON_NAME }); summary.reports++; });
 
-  // 6. Perfil.
+  // 6. Rastro de correos enviados al socio (contiene su dirección).
+  const email = await auth.getUser(uid).then((u) => u.email).catch(() => null);
+  if (email) {
+    const emails = await db.collection('email_events').where('to', '==', email).get();
+    emails.docs.forEach((doc) => writer.delete(doc.ref));
+  }
+
+  // 7. Perfil.
   writer.delete(db.collection('users').doc(uid));
   await writer.close();
 
-  // 7. Cuenta de autenticación (al final: si algo falla antes, el usuario puede reintentar).
+  // 8. Cuenta de autenticación (al final: si algo falla antes, el usuario puede reintentar).
   try {
     await auth.deleteUser(uid);
   } catch (err: any) {

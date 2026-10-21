@@ -3,7 +3,8 @@
 export const dynamic = 'force-dynamic'
 
 import React, { useState, useEffect } from 'react';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import Image from 'next/image';
 import {
@@ -275,6 +276,18 @@ export default function AdminPage() {
   const [stats, setStats] = useState<any>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
+
+  // F3-08: notificaciones en tiempo real (stock bajo, conteos, cierres de caja, compras).
+  // Las reglas permiten leer `notifications` solo con el claim `admin`.
+  useEffect(() => {
+    if (visualState !== 'dashboard') return;
+    const q = query(collection(db, 'notifications'), orderBy('fecha', 'desc'), limit(50));
+    return onSnapshot(
+      q,
+      (snap) => setNotifications(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (err) => console.error('Notificaciones en tiempo real no disponibles:', err)
+    );
+  }, [visualState]);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [productsList, setProductsList] = useState<any[]>([]);
   const [pqrsList, setPqrsList] = useState<any[]>([]);

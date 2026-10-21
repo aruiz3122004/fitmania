@@ -15,6 +15,7 @@ import dynamic from 'next/dynamic'
 import EntryHistoryTab from '@/components/recepcion/entry-history-tab'
 import InventoryTab from '@/components/recepcion/inventory-tab'
 import CashTab from '@/components/recepcion/cash-tab'
+import { ManualEntryForm } from '@/components/recepcion/manual-entry-form'
 
 const Scanner = dynamic(() => import('@yudiel/react-qr-scanner').then((mod) => mod.Scanner), {
   ssr: false,
@@ -534,7 +535,10 @@ export default function ReceptionPage() {
 
         {/* History Tab */}
         {activeTab === 'history' && (
-          <EntryHistoryTab />
+          <>
+            <ManualEntryForm members={usersList} />
+            <EntryHistoryTab />
+          </>
         )}
 
         {activeTab === 'inventory' && (
