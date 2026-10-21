@@ -257,15 +257,15 @@ function PostCard({
     if (!reportReason || !user) return
 
     try {
-      await addDoc(collection(db, 'reportes'), {
-        reportante: user.username,
-        reportante_id: user.uid,
-        publicacion_id: post.id,
-        autor_publicacion: post.autor_username,
-        motivo: reportReason,
-        fecha_publicacion: post.created_at,
-        fecha_reporte: new Date()
+      // El servidor registra el reporte (datos del post y del socio, sin duplicados).
+      const idToken = await auth.currentUser?.getIdToken()
+      if (!idToken) throw new Error('sin sesión')
+      const res = await fetch('/api/forum/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ postId: post.id, motivo: reportReason }),
       })
+      if (!res.ok) throw new Error('reporte')
 
       setReportStatus('success')
     } catch (err) {

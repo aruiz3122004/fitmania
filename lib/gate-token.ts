@@ -75,6 +75,8 @@ export function gateCookieOptions(maxAgeSeconds: number) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     path: '/',
+    // Lax (no Strict): con Strict, entrar con el enlace de la llave desde otro sitio
+    // perdería la cookie en la redirección. Las cookies de SESIÓN sí son Strict.
     sameSite: 'lax' as const,
   };
 }

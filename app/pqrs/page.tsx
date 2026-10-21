@@ -16,8 +16,7 @@ import {
   ShieldCheck
 } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
-import { db } from '@/lib/firebase'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { auth } from '@/lib/firebase'
 import { Loader2 } from 'lucide-react'
 
 const tiposPQRS = [
@@ -78,30 +77,17 @@ export default function PQRSPage() {
 
     setLoading(true)
     try {
-      const now = new Date()
-      const fecha = now.toLocaleDateString('es-CO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
+      // El servidor radica la PQRS (nombre y correo del perfil, límite anti-spam).
+      const idToken = await auth.currentUser?.getIdToken()
+      if (!idToken) throw new Error('Tu sesión expiró. Inicia sesión de nuevo.')
+      const res = await fetch('/api/pqrs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ tipo: selectedTipo, mensaje }),
       })
-      const hora = now.toLocaleTimeString('es-CO', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'No se pudo enviar la solicitud.')
 
-      const docRef = await addDoc(collection(db, 'pqrs'), {
-        tipo: selectedTipo,
-        mensaje,
-        userId: user.uid,
-        userName: user.username || 'Usuario',
-        userEmail: user.email,
-        fecha,
-        hora,
-        createdAt: serverTimestamp(),
-        status: 'pending'
-      })
-      
       setIsSubmitted(true)
     } catch (error) {
       console.error('Error submitting PQRS:', error)

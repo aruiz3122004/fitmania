@@ -95,8 +95,10 @@ export default function RegistroPage() {
       return
     }
 
-    if (formData.password.length < 6) {
-      setError('La contrasena debe tener al menos 6 caracteres')
+    // Contraseña mínima: 8 caracteres con letras y números (configurar la misma
+    // política en Firebase Auth → Configuración → Política de contraseñas).
+    if (formData.password.length < 8 || !/[A-Za-z]/.test(formData.password) || !/[0-9]/.test(formData.password)) {
+      setError('La contraseña debe tener al menos 8 caracteres e incluir letras y números')
       return
     }
 
@@ -157,7 +159,11 @@ export default function RegistroPage() {
       if (err?.code === 'auth/email-already-in-use') {
         setError('Este correo ya esta registrado.')
       } else {
-        setError(err.message || 'Error al crear la cuenta. Intenta de nuevo.')
+        // Los errores de Firebase traen códigos internos: se muestran mensajes propios.
+        if (err?.code === 'auth/weak-password') setError('La contraseña es muy débil. Usa al menos 8 caracteres con letras y números.')
+        else if (err?.code === 'auth/invalid-email') setError('El correo no es válido.')
+        else if (err?.code === 'auth/too-many-requests') setError('Demasiados intentos. Espera unos minutos.')
+        else setError(err?.message && !String(err.message).startsWith('Firebase') ? err.message : 'Error al crear la cuenta. Intenta de nuevo.')
       }
     } finally {
       setLoading(false)

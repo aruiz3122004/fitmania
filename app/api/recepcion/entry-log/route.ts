@@ -5,6 +5,7 @@ import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyReceptionRequest } from '@/lib/auth-helpers';
 import { getDateKeyInAppTz, formatInAppTz, getHourKeyInAppTz } from '@/lib/datetime';
 import { DAILY_STATS, recordEntryInDailyStats } from '@/lib/attendance';
+import { maskEmail } from '@/lib/reception-members';
 import ExcelJS from 'exceljs';
 
 // T-19: límites de exportación para no agotar memoria/tiempo en la función serverless.
@@ -284,7 +285,8 @@ export async function GET(request: NextRequest) {
         id: doc.id,
         userId: d.userId,
         userName: d.userName,
-        userEmail: d.userEmail,
+        // Minimización: recepción no necesita el correo completo del socio.
+        userEmail: maskEmail(d.userEmail),
         hasPlanActivo: d.hasPlanActivo,
         planNombre: d.planNombre,
         timestamp: ts,

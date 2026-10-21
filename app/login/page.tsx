@@ -117,10 +117,15 @@ export default function LoginPage() {
 
       router.push('/')
     } catch (err: any) {
-      if (err?.code === 'auth/invalid-credential') {
-        setError('Credenciales invalidas.')
+      // Mensaje genérico: no revelar si el correo existe ni detalles internos de Firebase.
+      if (['auth/invalid-credential', 'auth/user-not-found', 'auth/wrong-password', 'auth/invalid-email'].includes(err?.code)) {
+        setError('Correo o contraseña incorrectos.')
+      } else if (err?.code === 'auth/too-many-requests') {
+        setError('Demasiados intentos. Espera unos minutos o restablece tu contraseña.')
+      } else if (err?.code === 'auth/invalid-verification-code') {
+        setError('El código de verificación no es correcto.')
       } else {
-        setError(err.message || 'Error al iniciar sesion. Intenta de nuevo.')
+        setError(err?.message?.startsWith('Se requiere') ? err.message : 'No se pudo iniciar sesión. Intenta de nuevo.')
       }
     } finally {
       setLoading(false)
@@ -137,12 +142,13 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await sendPasswordResetEmail(auth, email)
-      setSuccess('Se ha enviado un enlace para restablecer tu contraseña a tu correo. Revisa tu bandeja de entrada.')
+      setSuccess('Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.')
     } catch (err: any) {
-      if (err.code === 'auth/user-not-found') {
-        setError('No existe un usuario con este correo.')
+      // Misma respuesta exista o no la cuenta (evita enumerar correos registrados).
+      if (err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-email') {
+        setSuccess('Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.')
       } else {
-        setError('Error al enviar el correo. Verifica tu conexion.')
+        setError('No se pudo enviar el correo. Verifica tu conexión e intenta de nuevo.')
       }
     } finally {
       setLoading(false)

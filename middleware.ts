@@ -89,6 +89,8 @@ function buildCsp(nonce: string): string {
     worker-src 'self' blob:;
     object-src 'none';
     base-uri 'self';
+    frame-ancestors 'none';
+    form-action 'self';
     upgrade-insecure-requests;
   `.replace(/\s{2,}/g, ' ').trim();
 }
@@ -176,7 +178,11 @@ async function handlePanelGate(
 
   const key = request.nextUrl.searchParams.get('key');
   if (key && timingSafeEqualStrings(key, secret)) {
-    const resp = nextWithNonce(request, nonce, csp);
+    // Se quita la llave de la URL (historial del navegador, Referer, capturas) y se
+    // continúa con la cookie firmada.
+    const clean = request.nextUrl.clone();
+    clean.searchParams.delete('key');
+    const resp = applySecurityHeaders(NextResponse.redirect(clean, 303), csp);
     resp.cookies.set(
       GATE_COOKIE[scope],
       await createGateToken(scope, secret, GATE_TTL_SECONDS),
@@ -332,6 +338,23 @@ export default async function middleware(request: NextRequest) {
 
   if (normalizedPath === '/fitception') {
     return handlePanelGate(request, 'recepcion', !!receptionSession, nonce, csp);
+  }
+
+  // -------------------------------------------------------
+  // CSRF: verificación de origen en métodos que modifican datos
+  // -------------------------------------------------------
+  // Las APIs usan cookies de sesión: un sitio externo podría intentar enviar un
+  // formulario (p. ej. enctype=text/plain con un cuerpo que parece JSON). Si el
+  // navegador indica un Origin distinto al nuestro, se rechaza. Se exceptúan los
+  // endpoints llamados servidor a servidor (webhook de pagos y cron), que no traen
+  // Origin y se autentican con firma o secreto propios.
+  const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
+  const isServerToServer = pathname.startsWith('/api/stripe/webhook') || pathname.startsWith('/api/cron/');
+  if (pathname.startsWith('/api/') && isMutation && !isServerToServer) {
+    const origin = request.headers.get('origin');
+    if (origin && origin !== request.nextUrl.origin) {
+      return applySecurityHeaders(NextResponse.json({ error: 'Origen no permitido' }, { status: 403 }), csp);
+    }
   }
 
   // -------------------------------------------------------

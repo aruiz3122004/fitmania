@@ -45,6 +45,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Identidad del autor en el foro: el nombre debe ser el de su perfil y solo puede
+    // marcarse "premium" si su plan está vigente (antes se podía publicar con otro
+    // nombre o con la insignia premium sin serlo).
+    function authorProfileMatches() {
+      let u = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return request.resource.data.autor_username == u.get('username', '')
+        && (request.resource.data.get('autor_is_premium', false) == false
+            || (u.get('plan', null) != null && u.plan.expira > request.time));
+    }
+
     // Un like válido cambia la lista SOLO en el uid de quien lo hace (agrega o quita).
     function isOwnLikeToggle() {
       let before = resource.data.get('likes', []).toSet();
@@ -57,6 +67,7 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isVerified()
         && request.resource.data.autor_id == request.auth.uid
+        && authorProfileMatches()
         && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium',
              'contenido', 'imagen_url', 'imagen_public_id', 'tipo_recurso', 'likes', 'comentarios', 'created_at'])
         && request.resource.data.contenido is string
@@ -80,6 +91,7 @@ service cloud.firestore {
       allow create: if isVerified()
         && exists(/databases/$(database)/documents/posts/$(postId))
         && request.resource.data.autor_id == request.auth.uid
+        && authorProfileMatches()
         && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium',
              'contenido', 'created_at'])
         && request.resource.data.contenido is string
@@ -98,18 +110,8 @@ service cloud.firestore {
 
     match /pqrs/{pqrsId} {
       allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
-      // F1-29: campos conocidos, autor y correo del token, tamaño acotado y estado inicial fijo.
-      allow create: if isSignedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.keys().hasOnly(['tipo', 'mensaje', 'userId', 'userName', 'userEmail',
-             'fecha', 'hora', 'createdAt', 'status'])
-        && request.resource.data.userEmail == request.auth.token.email
-        && request.resource.data.mensaje is string
-        && request.resource.data.mensaje.size() > 0
-        && request.resource.data.mensaje.size() <= 3000
-        && request.resource.data.tipo is string
-        && request.resource.data.tipo.size() <= 40
-        && request.resource.data.status == 'pending';
+      // Se radican vía /api/pqrs (servidor: datos del token y límite anti-spam).
+      allow create: if false;
       allow update, delete: if isAdmin();
     }
 
@@ -167,12 +169,8 @@ service cloud.firestore {
     // Reportes de usuarios
     match /reportes/{reporteId} {
       allow read: if isAdmin();
-      allow create: if isSignedIn()
-        && request.resource.data.reportante_id == request.auth.uid
-        && request.resource.data.keys().hasOnly(['reportante', 'reportante_id', 'publicacion_id', 'autor_publicacion',
-             'motivo', 'fecha_publicacion', 'fecha_reporte'])
-        && request.resource.data.motivo is string
-        && request.resource.data.motivo.size() <= 500;
+      // Se crean vía /api/forum/reports (servidor: sin duplicados y con límite).
+      allow create: if false;
       allow update, delete: if isAdmin();
     }
   }

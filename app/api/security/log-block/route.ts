@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { timingSafeEqualStrings } from '@/lib/gate-token';
 
 export async function POST(request: Request) {
   try {
@@ -9,7 +10,7 @@ export async function POST(request: Request) {
     // Proteger este endpoint para que solo el middleware propio pueda invocarlo.
     // B-6: secreto independiente (no reutilizar UPSTASH_REDIS_REST_TOKEN) y
     // rechazar si el secreto no está configurado (evita que '' === '' pase).
-    if (!expectedSecret || internalSecret !== expectedSecret) {
+    if (!expectedSecret || !timingSafeEqualStrings(internalSecret || '', expectedSecret)) {
         return NextResponse.json({ error: 'Acceso Denegado' }, { status: 403 });
     }
 

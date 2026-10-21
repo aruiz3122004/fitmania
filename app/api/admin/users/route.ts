@@ -23,7 +23,8 @@ export async function GET(request: Request) {
     });
 
     const users = authUsers.map(user => {
-      const fsData = firestoreUsers[user.uid] || {};
+      // Minimización: el panel no necesita datos de salud (peso/altura) ni preferencias.
+      const { peso: _peso, altura: _altura, notificationPrefs: _prefs, ...fsData } = firestoreUsers[user.uid] || {};
       return {
         uid: user.uid,
         email: user.email,

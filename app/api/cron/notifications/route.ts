@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { generatePlanExpiryNotifications } from '@/lib/notifications';
+import { timingSafeEqualStrings } from '@/lib/gate-token';
 
 // T-18: job programado (Vercel Cron) que genera las notificaciones de planes por
 // vencer. Se mantiene fuera del panel admin para que el GET sea solo lectura.
@@ -16,7 +17,8 @@ export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get('authorization');
 
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  // Comparación en tiempo constante (no filtra el secreto por tiempos de respuesta).
+  if (!cronSecret || !timingSafeEqualStrings(authHeader || '', `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
