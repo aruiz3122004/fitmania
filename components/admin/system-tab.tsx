@@ -29,6 +29,7 @@ const CHECK_LABELS: Record<string, string> = {
   payments: 'Pagos',
   email: 'Correos',
   cron: 'Tareas programadas',
+  config: 'Configuración',
 };
 
 function todayKey() {

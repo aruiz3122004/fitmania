@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 import { getAdminFirestore } from '@/lib/firebase-admin';
+import { checkEnv } from '@/lib/env';
 
 /**
  * GET /api/health — estado de las dependencias críticas (F2-10).
@@ -40,6 +41,9 @@ export async function GET() {
   checks.rateLimit = redisUrl && redisToken
     ? { critical: false, ...(await timed(() => new Redis({ url: redisUrl, token: redisToken }).ping())) }
     : { critical: false, ok: false };
+
+  // F1-02: variables críticas presentes (solo se informa si faltan, no cuáles).
+  checks.config = { critical: true, ok: checkEnv().missingCritical.length === 0 };
 
   // Configuración mínima para cobrar, enviar correos y correr el cron.
   checks.payments = { critical: true, ok: !!process.env.STRIPE_SECRET_KEY && !!process.env.STRIPE_WEBHOOK_SECRET };

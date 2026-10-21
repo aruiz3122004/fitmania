@@ -32,10 +32,10 @@ jobs:
       - name: Pruebas unitarias
         run: npm test
 
-      # T-13 (auditoría A-2): el build FALLA si hay vulnerabilidades CRÍTICAS
-      # en dependencias de producción. Las altas/moderadas se reportan aparte.
+      # T-13 / F1-30: el build FALLA si hay vulnerabilidades ALTAS o CRÍTICAS
+      # en dependencias de producción. Las moderadas se reportan aparte.
       - name: Auditoría crítica de producción
-        run: npm audit --omit=dev --audit-level=critical
+        run: npm audit --omit=dev --audit-level=high
 
       # Reporte informativo (no rompe el build) con el detalle de prod.
       - name: Reporte completo (informativo)
