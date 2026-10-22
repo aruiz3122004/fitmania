@@ -44,8 +44,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         (userDoc) => {
           const raw = userDoc.data()
           const avatarId = raw?.avatar || 'fitman'
-          const resolvedUrl = getAvatarUrlById(avatarId)
-          const photoURL = resolvedUrl || raw?.photoURL || getAvatarUrlById('fitman')
+          // `photoURL` manda: lo escriben tanto la foto subida como el selector de avatares.
+          // Antes ganaba el avatar predeterminado y la foto subida nunca se veía.
+          const photoURL = raw?.photoURL || getAvatarUrlById(avatarId) || getAvatarUrlById('fitman')
 
           setEnrichedUser({
             uid: firebaseUser.uid,

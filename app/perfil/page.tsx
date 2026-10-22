@@ -143,8 +143,9 @@ export default function PerfilPage() {
       // Update local state
       updateUser({ photoURL: downloadURL })
       setStatus('Avatar actualizado correctamente.')
-    } catch {
-      setStatus('No se pudo subir la imagen. Intenta de nuevo.')
+    } catch (err: any) {
+      // uploadToCloudinary explica el motivo (formato, tamaño, límite por hora).
+      setStatus(err?.message || 'No se pudo subir la imagen. Intenta de nuevo.')
       setAvatarPreview(null)
     } finally {
       setIsUploadingAvatar(false)
@@ -229,7 +230,7 @@ export default function PerfilPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   className="hidden"
                   onChange={handleAvatarChange}
                 />
