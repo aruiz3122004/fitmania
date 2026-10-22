@@ -28,6 +28,8 @@ const RECOMMENDED: Record<string, string> = {
   CLOUDINARY_API_KEY: 'subidas firmadas',
   CLOUDINARY_API_SECRET: 'subidas firmadas',
   NEXT_PUBLIC_FIREBASE_VAPID_KEY: 'notificaciones push',
+  MERCADOPAGO_ACCESS_TOKEN: 'pagos con Mercado Pago (tarjeta, PSE, Efecty)',
+  MERCADOPAGO_WEBHOOK_SECRET: 'firma de los webhooks de Mercado Pago',
 };
 
 export interface EnvReport {

@@ -153,6 +153,16 @@ service cloud.firestore {
       allow update: if isAdmin();
     }
 
+    // Pagos de Mercado Pago (F1-18/F1-19): los crea /api/payments/checkout y los
+    // actualiza el webhook. El cliente consulta su estado vía /api/payments/status.
+    match /payments/{ref} {
+      allow read, write: if false;
+    }
+    match /payment_events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /notifications/{notifId} {
       allow read, write: if isAdmin();
     }

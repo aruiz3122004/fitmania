@@ -18,8 +18,10 @@
 
 ## FASE 0 — Decisiones y configuración base (20 – 26 oct)
 
-- [ ] **F0-01 · Elegir pasarela local y abrir cuenta comercial** — `[EXT]` — L — Ref 4.15, B1
-  - Recomendado: Wompi. Alternativas: Mercado Pago, ePayco. Requiere RUT, cámara de comercio y cuenta bancaria del negocio.
+- [~] **F0-01 · Elegir pasarela local y abrir cuenta comercial** — `[EXT]` — L — Ref 4.15, B1
+  - **Decisión (2026-10-21): Mercado Pago** (Checkout Pro: tarjeta, PSE, Efecty). Wompi descartado: exige inscribir el comercio incluso para el sandbox. Sin Nequi ni Botón Bancolombia.
+  - Hecho: credenciales de prueba (aplicación + cuentas de prueba vendedor/comprador, sin RUT).
+  - Pendiente antes de cobrar: verificar la cuenta (RUT, cuenta bancaria) y pasar a credenciales de producción.
   - Confirmar los métodos disponibles: tarjeta, PSE, Nequi, Botón Bancolombia y Daviplata.
   - **Criterio:** llaves de sandbox y producción, y secreto de eventos (webhook), en mano.
 - [ ] **F0-02 · Migrar a Vercel Pro y Firebase Blaze** — `[CFG]` — S — Ref B10, 4.2
@@ -128,10 +130,12 @@
   - Campo obligatorio en `planes` y en `components/admin/plan-modal.tsx`.
   - **Criterio:** ningún plan sin `durationDays` se puede guardar.
 - [~] **F1-18 · Checkout autenticado con la pasarela local** — `[CÓDIGO]` — L — Ref 4.15, B1 — Depende de F0-01
+  - Hecho (Mercado Pago, en paralelo a Stripe): `POST /api/payments/checkout`, `lib/payments/pricing.ts` (precio compartido con Stripe), `/pago` y `/pago/resultado`. Falta probar con las credenciales de prueba.
   - Nuevo `POST /api/payments/checkout`: verifica el ID token, toma `uid` y email del token y crea `payments/{ref}` con `status: pending`, el snapshot de ítems y precios, el `planId` y el `requestId`.
   - Reemplazar `app/pago/page.tsx` por el widget o checkout de la pasarela (tarjeta, PSE, Nequi).
   - **Criterio:** el body del cliente no puede definir uid, email ni montos.
 - [~] **F1-19 · Webhook idempotente y transaccional** — `[CÓDIGO]` — L — Ref B3, B4, 4.9
+  - Hecho (Mercado Pago): `POST /api/payments/mercadopago/webhook` + `lib/payments/fulfillment.ts` (firma `x-signature`, estado leído de la API, transición de estado en `payments/{ref}`, `payment_events`, 5xx al fallar). Falta configurar `MERCADOPAGO_WEBHOOK_SECRET` y probar reenvíos.
   - Verificar la firma o checksum.
   - Registrar el evento en `payment_events/{eventId}` y omitirlo si ya existe.
   - En una transacción: `pending → approved`, activar el plan con `planes/{planId}.durationDays`, descontar el stock con verificación y crear la orden con el precio del snapshot.
@@ -143,7 +147,8 @@
 - [x] **F1-21 · Reembolsos y contracargos** — `[CÓDIGO]` — M — Ref 4.15
   - Eventos de reembolso o anulación: revierten el plan (descuenta los días) o el stock, y dejan auditoría.
   - **Criterio:** un reembolso de prueba revierte el efecto y queda en `audit_logs`.
-- [ ] **F1-22 · Conciliación de pagos pendientes** — `[CÓDIGO]` — S — Ref 4.15
+- [~] **F1-22 · Conciliación de pagos pendientes** — `[CÓDIGO]` — S — Ref 4.15
+  - Hecho: `lib/payments/reconcile.ts`, al volver a `/pago/resultado` y en el cron diario (Vercel Hobby no permite cron horario). Requiere desplegar `firestore.indexes.json`.
   - Cron horario: los `payments` en `pending` con más de 1 h se consultan contra la API de la pasarela.
   - **Criterio:** un pago aprobado cuyo webhook se perdió queda activado en menos de 1 h.
 - [ ] **F1-23 · Retirar Stripe y el código muerto** — `[CÓDIGO]` — S — Ref 4.15

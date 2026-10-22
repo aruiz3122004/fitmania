@@ -349,10 +349,16 @@ export default async function middleware(request: NextRequest) {
   // endpoints llamados servidor a servidor (webhook de pagos y cron), que no traen
   // Origin y se autentican con firma o secreto propios.
   const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
-  const isServerToServer = pathname.startsWith('/api/stripe/webhook') || pathname.startsWith('/api/cron/');
+  const isServerToServer = pathname.startsWith('/api/stripe/webhook')
+    || pathname.startsWith('/api/payments/mercadopago/webhook')
+    || pathname.startsWith('/api/cron/');
   if (pathname.startsWith('/api/') && isMutation && !isServerToServer) {
     const origin = request.headers.get('origin');
-    if (origin && origin !== request.nextUrl.origin) {
+    // Solo desarrollo: el túnel https de pruebas de pagos (next.config allowedDevOrigins)
+    // llega con Origin del túnel, pero el servidor se ve a sí mismo como localhost.
+    const isDevTunnel = process.env.NODE_ENV !== 'production'
+      && !!origin && /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(origin);
+    if (origin && origin !== request.nextUrl.origin && !isDevTunnel) {
       return applySecurityHeaders(NextResponse.json({ error: 'Origen no permitido' }, { status: 403 }), csp);
     }
   }

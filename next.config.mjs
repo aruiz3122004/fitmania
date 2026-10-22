@@ -7,6 +7,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   // No anunciar el framework en las cabeceras (X-Powered-By).
   poweredByHeader: false,
+  // Solo desarrollo: permite navegar el servidor local a través de un túnel https
+  // (pruebas de Mercado Pago con retorno automático y webhook).
+  allowedDevOrigins: ['*.trycloudflare.com'],
   turbopack: {
     root: __dirname,
   },

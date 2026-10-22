@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react'
+import { auth } from '@/lib/firebase'
+import { useCartStore } from '@/lib/store'
 
 type Estado = 'cargando' | 'exitoso' | 'fallido' | 'pendiente'
 
@@ -15,7 +17,48 @@ function ResultadoContent() {
   const [estado, setEstado] = useState<Estado>('cargando')
   const [paymentIntentId, setPaymentIntentId] = useState('')
  
+  const { clearCart } = useCartStore()
+
   useEffect(() => {
+    // Mercado Pago (F1-18): vuelve con `ref` (propia) y `payment_id`. El estado se le
+    // pide al servidor, que concilia con Mercado Pago si el webhook aún no llegó.
+    const ref = searchParams.get('ref') || searchParams.get('external_reference')
+    if (ref) {
+      let cancelled = false
+      const paymentId = searchParams.get('payment_id') || searchParams.get('collection_id') || ''
+      setPaymentIntentId(paymentId)
+
+      const check = async (attempt: number) => {
+        try {
+          await auth.authStateReady()
+          const idToken = await auth.currentUser?.getIdToken()
+          if (!idToken) { if (!cancelled) setEstado('pendiente'); return }
+          const qs = new URLSearchParams({ ref })
+          if (paymentId && paymentId !== 'null') qs.set('payment_id', paymentId)
+          const res = await fetch(`/api/payments/status?${qs}`, { headers: { Authorization: `Bearer ${idToken}` } })
+          const data = await res.json().catch(() => ({}))
+          if (cancelled) return
+          if (data.paymentId) setPaymentIntentId(String(data.paymentId))
+          if (data.status === 'approved') {
+            if (data.type === 'products') clearCart()
+            setEstado('exitoso')
+          } else if (['rejected', 'refunded', 'charged_back', 'expired'].includes(data.status)) {
+            setEstado('fallido')
+          } else if (data.status === 'pending' && attempt < 5) {
+            // PSE o webhook en camino: se reintenta unos segundos antes de mostrar "en proceso".
+            setTimeout(() => check(attempt + 1), 3000)
+          } else {
+            setEstado('pendiente')
+          }
+        } catch {
+          if (!cancelled) setEstado('pendiente')
+        }
+      }
+      check(0)
+      return () => { cancelled = true }
+    }
+
+    // Stripe (en paralelo hasta F1-23).
     const redirectStatus = searchParams.get('redirect_status')
     const intentId = searchParams.get('payment_intent') || ''
     setPaymentIntentId(intentId)
@@ -29,7 +72,7 @@ function ResultadoContent() {
     } else {
       setEstado('fallido')
     }
-  }, [searchParams])
+  }, [searchParams, clearCart])
  
   const config = {
     exitoso: {
@@ -50,7 +93,7 @@ function ResultadoContent() {
       icon: <Clock className="w-20 h-20 text-yellow-600" />,
       bgBanner: 'bg-yellow-600',
       titulo: 'PAGO EN PROCESO',
-      mensaje: 'Tu pago está siendo procesado por el banco. Esto puede tardar unos minutos. Te notificaremos por correo cuando se confirme.',
+      mensaje: 'Tu pago está siendo procesado. Con PSE puede tardar unos minutos; con Efecty se confirma cuando pagues en el punto. Te enviaremos un correo cuando se confirme.',
       accion: { label: 'IR AL INICIO', href: '/' },
     },
     cargando: {

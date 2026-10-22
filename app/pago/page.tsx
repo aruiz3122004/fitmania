@@ -13,6 +13,7 @@ import { auth, db } from '@/lib/firebase'
 import { doc } from 'firebase/firestore'
 import { ShieldCheck, CreditCard, Loader2, AlertTriangle, Timer } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
 import { getRateLimitStatus, consumeRateLimitAttempt, formatTimeLeft } from '@/lib/rate-limit-client'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!)
@@ -287,6 +288,68 @@ function CheckoutForm({ amount, concept, planId, cartItems, montoFormateado }: {
   )
 }
 
+/**
+ * F1-18: pago con Mercado Pago (Checkout Pro: tarjeta, PSE, Efecty). El servidor
+ * calcula el monto y devuelve la URL del checkout; el resultado se confirma por
+ * webhook y al volver a /pago/resultado.
+ */
+function MercadoPagoCheckout({ planId, cartItems }: { planId?: string; cartItems: any[] }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handlePagar = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      const idToken = await auth.currentUser?.getIdToken()
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión para pagar.')
+
+      const res = await fetch('/api/payments/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({
+          planId,
+          items: !planId && cartItems.length > 0
+            ? cartItems.map((item) => ({ id: item.id, cantidad: item.cantidad }))
+            : undefined,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.url) throw new Error(data.error || 'No se pudo iniciar el pago.')
+
+      // Se sale del sitio hacia Mercado Pago; `loading` queda activo hasta la navegación.
+      window.location.assign(data.url)
+    } catch (err: any) {
+      setError(err.message || 'No se pudo iniciar el pago.')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div>
+      {error && (
+        <div className="bg-red-light border-3 border-primary p-4 mb-4 flex items-center gap-4">
+          <AlertTriangle className="w-6 h-6 text-primary shrink-0" />
+          <p className="font-label text-[11px] font-black text-primary uppercase leading-tight tracking-wider">{error}</p>
+        </div>
+      )}
+      <button
+        onClick={handlePagar}
+        disabled={loading}
+        className="w-full flex items-center justify-center gap-3 font-display italic text-2xl tracking-[2px] text-white bg-primary py-5 border-4 border-secondary shadow-comic transition-all hover:bg-red-dark hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[8px_8px_0_var(--navy)] disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed"
+      >
+        {loading
+          ? <><Loader2 className="w-8 h-8 animate-spin" />REDIRIGIENDO...</>
+          : <><ShieldCheck className="w-8 h-8" />PAGAR CON MERCADO PAGO</>
+        }
+      </button>
+      <p className="font-label text-[10px] text-gray-400 mt-3 font-bold uppercase tracking-widest text-center">
+        Tarjeta débito o crédito · PSE · Efecty
+      </p>
+    </div>
+  )
+}
+
 function PagoContent() {
   const searchParams = useSearchParams()
   const { isAuthenticated } = useAuthStore()
@@ -361,10 +424,33 @@ function PagoContent() {
               PROTECTED CHECKOUT
             </span>
             <h1 className="font-display text-4xl text-secondary tracking-[2px] uppercase italic">
-              PAGAR CON <span className="text-primary">TARJETA</span>
+              FINALIZAR <span className="text-primary">PAGO</span>
             </h1>
           </div>
-          <div className="bg-white border-4 border-secondary shadow-[12px_12px_0_0_var(--red-primary)] p-8">
+          {/* F1-06: pagar exige correo verificado; el aviso permite reenviar el enlace aquí mismo. */}
+          <EmailVerificationBanner />
+          <div className="bg-white border-4 border-secondary shadow-[12px_12px_0_0_var(--red-primary)] p-8 mb-8">
+            <div className="bg-secondary text-white border-3 border-secondary p-5 mb-6 shadow-comic-sm">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-label text-xs text-white/60 uppercase tracking-wider mb-1">Concepto</p>
+                  <p className="font-label font-bold text-base">{planData?.name || ''}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-label text-xs text-white/60 uppercase tracking-wider mb-1">Total</p>
+                  <p className="font-display text-2xl text-accent">{montoFormateado}</p>
+                </div>
+              </div>
+            </div>
+            <MercadoPagoCheckout planId={planId || undefined} cartItems={items} />
+          </div>
+
+          {/* Stripe se mantiene en paralelo mientras se valida Mercado Pago (F1-23 pendiente). */}
+          <details className="bg-white border-4 border-secondary p-6">
+            <summary className="font-label font-bold text-xs text-secondary uppercase tracking-wider cursor-pointer">
+              Otra opción: tarjeta internacional (Stripe)
+            </summary>
+            <div className="mt-6">
             <Elements stripe={stripePromise}>
               <CheckoutForm 
                 amount={planData?.price || 0} 
@@ -374,7 +460,8 @@ function PagoContent() {
                 cartItems={items} 
               />
             </Elements>
-          </div>
+            </div>
+          </details>
         </div>
       </section>
       <Footer />
