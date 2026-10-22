@@ -72,7 +72,7 @@ function buildCsp(nonce: string): string {
   // Producción: 'nonce' + 'strict-dynamic' (sin 'unsafe-inline' ni 'unsafe-eval').
   // Desarrollo: Next/webpack requieren 'unsafe-eval' e inline para el HMR.
   const scriptSrc = isProd
-    ? `'self' 'nonce-${nonce}' 'strict-dynamic' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://www.google.com https://www.gstatic.com https://va.vercel-scripts.com`
+    ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://www.google.com https://www.gstatic.com https://va.vercel-scripts.com`
     : `'self' 'nonce-${nonce}' 'unsafe-eval' 'unsafe-inline' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com`;
 
   // style-src conserva 'unsafe-inline': la app usa atributos `style=` de React y

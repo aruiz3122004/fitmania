@@ -19,6 +19,10 @@ export function ServiceWorkerRegister() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
     let reloading = false
+    // En la primera visita no hay controlador: el SW nuevo toma control con
+    // `clients.claim()` y dispara `controllerchange`, pero no hay versión vieja que
+    // reemplazar. Recargar ahí duplicaba la carga de cada página.
+    const hadController = !!navigator.serviceWorker.controller
 
     navigator.serviceWorker
       .register('/sw.js')
@@ -34,7 +38,7 @@ export function ServiceWorkerRegister() {
       .catch((err) => console.error('No se pudo registrar el service worker:', err))
 
     const onControllerChange = () => {
-      if (reloading) return
+      if (reloading || !hadController) return
       reloading = true
       window.location.reload()
     }

@@ -18,7 +18,16 @@ import InventoryTab from '@/components/recepcion/inventory-tab'
 import CashTab from '@/components/recepcion/cash-tab'
 import { ManualEntryForm } from '@/components/recepcion/manual-entry-form'
 
-const Scanner = dynamic(() => import('@yudiel/react-qr-scanner').then((mod) => mod.Scanner), {
+// El lector (barcode-detector/zxing-wasm) descarga su .wasm de jsDelivr por defecto,
+// y la CSP no permite ese origen: se sirve una copia propia desde /vendor/zxing/
+// (tests/zxing-wasm.test.mts verifica que coincida con la versión instalada).
+const Scanner = dynamic(() => import('@yudiel/react-qr-scanner').then((mod) => {
+  mod.setZXingModuleOverrides({
+    locateFile: (path: string, prefix: string) =>
+      path.endsWith('.wasm') ? `/vendor/zxing/${path}` : prefix + path,
+  })
+  return mod.Scanner
+}), {
   ssr: false,
   loading: () => <div className="w-full h-64 bg-zinc-100 animate-pulse flex items-center justify-center font-black uppercase text-zinc-400">Iniciando Cámara...</div>
 })
@@ -67,7 +76,8 @@ export default function ReceptionPage() {
     const checkReceptionSession = async () => {
       try {
         const res = await fetch('/api/auth/verify?role=recepcion');
-        if (res.ok) {
+        const { valid } = res.ok ? await res.json() : { valid: false };
+        if (valid) {
           // Si la cookie es válida, verificar estado de Firebase
           const unsubscribe = auth.onAuthStateChanged((user) => {
             if (user) {
@@ -385,7 +395,8 @@ export default function ReceptionPage() {
                 {/* Real Scanner */}
                 {showScanner ? (
                   <div className="w-full max-w-sm mb-8 border-8 border-black rounded-3xl overflow-hidden relative shadow-[8px_8px_0_0_rgba(22,163,74,1)]">
-                    <Scanner onScan={(result) => { if (result && result.length > 0) handleScan(result[0].rawValue) }} onError={(e) => console.log(e)} />
+                    {/* sound={false}: el pitido de la librería es un data: URL que la CSP bloquea; suena beep() (F2-04). */}
+                    <Scanner sound={false} onScan={(result) => { if (result && result.length > 0) handleScan(result[0].rawValue) }} onError={(e) => console.log(e)} />
                     <button onClick={() => setShowScanner(false)} className="absolute top-4 right-4 bg-red-600 text-white font-bold p-2 text-xs border-2 border-black rounded-lg">Cerrar Camara</button>
                   </div>
                 ) : (

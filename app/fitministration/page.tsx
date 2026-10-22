@@ -118,7 +118,8 @@ export default function AdminPage() {
     const checkAdminSession = async () => {
       try {
         const res = await fetch('/api/auth/verify?role=admin');
-        if (res.ok) {
+        const { valid } = res.ok ? await res.json() : { valid: false };
+        if (valid) {
           setAdminSessionValid(true);
           // Si la cookie es válida, verificar también el estado de Firebase
           const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
