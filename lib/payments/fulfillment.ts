@@ -5,6 +5,7 @@ import { formatInAppTz } from '@/lib/datetime';
 import { computeRenewalExpiry } from '@/lib/plan-math';
 import type { CheckoutItem } from '@/lib/payments/pricing';
 import { classifyPaymentStatus, refundPayment, type MpPayment } from '@/lib/payments/mercadopago';
+import { decideTransition, planSale, restockUnits, reversalExpiry } from '@/lib/payments/transitions';
 
 /**
  * Aplica el resultado de un pago de Mercado Pago (F1-19, F1-20, F1-21).
@@ -41,6 +42,7 @@ interface PaymentDoc {
   dias: number | null;
   items: CheckoutItem[];
   mpPaymentId?: number;
+  stockApplied?: Record<string, number>;
 }
 
 const cop = (n: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(n);
@@ -97,10 +99,11 @@ export async function syncMercadoPagoPayment(db: Firestore, mp: MpPayment): Prom
         { merge: true }
       );
 
-    // El monto cobrado debe ser exactamente el de la foto del checkout.
-    if (mp.currency_id !== 'COP' || Math.round(mp.transaction_amount) !== Math.round(pay.amount)) {
+    const transition = decideTransition(pay, mp, outcome);
+
+    if (transition.action === 'amount_mismatch') {
       logEvent();
-      if (pay.status !== 'amount_mismatch' && pay.status !== 'approved') {
+      if (transition.alert) {
         tx.update(paymentRef, { status: 'amount_mismatch', mpPaymentId: mp.id, mpStatus: mp.status, updatedAt: now });
         tx.set(db.collection('notifications').doc(), {
           tipo: 'payment_alert',
@@ -113,9 +116,10 @@ export async function syncMercadoPagoPayment(db: Firestore, mp: MpPayment): Prom
       return 'amount_mismatch';
     }
 
-    if (outcome === 'approved') {
-      if (pay.status === 'approved') return 'already_approved';
-      // Desde `pending` o `rejected`: el cliente puede reintentar dentro del mismo checkout.
+    if (transition.action === 'already_approved') return 'already_approved';
+
+    if (transition.action === 'approve') {
+      let stockApplied: Record<string, number> | null = null;
 
       if (pay.type === 'plan') {
         const userRef = db.collection('users').doc(pay.uid);
@@ -138,29 +142,34 @@ export async function syncMercadoPagoPayment(db: Firestore, mp: MpPayment): Prom
         const productSnaps: DocumentSnapshot[] = [];
         for (const r of productRefs) productSnaps.push(await tx.get(r));
 
-        pay.items.forEach((item, i) => {
-          const pSnap = productSnaps[i];
-          if (!pSnap.exists) return;
-          const pData = pSnap.data()!;
-          const currentStock = Number(pData.stock) || 0;
-          if (currentStock < item.cantidad) {
+        const stock: Record<string, number> = {};
+        productSnaps.forEach((s) => { if (s.exists) stock[s.id] = Number(s.data()?.stock) || 0; });
+        const existing = pay.items.filter((_, i) => productSnaps[i].exists);
+        const changes = planSale(existing, stock);
+        stockApplied = {};
+
+        changes.forEach((change, i) => {
+          const item = existing[i];
+          const pData = productSnaps.find((s) => s.id === item.id)!.data()!;
+          const newStock = change.after;
+          stockApplied![item.id] = change.deducted;
+          if (change.oversold > 0) {
             // F1-20: las unidades sin stock se reembolsan después de la transacción.
-            oversold.push({ id: item.id, nombre: item.nombre, unidades: item.cantidad - Math.max(0, currentStock), precio: item.precio });
+            oversold.push({ id: item.id, nombre: item.nombre, unidades: change.oversold, precio: item.precio });
             tx.set(db.collection('notifications').doc(), {
               tipo: 'oversell',
-              mensaje: `¡Revisar! Se vendieron ${item.cantidad} de ${item.nombre} con solo ${currentStock} en stock (orden ${ref}).`,
+              mensaje: `¡Revisar! Se vendieron ${item.cantidad} de ${item.nombre} con solo ${change.before} en stock (orden ${ref}).`,
               id_producto: item.id,
               id_orden: ref,
               leido: false,
               fecha: now,
             });
           }
-          const newStock = Math.max(0, currentStock - item.cantidad);
-          tx.update(productRefs[i], { stock: newStock });
+          tx.update(db.collection('products').doc(item.id), { stock: newStock });
           // F2-25: movimiento de inventario por la venta.
           tx.set(db.collection('inventory_movements').doc(), {
             productId: item.id, productName: item.nombre, type: 'sale',
-            before: currentStock, after: newStock, delta: newStock - currentStock,
+            before: change.before, after: newStock, delta: newStock - change.before,
             orderId: ref, createdAt: now,
           });
           const threshold = Number.isFinite(Number(pData.lowStockThreshold)) ? Number(pData.lowStockThreshold) : 5;
@@ -199,49 +208,48 @@ export async function syncMercadoPagoPayment(db: Firestore, mp: MpPayment): Prom
         leido: false,
         fecha: now,
       });
-      tx.update(paymentRef, { status: 'approved', mpPaymentId: mp.id, mpStatus: mp.status, method, approvedAt: now, updatedAt: now });
+      tx.update(paymentRef, {
+        status: 'approved', mpPaymentId: mp.id, mpStatus: mp.status, method, approvedAt: now, updatedAt: now,
+        // Unidades que salieron del inventario: un reembolso total repone solo estas.
+        ...(stockApplied ? { stockApplied } : {}),
+      });
       logEvent();
       return 'approved';
     }
 
-    if (outcome === 'rejected') {
+    if (transition.action === 'reject') {
       logEvent();
-      if (pay.status !== 'pending') return 'ignored';
       tx.update(paymentRef, { status: 'rejected', mpPaymentId: mp.id, mpStatus: mp.status, updatedAt: now });
       return 'rejected';
     }
 
-    if (outcome === 'reversed') {
-      logEvent();
-      // Solo se revierte el pago que produjo el efecto.
-      if (pay.status !== 'approved' || pay.mpPaymentId !== mp.id) return 'ignored';
-
+    if (transition.action === 'reverse') {
+      // La bitácora se escribe después de leer usuario/productos (lecturas antes que escrituras).
       if (pay.type === 'plan') {
         const userRef = db.collection('users').doc(pay.uid);
         const userSnap = await tx.get(userRef);
         const expira = toDate(userSnap.data()?.plan?.expira);
-        if (expira) {
-          const nuevaExpira = new Date(expira);
-          nuevaExpira.setDate(nuevaExpira.getDate() - (Number(pay.dias) || 30));
-          tx.update(userRef, { 'plan.expira': nuevaExpira });
-        }
+        if (expira) tx.update(userRef, { 'plan.expira': reversalExpiry(expira, Number(pay.dias) || 30) });
       } else {
         const refs = pay.items.map((it) => db.collection('products').doc(it.id));
         const snaps: DocumentSnapshot[] = [];
         for (const r of refs) snaps.push(await tx.get(r));
+        // Solo vuelve lo que salió del inventario (no las unidades vendidas sin stock).
+        const units = restockUnits(pay.items, pay.stockApplied);
         pay.items.forEach((it, i) => {
-          if (!snaps[i].exists) return;
+          if (!snaps[i].exists || units[it.id] <= 0) return;
           const before = Number(snaps[i].data()?.stock) || 0;
-          tx.update(refs[i], { stock: before + it.cantidad });
+          tx.update(refs[i], { stock: before + units[it.id] });
           tx.set(db.collection('inventory_movements').doc(), {
             productId: it.id, productName: it.nombre, type: 'refund_restock',
-            before, after: before + it.cantidad, delta: it.cantidad,
+            before, after: before + units[it.id], delta: units[it.id],
             orderId: ref, createdAt: now,
           });
         });
       }
 
-      const newStatus = mp.status === 'charged_back' ? 'charged_back' : 'refunded';
+      logEvent();
+      const newStatus = transition.finalStatus;
       tx.update(paymentRef, { status: newStatus, mpStatus: mp.status, updatedAt: now });
       tx.set(orderRef, { status: newStatus, amountRefunded: mp.transaction_amount_refunded ?? pay.amount, refundedAt: now }, { merge: true });
       tx.set(db.collection('notifications').doc(), {
@@ -254,9 +262,10 @@ export async function syncMercadoPagoPayment(db: Firestore, mp: MpPayment): Prom
       return 'reversed';
     }
 
-    // Pendiente (PSE en proceso, Efecty sin pagar…): solo se registra.
     logEvent();
-    if (pay.status === 'pending') tx.update(paymentRef, { mpPaymentId: mp.id, mpStatus: mp.status, updatedAt: now });
+    if (transition.action === 'ignore') return 'ignored';
+    // Pendiente (PSE en proceso, Efecty sin pagar…): solo se registra.
+    if (transition.touch) tx.update(paymentRef, { mpPaymentId: mp.id, mpStatus: mp.status, updatedAt: now });
     return 'pending';
   });
 
