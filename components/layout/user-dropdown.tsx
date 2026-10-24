@@ -7,9 +7,9 @@ import { useAuthStore, useUIStore } from '@/lib/store'
 import { LogOut, Settings, UserCircle, ShieldCheck, QrCode, Loader2 } from 'lucide-react'
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
 import { FitAvatar } from '@/components/ui/fit-avatar'
-import { auth, db } from '@/lib/firebase'
+import { auth } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
-import { doc, updateDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore'
+import { saveMyProfile } from '@/lib/author-profiles'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import { usePanelAccess, enterPanel } from '@/lib/panel-access'
 
@@ -39,26 +39,12 @@ export function UserDropdown() {
 
   const handleClose = () => setUserDropdownOpen(false)
 
+  // F1-09: una sola escritura (users + perfil público en el servidor). El foro
+  // resuelve la foto por autor, así que ya no se reescriben los posts.
   const updateUserProfile = async (updates: { avatar?: string; photoURL?: string }) => {
     if (!user?.uid) return
-    await updateDoc(doc(db, 'users', user.uid), updates)
-
-    // Solo se actualizan los posts PROPIOS (consulta por autor, no toda la colección).
-    // Los comentarios en posts ajenos conservan el avatar anterior: las reglas no
-    // permiten reescribir comentarios ajenos (pendiente F1-07: resolver avatar por autor_id).
-    if (updates.photoURL) {
-      const ownPosts = await getDocs(query(collection(db, 'posts'), where('autor_id', '==', user.uid)))
-
-      if (!ownPosts.empty) {
-        const batch = writeBatch(db)
-        ownPosts.forEach((docSnap) => {
-          batch.update(docSnap.ref, { autor_avatar: updates.photoURL })
-        })
-        await batch.commit()
-      }
-    }
-
-    updateUser(updates)
+    const photoURL = await saveMyProfile(updates)
+    updateUser({ ...updates, ...(photoURL ? { photoURL } : {}) })
   }
 
   const handleAvatarSelect = async (avatarId: string) => {
@@ -67,7 +53,7 @@ export function UserDropdown() {
     if (!avatarUrl) return
     setIsSavingAvatar(true)
     try {
-      await updateUserProfile({ avatar: avatarId, photoURL: avatarUrl })
+      await updateUserProfile({ avatar: avatarId })
     } finally {
       setIsSavingAvatar(false)
     }

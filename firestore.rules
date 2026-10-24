@@ -55,6 +55,13 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // F1-09: nombre y foto públicos de cada socio (el foro resuelve el avatar por autor).
+    // Solo los escribe el servidor (/api/me/profile, registro y migración 004).
+    match /public_profiles/{uid} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Identidad del autor en el foro: el nombre debe ser el de su perfil y solo puede
     // marcarse "premium" si su plan está vigente (antes se podía publicar con otro
     // nombre o con la insignia premium sin serlo).

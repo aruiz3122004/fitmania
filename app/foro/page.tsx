@@ -6,6 +6,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
+import { useAuthorAvatars } from '@/lib/author-profiles'
 import { useAuthStore } from '@/lib/store'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { auth, db } from '@/lib/firebase'
@@ -217,6 +218,8 @@ function PostCard({
   }, [showComments, post.id])
 
   const allComments: ForumComment[] = [...post.comentarios.map((c) => ({ ...c, legacy: true })), ...subComments]
+  // F1-09: foto actual de cada autor (perfil público); si no hay, la guardada en el post.
+  const authorAvatars = useAuthorAvatars([post.autor_id, ...allComments.map((c) => c.autor_id)])
   const commentCount = post.comentarios.length + (subCount ?? 0)
   const [newComment, setNewComment] = useState('')
   const [isCommenting, setIsCommenting] = useState(false)
@@ -305,7 +308,7 @@ function PostCard({
           const isPostPremium = post.autor_is_premium || (user?.uid === post.autor_id && currentUserIsPremium)
           return (
             <FitAvatar
-              src={post.autor_avatar || null}
+              src={authorAvatars[post.autor_id] || post.autor_avatar || null}
               alt={post.autor_username}
               size={48}
               borderWidth="border-3"
@@ -601,7 +604,7 @@ function PostCard({
         <div className="border-t-2 border-gray-200 bg-gray-50 p-4">
           {allComments.map((comment) => {
             // If the comment doesn't have a stored avatar, fall back to the current user's photo (for old comments)
-            const commentAvatar = comment.autor_avatar || (user?.username === comment.autor_username ? user?.photoURL : null) || null
+            const commentAvatar = authorAvatars[comment.autor_id] || comment.autor_avatar || (user?.username === comment.autor_username ? user?.photoURL : null) || null
             // Premium detection: use stored value, but also check if comment is from current premium user (for old comments without the field)
             const currentUserIsPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
             const isCommentPremium = comment.autor_is_premium || (user?.username === comment.autor_username && currentUserIsPremium)

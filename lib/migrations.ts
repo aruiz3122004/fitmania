@@ -1,4 +1,5 @@
 import type { Firestore } from 'firebase-admin/firestore';
+import { publicProfileOf } from '@/lib/public-profile';
 
 /**
  * Migraciones de datos versionadas (F2-14).
@@ -97,7 +98,30 @@ const productPriceField: Migration = {
   },
 };
 
-export const MIGRATIONS: Migration[] = [forumCommentsToSubcollection, planDaysDefault, productPriceField];
+/** 004 — Perfil público (nombre y foto) de cada socio para el foro (F1-09). */
+const publicProfiles: Migration = {
+  id: '004_public_profiles',
+  description: 'Crea o actualiza public_profiles/{uid} (nombre y foto) desde users para resolver el avatar por autor en el foro.',
+  async run(db, { dryRun }) {
+    const users = await db.collection('users').select('username', 'photoURL').get();
+    const existing = await db.collection('public_profiles').get();
+    const current = new Map(existing.docs.map((d) => [d.id, d.data()]));
+    const result: MigrationResult = { examined: users.size, changed: 0, details: [] };
+    const writer = dryRun ? null : db.bulkWriter();
+    for (const user of users.docs) {
+      const profile = publicProfileOf(user.data());
+      const prev = current.get(user.id);
+      if (prev && prev.username === profile.username && (prev.photoURL ?? null) === profile.photoURL) continue;
+      result.changed++;
+      if (result.details.length < MAX_DETAILS) result.details.push(`${user.id}: ${profile.username}`);
+      writer?.set(db.collection('public_profiles').doc(user.id), { ...profile, updatedAt: new Date() });
+    }
+    if (writer) await writer.close();
+    return result;
+  },
+};
+
+export const MIGRATIONS: Migration[] = [forumCommentsToSubcollection, planDaysDefault, productPriceField, publicProfiles];
 
 export function findMigration(id: string): Migration | undefined {
   return MIGRATIONS.find((m) => m.id === id);

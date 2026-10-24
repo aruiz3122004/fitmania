@@ -4,6 +4,7 @@ import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils';
 import { recordConsent } from '@/lib/consents';
 import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 import { getClientIp } from '@/lib/client-ip';
+import { publicProfileOf } from '@/lib/public-profile';
 
 /**
  * POST /api/users/register — crea el perfil del usuario recién registrado (F1-06).
@@ -90,6 +91,8 @@ export async function POST(request: Request) {
 
     const db = getAdminFirestore();
     await Promise.all([
+      // F1-09: nombre y foto públicos para el foro.
+      db.collection('public_profiles').doc(uid).set({ ...publicProfileOf(profile), updatedAt: new Date() }),
       recordConsent(db, uid, 'terms', true, request),
       recordConsent(db, uid, 'privacy', true, request),
       recordConsent(db, uid, 'sensitive_data', sensitiveConsent, request),

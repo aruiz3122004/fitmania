@@ -11,6 +11,7 @@ import { useAuthStore } from '@/lib/store'
 import { auth, db } from '@/lib/firebase'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import { doc, updateDoc } from 'firebase/firestore'
+import { saveMyProfile } from '@/lib/author-profiles'
 import { Save, UserCircle, Camera, Loader2, ShieldCheck, Clock, Calendar, QrCode, Users } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { AccessPass } from '@/components/profile/access-pass'
@@ -137,8 +138,8 @@ export default function PerfilPage() {
       const resultado = await uploadToCloudinary(file, 'avatar')
       const downloadURL = resultado.url
 
-      // Update cloudinary storage
-      await updateDoc(doc(db, 'users', user.uid), { photoURL: downloadURL })
+      // F1-09: perfil y perfil público del foro en una sola escritura (servidor).
+      await saveMyProfile({ photoURL: downloadURL })
 
       // Update local state
       updateUser({ photoURL: downloadURL })
@@ -169,19 +170,21 @@ export default function PerfilPage() {
       const payload: { username: string; peso?: number | null; altura?: number | null } = {
         username: username.trim(),
       }
+      // El nombre es público (foro): va por el servidor junto con el perfil público.
+      if (payload.username !== user.username) await saveMyProfile({ username: payload.username })
       if (sensitiveConsent) {
         payload.peso = peso ? Number(peso) : null
         payload.altura = altura ? Number(altura) : null
+        await updateDoc(doc(db, 'users', user.uid), { peso: payload.peso, altura: payload.altura })
       }
-      await updateDoc(doc(db, 'users', user.uid), payload)
       updateUser({
         username: payload.username,
         peso: payload.peso || undefined,
         altura: payload.altura || undefined,
       })
       setStatus('Configuracion guardada.')
-    } catch {
-      setStatus('No se pudo guardar la configuracion.')
+    } catch (err: any) {
+      setStatus(err?.message || 'No se pudo guardar la configuracion.')
     } finally {
       setIsSaving(false)
     }
