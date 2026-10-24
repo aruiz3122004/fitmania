@@ -28,6 +28,7 @@ export async function POST(request: Request) {
         category: 'AUTH_FAILURE',
         details: `Intento de acceso denegado a panel Admin. Razón: Sin privilegios de Admin. Correo: ${decodedToken.email}`,
         adminEmail: decodedToken.email,
+        actorUid: decodedToken.uid,
         targetId: decodedToken.uid,
         request: request,
       });
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
         category: 'AUTH_FAILURE',
         details: `Acceso denegado a panel Admin: falta la verificación en dos pasos. Correo: ${decodedToken.email}`,
         adminEmail: decodedToken.email,
+        actorUid: decodedToken.uid,
         targetId: decodedToken.uid,
         request: request,
       });
@@ -86,6 +88,7 @@ export async function POST(request: Request) {
       category: 'AUTH_SUCCESS',
       details: 'Inicio de sesión administrativo exitoso.',
       adminEmail: decodedToken.email,
+      actorUid: decodedToken.uid,
       targetId: decodedToken.uid,
       request: request,
     });

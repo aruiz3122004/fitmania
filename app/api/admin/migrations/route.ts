@@ -58,6 +58,7 @@ export async function POST(request: Request) {
         category: 'ADMIN_ACTION',
         details: `Migración ${migration.id}: ${result.changed} de ${result.examined} documentos modificados.`,
         adminEmail: isAdmin.email,
+        actorUid: isAdmin.uid,
         targetId: migration.id,
         request,
       });

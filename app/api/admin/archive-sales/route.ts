@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       category: 'ADMIN_ACTION',
       details: `Se realizó un archivo masivo de caja (Corte de mes). Ventas archivadas: ${snapshot.docs.length}`,
       adminEmail: decodedToken.email,
+      actorUid: decodedToken.uid,
       targetId: 'ALL_SALES',
       request: req,
     });

@@ -86,6 +86,7 @@ export async function POST(request: Request) {
         ? `Post ${postId} de ${removedAuthor || 'autor desconocido'} eliminado por moderación (${reports.size} reportes).`
         : `Reportes del post ${postId} descartados (${reports.size}).`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: postId,
       request,
     });

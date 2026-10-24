@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       createdBy: isAdmin.email || null,
     });
     if (data.published) after(() => sendPendingNewsPush());
-    await recordAuditLog({ action: 'CREATE_NEWS', category: 'ADMIN_ACTION', details: `Noticia creada: ${data.titulo}`, adminEmail: isAdmin.email, targetId: ref.id, request });
+    await recordAuditLog({ action: 'CREATE_NEWS', category: 'ADMIN_ACTION', details: `Noticia creada: ${data.titulo}`, adminEmail: isAdmin.email, actorUid: isAdmin.uid, targetId: ref.id, request });
     return NextResponse.json({ success: true, id: ref.id });
   } catch (error) {
     console.error('[/api/admin/news POST]', error);
@@ -105,7 +105,7 @@ export async function PATCH(request: Request) {
   }
   try {
     await getAdminFirestore().collection('news').doc(id).update({ ...data, updatedAt: new Date() });
-    await recordAuditLog({ action: 'UPDATE_NEWS', category: 'ADMIN_ACTION', details: `Noticia ${id} actualizada: ${Object.keys(data).join(', ')}`, adminEmail: isAdmin.email, targetId: id, request });
+    await recordAuditLog({ action: 'UPDATE_NEWS', category: 'ADMIN_ACTION', details: `Noticia ${id} actualizada: ${Object.keys(data).join(', ')}`, adminEmail: isAdmin.email, actorUid: isAdmin.uid, targetId: id, request });
     // F3-14: si se publicó, push al tema "news" (fuera de la franja legal lo envía el cron).
     if (data.published === true) after(() => sendPendingNewsPush());
     return NextResponse.json({ success: true });
@@ -122,7 +122,7 @@ export async function DELETE(request: Request) {
   if (!id || id.includes('/')) return NextResponse.json({ error: 'ID requerido.' }, { status: 400 });
   try {
     await getAdminFirestore().collection('news').doc(id).delete();
-    await recordAuditLog({ action: 'DELETE_NEWS', category: 'ADMIN_ACTION', details: `Noticia ${id} eliminada.`, adminEmail: isAdmin.email, targetId: id, request });
+    await recordAuditLog({ action: 'DELETE_NEWS', category: 'ADMIN_ACTION', details: `Noticia ${id} eliminada.`, adminEmail: isAdmin.email, actorUid: isAdmin.uid, targetId: id, request });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[/api/admin/news DELETE]', error);

@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
       category: 'ADMIN_ACTION',
       details: `Venta en mostrador ${orderRef.id} por ${result.total} COP (${paymentMethod}).`,
       adminEmail: decoded.email,
+      actorUid: decoded.uid,
       targetId: orderRef.id,
       request,
     });

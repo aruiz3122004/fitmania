@@ -68,6 +68,7 @@ export async function POST(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Producto creado: ${data.nombre} | ID Asignado: ${id} | Stock: ${data.stock ?? 0}`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: id,
       request,
     });
@@ -119,7 +120,10 @@ export async function PATCH(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Producto actualizado. ID: ${id} | Campos: ${Object.keys(updates).join(', ')}${stockChange}`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: id,
+      before: before.data(),
+      after: updates,
       request,
     });
 
@@ -138,6 +142,7 @@ export async function DELETE(request: Request) {
     const id = parseDocId(searchParams.get('id'));
 
     const db = getAdminFirestore();
+    const deleted = (await db.collection('products').doc(id).get()).data() || null;
     await db.collection('products').doc(id).delete();
 
     await recordAuditLog({
@@ -145,7 +150,9 @@ export async function DELETE(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Producto eliminado permanentemente. ID de stock borrado: ${id}`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: id,
+      before: deleted,
       request,
     });
 

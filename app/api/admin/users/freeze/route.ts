@@ -67,6 +67,7 @@ export async function POST(request: Request) {
         ? `Plan del socio ${uid} congelado (${result.remainingDays} días a favor). Motivo: ${reason}`
         : `Plan del socio ${uid} reactivado; nuevo vencimiento ${result.expira}.`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: uid,
       request,
     });

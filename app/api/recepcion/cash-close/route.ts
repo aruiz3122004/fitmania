@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
       category: 'ADMIN_ACTION',
       details: `Cierre de caja ${date}: esperado ${expectedCash}, contado ${countedCash}, diferencia ${difference}.`,
       adminEmail: decoded.email,
+      actorUid: decoded.uid,
       targetId: ref.id,
       request,
     });

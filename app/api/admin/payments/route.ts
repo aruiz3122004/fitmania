@@ -76,6 +76,7 @@ export async function POST(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Conciliación manual del pago ${ref}: ${results.join(', ') || 'sin pagos en Mercado Pago'} → ${status}`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: ref,
       request,
     });

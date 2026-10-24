@@ -100,6 +100,7 @@ export async function POST(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Importación CSV: ${created} productos creados, ${updated} actualizados.`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: 'products',
       request,
     });

@@ -69,11 +69,16 @@ export async function PATCH(request: Request) {
     // T-16: gestión centralizada y revocable de claims. Se FUSIONAN con los claims
     // actuales para no borrar el otro rol (evita el "clobbering" de claims).
     let claimsChanged = false;
+    // F1-26: estado antes/después de roles y plan para la auditoría.
+    const auditBefore: Record<string, unknown> = {};
+    const auditAfter: Record<string, unknown> = {};
     if (setAdmin !== undefined || setReceptionist !== undefined) {
       const currentClaims = (await auth.getUser(uid)).customClaims || {};
       const claims: Record<string, any> = { ...currentClaims };
       if (setAdmin !== undefined) claims.admin = !!setAdmin;
       if (setReceptionist !== undefined) claims.receptionist = !!setReceptionist;
+      if (setAdmin !== undefined) { auditBefore.admin = !!currentClaims.admin; auditAfter.admin = !!setAdmin; }
+      if (setReceptionist !== undefined) { auditBefore.receptionist = !!currentClaims.receptionist; auditAfter.receptionist = !!setReceptionist; }
       await auth.setCustomUserClaims(uid, claims);
       claimsChanged = true;
       // Al retirar privilegios, revocar refresh tokens → invalida sesiones vigentes
@@ -116,6 +121,8 @@ export async function PATCH(request: Request) {
     }
 
     if (Object.keys(updates).length > 0) {
+      auditBefore.plan = (await db.collection('users').doc(uid).get()).data()?.plan ?? null;
+      auditAfter.plan = updates.plan;
       await db.collection('users').doc(uid).update(updates);
     }
 
@@ -126,7 +133,10 @@ export async function PATCH(request: Request) {
         category: 'ADMIN_ACTION',
         details: `Socio [${uid}] actualizado: ${plan !== undefined ? (plan ? 'Modificó plan' : 'Removió plan') : ''} ${setAdmin !== undefined ? (setAdmin ? 'Elevado a ADMIN' : 'Bajado a SOCIO') : ''} ${setReceptionist !== undefined ? (setReceptionist ? 'Otorgó RECEPCIÓN' : 'Retiró RECEPCIÓN') : ''}`.trim(),
         adminEmail: isAdmin.email,
+        actorUid: isAdmin.uid,
         targetId: uid,
+        before: auditBefore,
+        after: auditAfter,
         request,
       });
     }
@@ -164,6 +174,7 @@ export async function DELETE(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Socio eliminado (supresión). UID: ${uid}. Posts: ${summary.posts}, comentarios: ${summary.comments}, ingresos anonimizados: ${summary.entries}.`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: uid,
       request,
     });

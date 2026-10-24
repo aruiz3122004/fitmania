@@ -52,6 +52,7 @@ export async function POST(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Respuesta oficial enviada vía Email al socio ${userEmail} para el ticket ${pqrsId}`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: pqrsId,
       request: request,
     });

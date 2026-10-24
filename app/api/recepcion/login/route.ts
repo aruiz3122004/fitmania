@@ -28,6 +28,7 @@ export async function POST(request: Request) {
         category: 'AUTH_FAILURE',
         details: `Intento de acceso denegado a Recepción. Razón: Correo no autorizado. Email: ${decodedToken.email}`,
         adminEmail: decodedToken.email,
+        actorUid: decodedToken.uid,
         targetId: decodedToken.uid,
         request: request,
       });
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
         category: 'AUTH_FAILURE',
         details: `Intento de acceso denegado a Recepción. Razón: Sin claim de recepcionista. Email: ${decodedToken.email}`,
         adminEmail: decodedToken.email,
+        actorUid: decodedToken.uid,
         targetId: decodedToken.uid,
         request: request,
       });
@@ -81,6 +83,7 @@ export async function POST(request: Request) {
       category: 'AUTH_SUCCESS',
       details: 'Inicio de sesión de Recepción exitoso.',
       adminEmail: decodedToken.email,
+      actorUid: decodedToken.uid,
       targetId: decodedToken.uid,
       request: request,
     });

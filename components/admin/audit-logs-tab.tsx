@@ -24,7 +24,16 @@ interface AuditLog {
   adminEmail: string;
   ip: string;
   timestamp: string;
+  // F1-26: qué cambió (campo → antes/después) o la foto de lo eliminado.
+  changes?: Record<string, { before: unknown; after: unknown }>;
+  deleted?: Record<string, unknown>;
 }
+
+const fmtAuditValue = (v: unknown) => {
+  if (v === null || v === undefined) return '—';
+  const text = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+};
 
 export function AuditLogsTab({ logs, loading, onRefreshAction }: { logs: AuditLog[], loading: boolean, onRefreshAction: () => void }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -158,6 +167,18 @@ export function AuditLogsTab({ logs, loading, onRefreshAction }: { logs: AuditLo
                         <p className="text-xs font-bold text-zinc-600 leading-relaxed border-l-4 border-zinc-200 pl-3">
                           {log.details}
                         </p>
+                        {log.changes && Object.keys(log.changes).length > 0 && (
+                          <ul className="mt-2 pl-3 space-y-0.5">
+                            {Object.entries(log.changes).map(([field, c]) => (
+                              <li key={field} className="text-[10px] font-mono text-zinc-500 break-all">
+                                <span className="font-black text-zinc-700">{field}</span>: {fmtAuditValue(c.before)} → <span className="text-red-600">{fmtAuditValue(c.after)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {log.deleted && (
+                          <p className="mt-2 pl-3 text-[10px] font-mono text-zinc-500 break-all">Eliminado: {fmtAuditValue(log.deleted)}</p>
+                        )}
                       </td>
                     </tr>
                   );

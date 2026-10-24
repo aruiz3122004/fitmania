@@ -100,6 +100,7 @@ export async function POST(request: Request) {
         ? `Conteo aprobado: ${result.count.productName} ${result.before} → ${result.count.counted} (reportado por ${result.count.reportedBy || 'recepción'}).`
         : `Conteo descartado: ${result.count.productName} (contado ${result.count.counted}, sistema ${result.count.systemStock}).`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: result.count.productId,
       request,
     });

@@ -127,6 +127,7 @@ export async function GET(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Exporte ${label} descargado.`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: type,
       request,
     });

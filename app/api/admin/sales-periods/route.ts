@@ -89,6 +89,7 @@ export async function POST(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Cierre de ventas ${month}: bruto ${summary.gross}, reembolsos ${summary.refunds}, neto ${summary.net} (${summary.orders} órdenes).`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: month,
       request,
     });

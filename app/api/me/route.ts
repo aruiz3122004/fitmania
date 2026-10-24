@@ -91,6 +91,7 @@ export async function DELETE(request: Request) {
       category: 'ADMIN_ACTION',
       details: `El socio eliminó su cuenta (derecho de supresión). Posts: ${summary.posts}, comentarios: ${summary.comments}, ingresos anonimizados: ${summary.entries}.`,
       adminEmail: decoded.email,
+      actorUid: decoded.uid,
       targetId: decoded.uid,
       request,
     });

@@ -57,7 +57,10 @@ export async function PATCH(request: Request) {
       category: 'PLAN_MANAGEMENT',
       details: `Plan ${id} actualizado. Campos: ${Object.keys(updates).join(', ')}. Precio anterior: ${oldData?.price}, nuevo: ${updates.price ?? oldData?.price}. Días anterior: ${oldData?.days}, nuevo: ${updates.days ?? oldData?.days}`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: id,
+      before: oldData,
+      after: updates,
       request: request,
     });
 
@@ -87,6 +90,7 @@ export async function POST(request: Request) {
       category: 'PLAN_MANAGEMENT',
       details: `Nuevo plan creado: ${data.name} con precio ${data.price} y ${data.days} días`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: docRef.id,
       request: request,
     });
@@ -106,6 +110,7 @@ export async function DELETE(request: Request) {
     const id = parseDocId(searchParams.get('id'));
 
     const db = getAdminFirestore();
+    const deleted = (await db.collection('planes').doc(id).get()).data() || null;
     await db.collection('planes').doc(id).delete();
 
     await recordAuditLog({
@@ -113,7 +118,9 @@ export async function DELETE(request: Request) {
       category: 'PLAN_MANAGEMENT',
       details: `Plan ${id} eliminado.`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: id,
+      before: deleted,
       request: request,
     });
 

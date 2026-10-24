@@ -152,6 +152,7 @@ export async function POST(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Agregados de asistencia recalculados del ${days[0]} al ${days[days.length - 1]} (${snap.size} ingresos).`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: `${days[0]}_${days[days.length - 1]}`,
       request,
     });
