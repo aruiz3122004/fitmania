@@ -240,6 +240,13 @@ export function Topbar() {
                     >
                       Configuración de Cuenta
                     </Link>
+                    <Link
+                      href="/compras"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="text-center font-label font-bold text-xs text-secondary bg-gray-100 p-3 rounded-xl uppercase tracking-wider hover:bg-gray-200 transition-colors"
+                    >
+                      Mis Compras
+                    </Link>
                   </div>
                 )}
               </div>

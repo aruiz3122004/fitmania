@@ -104,6 +104,7 @@ fitmania/
 │   │   │   ├── status/route.ts        # GET: estado de un pago propio (concilia si sigue pendiente)
 │   │   │   └── mercadopago/webhook/route.ts # POST: aviso de Mercado Pago (firma x-signature)
 │   │   ├── me/profile/route.ts        # PATCH: nombre/avatar/foto + perfil público del foro
+│   │   ├── me/purchases/route.ts      # GET: historial de compras del usuario (pagos MP + órdenes)
 │   │   ├── client-error/route.ts      # POST: errores de la UI → Sentry
 │   │   └── stripe/
 │   │       ├── create-payment/route.ts# POST: crea PaymentIntent en COP
@@ -118,6 +119,7 @@ fitmania/
 │   │   ├── page.tsx               # Checkout Stripe (CardElement) — /pago?concepto&monto
 │   │   └── resultado/page.tsx     # Resultado del pago (redirect_status)
 │   ├── perfil/page.tsx            # Perfil: avatar, datos, acompañante + botón de acceso al panel (roles)
+│   ├── compras/page.tsx           # Historial de compras: resumen, filtros y detalle de cada pago
 │   ├── planes/page.tsx            # Página de planes
 │   ├── pqrs/page.tsx              # Formulario PQRS
 │   ├── registro/page.tsx          # Registro de usuarios
@@ -179,6 +181,7 @@ fitmania/
 | `/pqrs` | `app/pqrs/page.tsx` | Formulario de Peticiones/Quejas/Reclamos/Sugerencias |
 | `/entrenadores` | `app/entrenadores/page.tsx` | Equipo de entrenadores |
 | `/perfil` | `app/perfil/page.tsx` | Datos del usuario, avatar, acompañante del plan + botón de acceso al panel (solo roles) |
+| `/compras` | `app/compras/page.tsx` | Historial de compras: planes y tienda (Mercado Pago y Stripe), estado, reembolsos y recibo de cada pago. Lo arma `GET /api/me/purchases` con `lib/purchase-history.ts`; oculta los checkouts abandonados |
 | `/fitministration` | `app/fitministration/page.tsx` | Panel admin — **oculto** (llave `?key=` o botón por rol + login con claim `admin`) |
 | `/fitception` | `app/fitception/page.tsx` | Estación de recepción — **oculta** (llave `?key=` o botón por rol + login con email autorizado y claim) |
 

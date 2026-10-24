@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { ChangeEvent, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore, useUIStore } from '@/lib/store'
-import { LogOut, Settings, UserCircle, ShieldCheck, QrCode, Loader2 } from 'lucide-react'
+import { LogOut, Settings, UserCircle, ShieldCheck, QrCode, Loader2, Receipt } from 'lucide-react'
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { auth } from '@/lib/firebase'
@@ -253,6 +253,15 @@ export function UserDropdown() {
           >
             <Settings className="w-5 h-5 text-zinc-600" />
             <span className="hidden sm:inline font-label text-sm text-gray-700">Configuracion</span>
+          </Link>
+          <Link
+            href="/compras"
+            onClick={handleClose}
+            title="Mis compras"
+            className="flex-1 flex items-center justify-center sm:justify-start gap-3 px-3 py-3 sm:py-2 bg-white sm:bg-transparent border-2 sm:border-0 border-black sm:rounded rounded-xl hover:bg-gray-100 transition-all active:translate-y-1"
+          >
+            <Receipt className="w-5 h-5 text-zinc-600" />
+            <span className="hidden sm:inline font-label text-sm text-gray-700">Mis compras</span>
           </Link>
           <button
             onClick={async () => {

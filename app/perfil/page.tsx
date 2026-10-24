@@ -12,7 +12,8 @@ import { auth, db } from '@/lib/firebase'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import { doc, updateDoc } from 'firebase/firestore'
 import { saveMyProfile } from '@/lib/author-profiles'
-import { Save, UserCircle, Camera, Loader2, ShieldCheck, Clock, Calendar, QrCode, Users } from 'lucide-react'
+import Link from 'next/link'
+import { Save, UserCircle, Camera, Loader2, ShieldCheck, Clock, Calendar, QrCode, Users, Receipt } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { AccessPass } from '@/components/profile/access-pass'
 import { usePanelAccess, enterPanel } from '@/lib/panel-access'
@@ -251,6 +252,13 @@ export default function PerfilPage() {
                   >
                     {isUploadingAvatar ? 'Cargando...' : 'Cambiar Imagen'}
                   </button>
+                  <Link
+                    href="/compras"
+                    className="inline-flex items-center gap-2 font-label text-xs font-black uppercase tracking-widest bg-white text-black px-4 py-2 border-2 border-black rounded shadow-[2px_2px_0_0_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    Mis compras
+                  </Link>
                 </div>
               </div>
 
