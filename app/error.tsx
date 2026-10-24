@@ -10,6 +10,18 @@ import Link from 'next/link'
 export default function Error({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
     console.error('[ui] Error en la página:', error.digest || error.message)
+    // F2-11: el servidor lo reenvía a Sentry (sin datos del usuario ni query string).
+    fetch('/api/client-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: error.message,
+        type: error.name,
+        stack: error.stack,
+        digest: error.digest,
+        path: window.location.pathname,
+      }),
+    }).catch(() => {})
   }, [error])
 
   return (

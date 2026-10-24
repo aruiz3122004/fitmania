@@ -30,6 +30,7 @@ const RECOMMENDED: Record<string, string> = {
   NEXT_PUBLIC_FIREBASE_VAPID_KEY: 'notificaciones push',
   MERCADOPAGO_ACCESS_TOKEN: 'pagos con Mercado Pago (tarjeta, PSE, Efecty)',
   MERCADOPAGO_WEBHOOK_SECRET: 'firma de los webhooks de Mercado Pago',
+  SENTRY_DSN: 'reporte de errores (Sentry)',
 };
 
 export interface EnvReport {
