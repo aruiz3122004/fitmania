@@ -17,6 +17,7 @@ import EntryHistoryTab from '@/components/recepcion/entry-history-tab'
 import InventoryTab from '@/components/recepcion/inventory-tab'
 import CashTab from '@/components/recepcion/cash-tab'
 import { ManualEntryForm } from '@/components/recepcion/manual-entry-form'
+import { MembersDirectory } from '@/components/recepcion/members-directory'
 
 // El lector (barcode-detector/zxing-wasm) descarga su .wasm de jsDelivr por defecto,
 // y la CSP no permite ese origen: se sirve una copia propia desde /vendor/zxing/
@@ -108,9 +109,11 @@ export default function ReceptionPage() {
 
   // F2-18: el directorio y la ficha del socio vienen del servidor con datos mínimos
   // (antes el navegador leía toda la colección `users`, con peso, altura y correo).
+  // Al abrir solo se piden los socios vigentes (simulador, planilla y caché sin conexión);
+  // los demás se consultan desde el directorio.
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/recepcion/members')
+      const res = await fetch('/api/recepcion/members?status=active&limit=1000')
       if (res.status === 401) {
         setVisualState('login')
         return
@@ -314,8 +317,6 @@ export default function ReceptionPage() {
       </div>
     )
   }
-
-  const activeMembers = usersList.filter(u => u.plan && new Date(u.plan.expira.seconds * 1000) > new Date())
 
   return (
     <div className="min-h-screen bg-green-50 font-sans text-zinc-900 pb-20">
@@ -591,41 +592,9 @@ export default function ReceptionPage() {
           <CashTab />
         )}
 
-        {/* Members Directory Tab */}
+        {/* Members Directory Tab (F3-05) */}
         {activeTab === 'members' && (
-          <div className="bg-white p-6 sm:p-12 border-x-4 border-b-4 border-black rounded-b-[2rem] shadow-[12px_12px_0_0_rgba(0,0,0,1)]">
-            <div className="flex items-center gap-3 mb-8">
-              <Users className="w-8 h-8 text-black" />
-              <h2 className="font-display text-3xl uppercase italic">Directorio de Miembros Activos</h2>
-            </div>
-
-            <div className="space-y-4">
-              {activeMembers.map(user => (
-                <div key={user.id} className="p-5 border-4 border-black rounded-2xl shadow-[6px_6px_0_0_rgba(0,0,0,1)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div>
-                    <p className="font-black uppercase text-xl">{user.username}</p>
-                    <p className="font-label text-xs text-zinc-500 font-bold tracking-widest">{user.plan.nombre}</p>
-                  </div>
-
-                  {user.plan.acompanante ? (
-                    <div className="bg-blue-50 border-2 border-blue-600 p-3 rounded-lg flex items-center gap-3 w-full sm:w-auto">
-                      <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white"><Users className="w-4 h-4" /></div>
-                      <div className="flex-1">
-                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Acompañante</p>
-                        <p className="font-bold text-sm">{user.plan.acompanante.nombre}</p>
-                        <p className="text-[10px] font-bold text-zinc-500 uppercase">Días permitidos: {user.plan.acompanante.rutinaDias?.join(', ')}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-[10px] font-bold text-zinc-400 border-2 border-zinc-200 px-3 py-1 rounded-full uppercase">Individual</span>
-                  )}
-                </div>
-              ))}
-              {activeMembers.length === 0 && (
-                <p className="text-center font-bold text-zinc-400 py-12">No hay miembros activos actualmente.</p>
-              )}
-            </div>
-          </div>
+          <MembersDirectory onSelectAction={(id) => { setActiveTab('scanner'); handleScan(id, true) }} />
         )}
 
       </main>

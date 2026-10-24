@@ -48,13 +48,29 @@ export function projectPlan(plan: any) {
   };
 }
 
+export type MemberStatus = 'active' | 'expiring' | 'expired' | 'none';
+
+const DAY_MS = 86_400_000;
+/** Un plan "por vencer" vence dentro de estos días (mismo umbral que los avisos). */
+export const EXPIRING_DAYS = 5;
+
+/** Estado del socio y días restantes según el vencimiento del plan (F3-05). */
+export function memberStatus(expira: Date | null, now = new Date()): { status: MemberStatus; daysLeft: number | null } {
+  if (!expira) return { status: 'none', daysLeft: null };
+  const daysLeft = Math.ceil((expira.getTime() - now.getTime()) / DAY_MS);
+  if (expira.getTime() <= now.getTime()) return { status: 'expired', daysLeft };
+  return { status: daysLeft <= EXPIRING_DAYS ? 'expiring' : 'active', daysLeft };
+}
+
 /** Datos de lista (directorio y búsqueda manual): sin correo ni datos físicos. */
-export function projectMemberSummary(id: string, data: any) {
+export function projectMemberSummary(id: string, data: any, now = new Date()) {
+  const plan = projectPlan(data?.plan);
   return {
     id,
     username: String(data?.username || 'Socio'),
     photoURL: data?.photoURL || null,
-    plan: projectPlan(data?.plan),
+    plan,
+    ...memberStatus(plan ? new Date(plan.expira.seconds * 1000) : null, now),
   };
 }
 
