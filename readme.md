@@ -224,6 +224,8 @@ La navegación pública se define en `components/layout/topbar.tsx` (`navLinks`:
 ### 6.0 Mercado Pago (pasarela principal, F1-18 a F1-22)
 1. `/pago?planId=…` o `/pago` con el carrito → **`POST /api/payments/checkout`** con el ID token. El servidor calcula el monto (`lib/payments/pricing.ts`), guarda `payments/{fm_uuid}` en `pending` con la foto del checkout (ítems, precios, días) y devuelve la URL de Checkout Pro.
 2. Mercado Pago avisa a **`POST /api/payments/mercadopago/webhook`**. Con `MERCADOPAGO_WEBHOOK_SECRET` se exige la firma `x-signature` (el proxy conserva el `x-request-id` original en `x-upstream-request-id`). El estado se lee siempre de la API con el access token.
+   - Solo se procesan los avisos `?type=payment`. Los `merchant_order` y los del formato antiguo IPN (`?topic=`, cuya firma no se puede verificar) reciben 200 sin procesarse; el mismo pago llega firmado como `type=payment`.
+   - La clave del webhook debe ser de **la misma aplicación del access token**. Con la de otra aplicación, la simulación del panel valida pero todos los pagos reales dan 401 "Firma inválida" (comprobado el 24-10 con Checkout Pro real).
 3. `lib/payments/fulfillment.ts` aplica el resultado en **una transacción** (decisiones en `lib/payments/transitions.ts`, con pruebas):
    - aprobado → activa el plan (`days` del plan) o descuenta el stock, crea `orders/{ref}`, `inventory_movements` y la notificación; guarda `stockApplied`;
    - rechazado → `rejected` y correo; un reintento dentro del mismo checkout puede aprobarse después;
@@ -231,7 +233,12 @@ La navegación pública se define en `components/layout/topbar.tsx` (`navLinks`:
    - monto o moneda distintos → `amount_mismatch` y alerta al admin, sin efecto;
    - sobreventa → reembolso parcial automático (F1-20).
 4. **Conciliación** (`lib/payments/reconcile.ts`): al volver a `/pago/resultado` y en el cron diario (pendientes con más de 1 h; un checkout sin pagos en Mercado Pago vence a los 4 días).
+   - Al volver, `/pago/resultado` consulta `GET /api/payments/status` durante unos 15 s (reintenta cada 3 s mientras siga pendiente) y muestra **pago exitoso**, **rechazado** (con "Intentar nuevamente") o **en proceso** (PSE, Efecty o un regreso sin pagar).
+   - Si Mercado Pago no responde, se informa el estado guardado y el webhook o el cron lo completan.
+   - Un checkout abandonado no cobra nada, no envía correos y no aparece en `/compras`.
 5. El admin ve los pagos pendientes, rechazados, con monto alterado, vencidos y reembolsos en la pestaña **Pagos**, y puede conciliar uno a mano.
+6. El socio ve su historial en **`/compras`** (`GET /api/me/purchases`): pagos de Mercado Pago y órdenes de Stripe, con estado, reembolsos, medio de pago y número de transacción.
+7. Sin `MERCADOPAGO_ACCESS_TOKEN`, la opción de Mercado Pago responde "no disponible" (503) y Stripe sigue funcionando.
 
 **Pruebas locales:** `MERCADOPAGO_PUBLIC_URL` = URL https de un túnel (`cloudflared tunnel --url http://localhost:3000`) para el retorno automático y el webhook. `MERCADOPAGO_API_URL` (solo desarrollo) apunta a un simulador de la API para probar escenarios sin navegador. Ninguna de las dos se define en Vercel.
 
@@ -418,7 +425,10 @@ Proyecto Firebase: **`fitmania-e1748`** (`.firebaserc`).
 |---|---|---|---|
 | `users` | `{uid}` (UID de Auth) | `username`, `email`, `gender`, `avatar`, `photoURL`, `peso`, `altura`, `plan` (`{nombre, precio, dias_total, inicio, expira, acompanante?}`) | Usuario (create/update de sí mismo), Admin, Webhook |
 | `products` | `{id}` (slug: `creatina`, `proteina`, …) | `nombre`, `precio`, `categoria`, `imagen_url`, `descripcion`, `stock`, `colores`, `tallas`, `badge`, `created_at` | Solo Admin (webhook descuenta stock) |
-| `orders` | `{paymentIntent.id}` | `uid`, `customerName`, `customerEmail`, `items[]` (`{id, nombre, precio, cantidad}`), `total`, `banco`, `fecha`, `status`, `archived?` | Solo webhook/Admin SDK |
+| `orders` | `{ref}` de Mercado Pago (`fm_…`), `{paymentIntent.id}` de Stripe o automático (mostrador) | `uid`, `customerName`, `customerEmail`, `type`, `concepto`, `items[]` (`{id, nombre, precio, cantidad}`), `total`, `banco` (medio de pago, sin datos de tarjeta), `gateway`, `paymentId`, `fecha`, `status`, `refund?`, `amountRefunded?`, `archived?` | Solo webhook/Admin SDK |
+| `payments` | `{ref}` (`fm_uuid`) | `uid`, `customerName`, `customerEmail`, `type`, `planId`, `concept`, `amount`, `dias`, `items[]`, `status` (`pending`, `approved`, `rejected`, `expired`, `refunded`, `charged_back`, `amount_mismatch`), `mpPaymentId`, `method`, `stockApplied?`, `createdAt`, `approvedAt` | Solo servidor (reglas: sin lectura ni escritura desde el cliente) |
+| `payment_events` | `mp_{id}_{estado}` | bitácora de cada estado recibido de Mercado Pago | Solo servidor; lectura admin |
+| `public_profiles` | `{uid}` | `username`, `photoURL`, `avatar` (lo que se ve en el foro) | Solo servidor (`PATCH /api/me/profile`); lectura pública |
 | `posts` | `{auto}` | `autor_id`, `autor_username`, `autor_avatar`, `contenido`, `imagen_url`, `likes[]`, `comentarios[]`, `created_at` | Usuario autenticado |
 | `pqrs` | `{auto}` | `tipo`, `mensaje`, `userId`, `userName`, `userEmail`, `fecha`, `hora`, `createdAt`, `status`, `respuesta_admin?`, `fecha_respuesta?` | Usuario (create) / Admin (update) |
 | `notifications` | `{auto}` o `plan5_{uid}_{fecha}` | `tipo` (`low_stock`, `purchase`, `plan_expiry`), `mensaje`, `leido`, `fecha`, + ids (`id_producto`, `id_orden`, `uid`) | Admin SDK (webhook + auto-gen) |
@@ -503,7 +513,7 @@ NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=
 
 # Mercado Pago (Tus integraciones → credenciales y Webhooks)
 MERCADOPAGO_ACCESS_TOKEN=        # de prueba o de producción (ambos empiezan por APP_USR-)
-MERCADOPAGO_WEBHOOK_SECRET=      # clave del webhook (evento "Pagos"); sin ella no se verifica la firma
+MERCADOPAGO_WEBHOOK_SECRET=      # clave del webhook (evento "Pagos") de la MISMA aplicación del access token; sin ella no se verifica la firma
 MERCADOPAGO_PUBLIC_URL=          # SOLO desarrollo: URL https del túnel. No definir en Vercel
 MERCADOPAGO_API_URL=             # SOLO desarrollo: simulador de la API. No definir en Vercel
 
@@ -612,9 +622,12 @@ El pago se confirma **dos veces**:
 - La ruta exige `Authorization: Bearer $CRON_SECRET` (401 si falta). El `GET /api/admin/notifications` del panel es **solo lectura**.
 
 ### Despliegue
-- La app vive desplegada en **Vercel** (`.vercel`).
+- La app vive desplegada en **Vercel** (`.vercel`, proyecto `fitmania`): producción en **https://fitmania-seven.vercel.app**. Cada push a `main` despliega solo y cada PR genera un preview.
 - Firebase (Auth + Firestore y sus reglas) en el proyecto **`fitmania-e1748`**.
 - Para nuevos entornos, configurar las variables de §14 en el dashboard de Vercel.
+- **Orden obligatorio:** primero el código (merge a `main`) y, apenas quede *Ready*, `npx firebase deploy --only firestore:rules,firestore:indexes --project fitmania-e1748`. Las reglas actuales cierran escrituras que usaba el código anterior.
+- Después del deploy, ejecutar las migraciones pendientes en el panel admin → Sistema (primero "Simular").
+- **Estado al 24-10-2026:** la rama `fix/fase1-criticos` está en el **PR #1** (CI en verde), con el deploy previsto para el 25-10. Producción ya tiene todas las variables críticas; las recomendadas que faltan y el paso a paso están en `plan-24-10-2026.md` §4 y en `docs/checklist-salida.md`.
 
 ### Archivos auxiliares
 - `deep_diag.js`, `fix_env.js`, `tmp_check_key.js`, `tmp_fix_key.js`: utilidades de diagnóstico temporales en la raíz (no forman parte del flujo de la app).
