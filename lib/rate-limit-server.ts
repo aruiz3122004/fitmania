@@ -7,7 +7,7 @@ import { getClientIp } from '@/lib/client-ip';
  *
  * Antes existía `POST /api/security/success`, atendido por el middleware sin
  * autenticación: cualquiera podía borrar su propio contador y anular el bloqueo.
- * Las claves deben coincidir con las que usa `middleware.ts`.
+ * Las claves deben coincidir con las que usa `proxy.ts`.
  */
 let redis: Redis | null = null;
 const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -18,7 +18,7 @@ export async function resetRateLimitFor(request: Request): Promise<void> {
   if (!redis) return;
   const ip = getClientIp(request.headers);
   try {
-    // Solo el grupo de paneles (ver middleware.ts: contadores separados por grupo).
+    // Solo el grupo de paneles (ver proxy.ts: contadores separados por grupo).
     await redis.del(`fw_attempts_panel_${ip}`, `fw_lockout_panel_${ip}`, `fw_level_panel_${ip}`);
   } catch (error) {
     console.error('Error reiniciando rate limit:', error);

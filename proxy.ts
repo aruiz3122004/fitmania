@@ -53,7 +53,7 @@ function getLockoutTime(level: number): number {
 // NONCE + CSP (T-17)
 // -------------------------------------------------------
 // CSP restrictiva basada en NONCE por request. El nonce se genera con Web Crypto
-// (runtime Edge) y se propaga:
+// (disponible en el runtime de Node del proxy) y se propaga:
 //   1. En la RESPUESTA (para que el navegador aplique la política).
 //   2. En la REQUEST (para que Next.js lo añada a sus propios <script> en el SSR).
 // Nota: el nonce exige renderizado dinámico (ver `export const dynamic` en el
@@ -199,7 +199,7 @@ async function handlePanelGate(
   return rewriteWithNonce(request, new URL('/404', request.url), nonce, csp);
 }
 
-export default async function middleware(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const nonce = generateNonce();
   const csp = buildCsp(nonce);
