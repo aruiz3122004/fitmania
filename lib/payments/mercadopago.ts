@@ -9,6 +9,16 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
  */
 const API = 'https://api.mercadopago.com';
 
+/**
+ * Solo desarrollo: `MERCADOPAGO_API_URL` apunta a un simulador local de la API para
+ * probar escenarios (rechazo, reembolso, sobreventa…) sin pasar por el navegador.
+ * En producción siempre se usa la API real.
+ */
+function apiBase(): string {
+  const override = process.env.NODE_ENV !== 'production' ? process.env.MERCADOPAGO_API_URL?.trim() : '';
+  return override ? override.replace(/\/$/, '') : API;
+}
+
 export class MercadoPagoError extends Error {
   readonly status: number;
   constructor(message: string, status: number) {
@@ -29,7 +39,7 @@ async function mpFetch<T>(path: string, init: RequestInit & { idempotencyKey?: s
     'Content-Type': 'application/json',
   };
   if (init.idempotencyKey) headers['X-Idempotency-Key'] = init.idempotencyKey;
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${apiBase()}${path}`, {
     ...init,
     headers,
     signal: AbortSignal.timeout(15_000),

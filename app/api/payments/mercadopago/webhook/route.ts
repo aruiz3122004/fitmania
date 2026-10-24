@@ -28,7 +28,9 @@ export async function POST(req: NextRequest) {
   if (secret) {
     const valid = verifyWebhookSignature({
       xSignature: req.headers.get('x-signature'),
-      xRequestId: req.headers.get('x-request-id'),
+      // El middleware reemplaza `x-request-id` por su ID de correlación (F1-03); el
+      // original de Mercado Pago, que entra en la firma, queda en `x-upstream-request-id`.
+      xRequestId: req.headers.get('x-upstream-request-id') ?? req.headers.get('x-request-id'),
       dataId: dataId ? String(dataId) : null,
       secret,
     });

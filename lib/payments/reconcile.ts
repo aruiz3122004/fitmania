@@ -33,15 +33,18 @@ export async function reconcilePendingPayments(db: Firestore, limit = 50) {
   if (!isMercadoPagoConfigured()) return summary;
 
   const now = Date.now();
-  const snap = await db
-    .collection('payments')
-    .where('status', '==', 'pending')
-    .where('createdAt', '<=', new Date(now - HOUR))
-    .orderBy('createdAt', 'asc')
-    .limit(limit)
-    .get();
+  // Filtro de un solo campo (sin índice compuesto): los pendientes son pocos y la
+  // antigüedad se aplica aquí. Así el cron no falla si el índice no está desplegado.
+  const snap = await db.collection('payments').where('status', '==', 'pending').limit(500).get();
+  const due = snap.docs
+    .filter((d) => {
+      const createdAt = d.data().createdAt?.toDate?.() as Date | undefined;
+      return createdAt && createdAt.getTime() <= now - HOUR;
+    })
+    .sort((a, b) => a.data().createdAt.toMillis() - b.data().createdAt.toMillis())
+    .slice(0, limit);
 
-  for (const doc of snap.docs) {
+  for (const doc of due) {
     summary.checked++;
     try {
       const results = await reconcileReference(db, doc.id);

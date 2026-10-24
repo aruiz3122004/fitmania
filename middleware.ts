@@ -118,6 +118,11 @@ function applySecurityHeaders(response: NextResponse, csp: string) {
 // F1-03: ID de correlación por request. Llega a las rutas (auditoría, logs) en el
 // header `x-request-id` y se devuelve al cliente para cruzar un error con los logs.
 function withRequestId(requestHeaders: Headers): string {
+  // La firma de los webhooks de Mercado Pago incluye SU `x-request-id`: se conserva
+  // en `x-upstream-request-id` (solo la define el middleware, nunca el cliente).
+  const upstream = requestHeaders.get('x-request-id');
+  if (upstream) requestHeaders.set('x-upstream-request-id', upstream);
+  else requestHeaders.delete('x-upstream-request-id');
   const requestId = crypto.randomUUID();
   requestHeaders.set('x-request-id', requestId);
   return requestId;
