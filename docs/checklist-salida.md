@@ -27,7 +27,7 @@ Hacerlo **en este orden** y en la misma ventana: las reglas nuevas cierran escri
 2. [ ] Merge de `fix/fase1-criticos` a `main` y deploy en Vercel.
 3. [ ] `firebase deploy --only firestore:rules,firestore:indexes --project fitmania-e1748` **inmediatamente después** del deploy del código.
 4. [ ] Panel admin → Sistema → Migraciones: simular y ejecutar `004_public_profiles` y `005_close_historical_daily_stats`.
-5. [ ] Mercado Pago (producción) → Webhooks: URL `https://<dominio>/api/payments/mercadopago/webhook`, evento *Pagos*; copiar la clave en `MERCADOPAGO_WEBHOOK_SECRET` y re-desplegar.
+5. [ ] Mercado Pago (producción) → Webhooks: URL `https://<dominio>/api/payments/mercadopago/webhook`, evento *Pagos*; copiar la clave en `MERCADOPAGO_WEBHOOK_SECRET` y re-desplegar. La clave debe ser de **la misma aplicación** que el access token; si no, todos los avisos reales dan 401.
 
 ## 3. Verificación después del deploy
 

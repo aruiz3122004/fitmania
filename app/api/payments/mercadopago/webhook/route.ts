@@ -24,8 +24,20 @@ export async function POST(req: NextRequest) {
   const type = url.searchParams.get('type') || url.searchParams.get('topic') || body?.type || body?.topic;
   const dataId = url.searchParams.get('data.id') || url.searchParams.get('id') || body?.data?.id || null;
 
+  // Solo interesan los pagos (merchant_order, etc. se confirman como recibidos).
+  // Va antes de la firma: esos avisos no se procesan.
+  if (type !== 'payment' || !dataId || !/^\d+$/.test(String(dataId))) {
+    return NextResponse.json({ received: true });
+  }
+
   const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET?.trim();
   if (secret) {
+    // El formato IPN (`?topic=`) trae un `x-signature` que no se puede verificar con
+    // la clave: se confirma sin procesarlo. El mismo pago llega firmado como webhook
+    // (`?type=payment`) y, si no, lo concilia el cron.
+    if (url.searchParams.has('topic')) {
+      return NextResponse.json({ received: true, result: 'ipn_ignored' });
+    }
     const valid = verifyWebhookSignature({
       xSignature: req.headers.get('x-signature'),
       // El middleware reemplaza `x-request-id` por su ID de correlación (F1-03); el
@@ -38,11 +50,6 @@ export async function POST(req: NextRequest) {
       console.warn('[mp-webhook] Firma inválida', { type, dataId });
       return NextResponse.json({ error: 'Firma inválida' }, { status: 401 });
     }
-  }
-
-  // Solo interesan los pagos (merchant_order, etc. se confirman como recibidos).
-  if (type !== 'payment' || !dataId || !/^\d+$/.test(String(dataId))) {
-    return NextResponse.json({ received: true });
   }
 
   try {
