@@ -16,7 +16,9 @@ function ResultadoContent() {
   const searchParams = useSearchParams()
   const [estado, setEstado] = useState<Estado>('cargando')
   const [paymentIntentId, setPaymentIntentId] = useState('')
- 
+  // "Intentar nuevamente" vuelve a lo mismo que se estaba comprando (el carrito sigue intacto).
+  const [retryHref, setRetryHref] = useState('/pago')
+
   const { clearCart } = useCartStore()
 
   useEffect(() => {
@@ -39,6 +41,7 @@ function ResultadoContent() {
           const data = await res.json().catch(() => ({}))
           if (cancelled) return
           if (data.paymentId) setPaymentIntentId(String(data.paymentId))
+          if (data.type === 'plan' && data.planId) setRetryHref(`/pago?planId=${encodeURIComponent(data.planId)}`)
           if (data.status === 'approved') {
             if (data.type === 'products') clearCart()
             setEstado('exitoso')
@@ -145,7 +148,7 @@ function ResultadoContent() {
                 </Link>
                 {estado === 'fallido' && (
                   <Link
-                    href="/pago"
+                    href={retryHref}
                     className="block text-center font-label font-bold text-sm text-secondary py-3 border-2 border-secondary transition-all hover:bg-gray-50"
                   >
                     INTENTAR NUEVAMENTE

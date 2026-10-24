@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Users, Package, MessageSquare, TrendingUp, LogOut, CreditCard, ShoppingBag, Send, Database, CalendarDays, Settings } from 'lucide-react';
+import { Users, Package, MessageSquare, TrendingUp, LogOut, CreditCard, ShoppingBag, Send, Database, CalendarDays, Settings, Wallet } from 'lucide-react';
 
 // F3-21: extraído de app/fitministration/page.tsx (sin cambios de lógica).
 export const Sidebar = ({ activeTab, setActiveTab, onLogout }: any) => {
@@ -14,6 +14,7 @@ export const Sidebar = ({ activeTab, setActiveTab, onLogout }: any) => {
     { id: 'pqrs', icon: MessageSquare, label: 'PQRS' },
     { id: 'community', icon: Send, label: 'Comunidad' },
     { id: 'orders', icon: ShoppingBag, label: 'Compras' },
+    { id: 'payments', icon: Wallet, label: 'Pagos' },
     { id: 'audit', icon: Database, label: 'Auditoría' },
     { id: 'system', icon: Settings, label: 'Sistema' },
   ];

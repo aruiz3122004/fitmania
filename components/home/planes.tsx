@@ -21,8 +21,6 @@ export function Planes({ initialPlanes }: { initialPlanes?: any[] | null } = {})
   // F2-21: si el servidor ya entregó los planes, no se abre un listener de Firestore.
   const [planes, setPlanes] = useState<any[]>(initialPlanes || [])
   const [loading, setLoading] = useState(!initialPlanes)
-  const [showModal, setShowModal] = useState(false)
-  const [selectedPlan, setSelectedPlan] = useState<any | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -148,49 +146,6 @@ export function Planes({ initialPlanes }: { initialPlanes?: any[] | null } = {})
           })}
         </div>
       </div>
-
-      {/* Modal */}
-      {showModal && selectedPlan && (
-        <div
-          className="fixed inset-0 bg-navy/85 flex items-center justify-center z-50 animate-[fadeIn_0.3s_ease]"
-          onClick={() => setShowModal(false)}
-        >
-          <div
-            className="bg-white border-4 border-secondary shadow-[8px_8px_0_var(--navy)] p-10 text-center max-w-md w-[90%] animate-[popIn_0.4s_ease]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="font-display text-[2.5rem] text-primary [text-shadow:2px_2px_0_#fce] tracking-[2px] mb-2">
-              GRAN ELECCION!
-            </div>
-            <div className="font-heading font-extrabold text-xl text-secondary mb-1">
-              {selectedPlan.name}
-            </div>
-            <div className="font-display text-3xl text-primary mb-4">
-              ${formatPrice(selectedPlan.price)}
-            </div>
-            <p className="font-body text-[0.9rem] text-gray-500 mb-6">
-              Proximamente pasarela de pago. Tu aventura heroica esta a punto de comenzar!
-            </p>
-            <button
-              onClick={() => setShowModal(false)}
-              className="font-display text-lg tracking-[2px] text-white bg-secondary border-3 border-secondary px-8 py-3 shadow-[3px_3px_0_var(--red-primary)] transition-all hover:bg-navy-light"
-            >
-              ENTENDIDO
-            </button>
-          </div>
-        </div>
-      )}
-
-      <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes popIn {
-          0% { transform: scale(0.8); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-      `}</style>
     </section>
   )
 }

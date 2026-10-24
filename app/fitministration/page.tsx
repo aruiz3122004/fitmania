@@ -55,6 +55,7 @@ import { InventoryCountsPanel } from '@/components/admin/inventory-counts-panel'
 import { SystemTab } from '@/components/admin/system-tab';
 import { CommunityTab } from '@/components/admin/community-tab';
 import { ProductImport } from '@/components/admin/product-import';
+import { PaymentsTab } from '@/components/admin/payments-tab';
 
 // --- HELPERS ---
 export default function AdminPage() {
@@ -961,7 +962,7 @@ export default function AdminPage() {
 
           <div className="w-full sm:w-auto mt-4 sm:mt-0">
             <h2 className="text-xs font-black text-red-600 uppercase tracking-[4px] mb-1">Fitmania Command Center</h2>
-            <p className="text-4xl md:text-5xl font-black italic underline decoration-red-600 decoration-8 underline-offset-8 tracking-tighter uppercase">{activeTab === 'overview' ? 'Operaciones' : activeTab === 'attendance' ? 'Asistencia' : activeTab === 'system' ? 'Sistema' : activeTab === 'community' ? 'Comunidad' : activeTab}</p>
+            <p className="text-4xl md:text-5xl font-black italic underline decoration-red-600 decoration-8 underline-offset-8 tracking-tighter uppercase">{activeTab === 'overview' ? 'Operaciones' : activeTab === 'attendance' ? 'Asistencia' : activeTab === 'system' ? 'Sistema' : activeTab === 'community' ? 'Comunidad' : activeTab === 'payments' ? 'Pagos' : activeTab}</p>
           </div>
 
           <div className="flex items-center gap-6 w-full sm:w-auto self-end sm:self-auto">
@@ -998,6 +999,7 @@ export default function AdminPage() {
           {activeTab === 'planes' && renderPlanes()}
           {activeTab === 'pqrs' && renderPQRS()}
           {activeTab === 'orders' && renderOrders()}
+          {activeTab === 'payments' && <PaymentsTab />}
           {activeTab === 'audit' && <AuditLogsTab logs={auditLogsList} loading={false} onRefreshAction={refreshAllData} />}
         </div>
 

@@ -53,6 +53,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       status: data.status,
       type: data.type,
+      // Para "Intentar nuevamente" en /pago/resultado.
+      planId: data.planId || null,
       concept: data.concept,
       amount: data.amount,
       method: data.method || null,

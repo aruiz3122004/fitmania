@@ -194,7 +194,7 @@ export default function CarritoPage() {
                   </button>
 
                   <p className="font-body text-xs text-gray-500 text-center mt-4">
-                    Pago seguro con stripe
+                    Pago seguro con Mercado Pago: tarjeta, PSE o Efecty
                   </p>
                 </div>
               </div>

@@ -49,13 +49,14 @@ export const NotificationBell = ({ notifications, onMarkRead, onNavigate }: any)
                     if (n.tipo === 'low_stock' || n.tipo === 'inventory_count' || n.tipo === 'oversell') onNavigate('inventory');
                     if (n.tipo === 'purchase') onNavigate('orders');
                     if (n.tipo === 'pqrs') onNavigate('pqrs');
+                    if (n.tipo === 'payment_alert' || n.tipo === 'refund') onNavigate('payments');
                     setOpen(false);
                   }}
                 >
                   <p className="text-[10px] font-black uppercase mb-1 flex items-center gap-1">
                     {n.tipo === 'low_stock' && <AlertTriangle className="w-3 h-3 text-red-600" />}
                     {n.tipo === 'purchase' && <CreditCard className="w-3 h-3 text-green-600" />}
-                    {n.tipo === 'low_stock' ? 'Stock Bajo' : n.tipo === 'purchase' ? 'Compra' : n.tipo === 'inventory_count' ? 'Conteo de recepción' : n.tipo === 'oversell' ? 'Sobreventa' : 'Alerta'}
+                    {n.tipo === 'low_stock' ? 'Stock Bajo' : n.tipo === 'purchase' ? 'Compra' : n.tipo === 'inventory_count' ? 'Conteo de recepción' : n.tipo === 'oversell' ? 'Sobreventa' : n.tipo === 'payment_alert' ? 'Pago por revisar' : n.tipo === 'refund' ? 'Reembolso' : 'Alerta'}
                   </p>
                   <p className="text-sm font-bold text-zinc-800 leading-tight">{n.mensaje}</p>
                 </div>
