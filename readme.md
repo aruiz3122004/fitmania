@@ -103,6 +103,7 @@ fitmania/
 │   │   │   ├── checkout/route.ts      # POST: crea payments/{ref} y la preferencia de Checkout Pro
 │   │   │   ├── status/route.ts        # GET: estado de un pago propio (concilia si sigue pendiente)
 │   │   │   └── mercadopago/webhook/route.ts # POST: aviso de Mercado Pago (firma x-signature)
+│   │   ├── me/route.ts                # GET: descarga de datos del titular (perfil, compras, intentosDePago, ingresos…); DELETE: supresión de la cuenta
 │   │   ├── me/profile/route.ts        # PATCH: nombre/avatar/foto + perfil público del foro
 │   │   ├── me/purchases/route.ts      # GET: historial de compras del usuario (pagos MP + órdenes)
 │   │   ├── client-error/route.ts      # POST: errores de la UI → Sentry
@@ -233,7 +234,7 @@ La navegación pública se define en `components/layout/topbar.tsx` (`navLinks`:
    - monto o moneda distintos → `amount_mismatch` y alerta al admin, sin efecto;
    - sobreventa → reembolso parcial automático (F1-20).
 4. **Conciliación** (`lib/payments/reconcile.ts`): al volver a `/pago/resultado` y en el cron diario (pendientes con más de 1 h; un checkout sin pagos en Mercado Pago vence a los 4 días).
-   - Al volver, `/pago/resultado` consulta `GET /api/payments/status` durante unos 15 s (reintenta cada 3 s mientras siga pendiente) y muestra **pago exitoso**, **rechazado** (con "Intentar nuevamente") o **en proceso** (PSE, Efecty o un regreso sin pagar).
+   - Al volver, `/pago/resultado` consulta `GET /api/payments/status` durante unos 15 s (reintenta cada 3 s mientras siga pendiente) y muestra **pago exitoso**, **rechazado** (con "Intentar nuevamente"), **en proceso** (PSE o Efecty) o **pago no completado** si el cliente salió de Mercado Pago sin pagar (vuelve con `payment_id=null`; `lib/payments/return-state.ts`).
    - Si Mercado Pago no responde, se informa el estado guardado y el webhook o el cron lo completan.
    - Un checkout abandonado no cobra nada, no envía correos y no aparece en `/compras`.
 5. El admin ve los pagos pendientes, rechazados, con monto alterado, vencidos y reembolsos en la pestaña **Pagos**, y puede conciliar uno a mano.

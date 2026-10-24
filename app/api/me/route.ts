@@ -31,9 +31,10 @@ export async function GET(request: Request) {
   try {
     const db = getAdminFirestore();
     const uid = decoded.uid;
-    const [profile, orders, entries, pqrs, posts, comments, consents] = await Promise.all([
+    const [profile, orders, payments, entries, pqrs, posts, comments, consents] = await Promise.all([
       db.collection('users').doc(uid).get(),
       db.collection('orders').where('uid', '==', uid).get(),
+      db.collection('payments').where('uid', '==', uid).get(),
       db.collection('entry_logs').where('userId', '==', uid).get(),
       db.collection('pqrs').where('userId', '==', uid).get(),
       db.collection('posts').where('autor_id', '==', uid).get(),
@@ -47,6 +48,9 @@ export async function GET(request: Request) {
       cuenta: { uid, email: decoded.email || null, correoVerificado: !!decoded.email_verified },
       perfil: profile.exists ? serialize(profile.data()) : null,
       compras: docs(orders),
+      // Todos los intentos de pago con Mercado Pago (también pendientes, rechazados y
+      // vencidos). Sin datos bancarios: FITMANIA solo guarda el medio y el id de transacción.
+      intentosDePago: docs(payments).map(({ stockApplied: _s, preferenceId: _p, ...rest }: any) => rest),
       ingresos: docs(entries).map(({ userEmail: _e, ...rest }: any) => rest),
       pqrs: docs(pqrs),
       publicaciones: docs(posts),

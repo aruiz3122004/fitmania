@@ -5,11 +5,12 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
-import { CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react'
+import { CheckCircle2, XCircle, Clock, Loader2, Undo2 } from 'lucide-react'
 import { auth } from '@/lib/firebase'
 import { useCartStore } from '@/lib/store'
+import { cleanPaymentId, returnState } from '@/lib/payments/return-state'
 
-type Estado = 'cargando' | 'exitoso' | 'fallido' | 'pendiente'
+type Estado = 'cargando' | 'exitoso' | 'fallido' | 'pendiente' | 'incompleto'
 
 // ↓ Renombrada de PagoResultadoPage a ResultadoContent para el deploy en vercel
 function ResultadoContent() {
@@ -27,7 +28,8 @@ function ResultadoContent() {
     const ref = searchParams.get('ref') || searchParams.get('external_reference')
     if (ref) {
       let cancelled = false
-      const paymentId = searchParams.get('payment_id') || searchParams.get('collection_id') || ''
+      // Al salir sin pagar, Mercado Pago vuelve con `payment_id=null` (texto).
+      const paymentId = cleanPaymentId(searchParams.get('payment_id')) || cleanPaymentId(searchParams.get('collection_id'))
       setPaymentIntentId(paymentId)
 
       const check = async (attempt: number) => {
@@ -36,23 +38,20 @@ function ResultadoContent() {
           const idToken = await auth.currentUser?.getIdToken()
           if (!idToken) { if (!cancelled) setEstado('pendiente'); return }
           const qs = new URLSearchParams({ ref })
-          if (paymentId && paymentId !== 'null') qs.set('payment_id', paymentId)
+          if (paymentId) qs.set('payment_id', paymentId)
           const res = await fetch(`/api/payments/status?${qs}`, { headers: { Authorization: `Bearer ${idToken}` } })
           const data = await res.json().catch(() => ({}))
           if (cancelled) return
           if (data.paymentId) setPaymentIntentId(String(data.paymentId))
           if (data.type === 'plan' && data.planId) setRetryHref(`/pago?planId=${encodeURIComponent(data.planId)}`)
-          if (data.status === 'approved') {
-            if (data.type === 'products') clearCart()
-            setEstado('exitoso')
-          } else if (['rejected', 'refunded', 'charged_back', 'expired'].includes(data.status)) {
-            setEstado('fallido')
-          } else if (data.status === 'pending' && attempt < 5) {
+          const next = returnState({ status: data.status, urlPaymentId: paymentId, serverPaymentId: data.paymentId, attempt })
+          if (next === 'reintentar') {
             // PSE o webhook en camino: se reintenta unos segundos antes de mostrar "en proceso".
             setTimeout(() => check(attempt + 1), 3000)
-          } else {
-            setEstado('pendiente')
+            return
           }
+          if (next === 'exitoso' && data.type === 'products') clearCart()
+          setEstado(next)
         } catch {
           if (!cancelled) setEstado('pendiente')
         }
@@ -98,6 +97,13 @@ function ResultadoContent() {
       titulo: 'PAGO EN PROCESO',
       mensaje: 'Tu pago está siendo procesado. Con PSE puede tardar unos minutos; con Efecty se confirma cuando pagues en el punto. Te enviaremos un correo cuando se confirme.',
       accion: { label: 'IR AL INICIO', href: '/' },
+    },
+    incompleto: {
+      icon: <Undo2 className="w-20 h-20 text-white" />,
+      bgBanner: 'bg-zinc-700',
+      titulo: 'PAGO NO COMPLETADO',
+      mensaje: 'Saliste de Mercado Pago sin terminar el pago, así que no se hizo ningún cobro. Tu compra sigue guardada: puedes intentarlo de nuevo cuando quieras.',
+      accion: { label: 'INTENTAR NUEVAMENTE', href: retryHref },
     },
     cargando: {
       icon: <Loader2 className="w-20 h-20 text-gray-400 animate-spin" />,
@@ -146,12 +152,12 @@ function ResultadoContent() {
                 >
                   {accion.label}
                 </Link>
-                {estado === 'fallido' && (
+                {(estado === 'fallido' || estado === 'incompleto') && (
                   <Link
-                    href={retryHref}
+                    href={estado === 'fallido' ? retryHref : '/'}
                     className="block text-center font-label font-bold text-sm text-secondary py-3 border-2 border-secondary transition-all hover:bg-gray-50"
                   >
-                    INTENTAR NUEVAMENTE
+                    {estado === 'fallido' ? 'INTENTAR NUEVAMENTE' : 'IR AL INICIO'}
                   </Link>
                 )}
               </div>
