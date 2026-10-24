@@ -6,9 +6,9 @@ import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
 import { auth } from '@/lib/firebase'
-import { useAuthStore } from '@/lib/store'
+import { useAuthStore, useUIStore } from '@/lib/store'
 import type { PurchaseEntry, PurchaseStatus, PurchaseSummary } from '@/lib/purchase-history'
-import { Receipt, Dumbbell, ShoppingBag, ChevronDown, Loader2, RefreshCw, LogIn, Wallet, CalendarDays } from 'lucide-react'
+import { Receipt, Dumbbell, ShoppingBag, ChevronDown, RefreshCw, LogIn, Wallet, CalendarDays, ArrowLeft } from 'lucide-react'
 
 type Filtro = 'todas' | 'plan' | 'products'
 type Estado = 'cargando' | 'sin-sesion' | 'error' | 'listo'
@@ -45,6 +45,7 @@ const FILTROS: { id: Filtro; label: string }[] = [
 
 export default function ComprasPage() {
   const uid = useAuthStore((s) => s.user?.uid)
+  const setUserDropdownOpen = useUIStore((s) => s.setUserDropdownOpen)
   const [estado, setEstado] = useState<Estado>('cargando')
   const [error, setError] = useState('')
   const [purchases, setPurchases] = useState<PurchaseEntry[]>([])
@@ -83,6 +84,12 @@ export default function ComprasPage() {
     cargar()
   }, [cargar, uid])
 
+  // "Volver" abre el menú de cuenta de la barra superior (arriba, para que se vea).
+  const volverAlMenu = () => {
+    window.scrollTo({ top: 0, behavior: 'instant' })
+    requestAnimationFrame(() => setUserDropdownOpen(true))
+  }
+
   const visibles = filtro === 'todas' ? purchases : purchases.filter((p) => p.tipo === filtro)
   const conteo = (f: Filtro) => (f === 'todas' ? purchases.length : purchases.filter((p) => p.tipo === f).length)
 
@@ -91,6 +98,14 @@ export default function ComprasPage() {
       <Topbar />
       <section className="mt-[72px] min-h-screen bg-muted py-16">
         <div className="max-w-[900px] mx-auto px-4 sm:px-8">
+          <button
+            onClick={volverAlMenu}
+            className="inline-flex items-center gap-2 mb-6 font-label text-xs font-black uppercase tracking-widest bg-white text-black px-4 py-2 border-2 border-black rounded shadow-[2px_2px_0_0_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Volver
+          </button>
+
           <SectionHeader label="TU CUENTA" title="HISTORIAL DE" titleAccent="COMPRAS" />
 
           {estado === 'cargando' && (
