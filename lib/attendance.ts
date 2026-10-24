@@ -1,4 +1,5 @@
 import { FieldValue, type Firestore, type Transaction } from 'firebase-admin/firestore';
+import { summarizeMonth, previousDateKey } from '@/lib/attendance-month';
 
 /**
  * Agregados de asistencia (F2-03 / F3-01).
@@ -57,4 +58,49 @@ export function toDailyStats(date: string, data: FirebaseFirestore.DocumentData 
     withoutPlan: Number(data?.withoutPlan) || 0,
     byHour,
   };
+}
+
+export const MONTHLY_STATS = 'monthly_stats';
+/** Días hacia atrás que revisa el cierre (por si el cron no corrió algún día). */
+const CLOSE_LOOKBACK_DAYS = 3;
+/** La planilla manual (F2-07) admite ingresos de hasta 7 días atrás: esos meses se recalculan. */
+const MANUAL_ENTRY_DAYS = 7;
+
+/**
+ * Cierre diario (F3-01): marca `closedAt` en los días anteriores a `today` que no
+ * estén cerrados (sin tocar los contadores; si no hubo ingresos el día queda en 0) y
+ * recalcula `monthly_stats/{YYYY-MM}` de los meses que aún pueden cambiar. Idempotente.
+ */
+export async function closeDailyStats(db: Firestore, today: string) {
+  const closed: string[] = [];
+  for (let i = CLOSE_LOOKBACK_DAYS; i >= 1; i--) {
+    const date = previousDateKey(today, i);
+    const ref = db.collection(DAILY_STATS).doc(date);
+    const snap = await ref.get();
+    if (snap.data()?.closedAt) continue;
+    await ref.set({ date, closedAt: new Date() }, { merge: true });
+    closed.push(date);
+  }
+
+  const months = new Set<string>();
+  for (let i = 1; i <= MANUAL_ENTRY_DAYS + 1; i++) months.add(previousDateKey(today, i).slice(0, 7));
+
+  for (const month of months) {
+    const snap = await db
+      .collection(DAILY_STATS)
+      .where('date', '>=', `${month}-01`)
+      .where('date', '<=', `${month}-31`)
+      .get();
+    const days = snap.docs.map((d) => toDailyStats(d.id, d.data()));
+    // Días del mes hasta el último cerrado (incluye los días sin ingresos).
+    const lastClosed = snap.docs
+      .filter((d) => d.data().closedAt)
+      .map((d) => d.id)
+      .sort()
+      .pop();
+    const daysCounted = lastClosed ? Number(lastClosed.slice(8, 10)) : 0;
+    await db.collection(MONTHLY_STATS).doc(month).set({ ...summarizeMonth(month, days, daysCounted), updatedAt: new Date() });
+  }
+
+  return { closed, months: [...months] };
 }

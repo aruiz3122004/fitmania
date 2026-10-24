@@ -1,5 +1,7 @@
 import type { Firestore } from 'firebase-admin/firestore';
 import { publicProfileOf } from '@/lib/public-profile';
+import { DAILY_STATS } from '@/lib/attendance';
+import { getDateKeyInAppTz } from '@/lib/datetime';
 
 /**
  * Migraciones de datos versionadas (F2-14).
@@ -121,7 +123,25 @@ const publicProfiles: Migration = {
   },
 };
 
-export const MIGRATIONS: Migration[] = [forumCommentsToSubcollection, planDaysDefault, productPriceField, publicProfiles];
+/** 005 — Cierra los días de asistencia anteriores al cierre automático (F3-01). */
+const closeHistoricalDays: Migration = {
+  id: '005_close_historical_daily_stats',
+  description: 'Marca closedAt en los daily_stats anteriores a hoy que no lo tienen (el cron solo revisa los últimos 3 días).',
+  async run(db, { dryRun }) {
+    const today = getDateKeyInAppTz();
+    const snap = await db.collection(DAILY_STATS).where('date', '<', today).get();
+    const result: MigrationResult = { examined: snap.size, changed: 0, details: [] };
+    for (const day of snap.docs) {
+      if (day.data().closedAt) continue;
+      result.changed++;
+      if (result.details.length < MAX_DETAILS) result.details.push(day.id);
+      if (!dryRun) await day.ref.update({ closedAt: new Date() });
+    }
+    return result;
+  },
+};
+
+export const MIGRATIONS: Migration[] = [forumCommentsToSubcollection, planDaysDefault, productPriceField, publicProfiles, closeHistoricalDays];
 
 export function findMigration(id: string): Migration | undefined {
   return MIGRATIONS.find((m) => m.id === id);
