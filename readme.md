@@ -2,7 +2,7 @@
 
 > **Tu Pasión. Tu Fuerza.** Plataforma web completa para el gimnasio FITMANIA: venta de planes de membresía, tienda de suplementos/snacks/ropa, foro comunitario, sistema PQRS, panel de administración y estación de recepción con control de acceso por código QR.
 
-Aplicación construida con **Next.js (App Router)** + **Firebase** + **Stripe**, desplegada en **Vercel**.
+Aplicación construida con **Next.js (App Router)** + **Firebase** + **Mercado Pago** (Stripe en paralelo hasta F1-23), desplegada en **Vercel**.
 
 ---
 
@@ -50,13 +50,14 @@ La UI usa un **estilo cómic/superhéroe** (colores rojo/azul/amarillo, bordes g
 
 | Capa | Tecnología |
 |---|---|
-| Framework | Next.js **16.4.0** (App Router, React 19) |
+| Framework | Next.js **16.4.3** (App Router, React 19) |
 | Lenguaje | TypeScript 5.7 |
 | Estilos | Tailwind CSS v4 + shadcn/ui (Radix UI) + `tw-animate-css` |
 | Estado global | zustand 5 (carrito, sesión, UI) |
 | Backend/Firebase | Firebase 12 (Auth, Firestore) |
 | Admin SDK | firebase-admin 13 (autoridad para webhooks y rutas API) |
-| Pagos | Stripe 21 (`PaymentIntent`, currency `cop`) |
+| Pagos | **Mercado Pago Checkout Pro** (tarjeta, PSE, Efecty; API HTTP sin SDK) + Stripe 21 en paralelo |
+| Errores | Sentry por su API HTTP (sin SDK), activo con `SENTRY_DSN` |
 | Correos | Resend (API HTTP, hasta 3 reintentos, envío en segundo plano) |
 | Imágenes | Cloudinary (subida de avatares/perfil) |
 | QR | `@yudiel/react-qr-scanner` + `react-qr-code` |
@@ -98,6 +99,12 @@ fitmania/
 │   │   ├── security/
 │   │   │   ├── check/route.ts         # GET: estado de rate limit
 │   │   │   └── log-block/route.ts     # POST: registra bloqueos (secreto interno)
+│   │   ├── payments/
+│   │   │   ├── checkout/route.ts      # POST: crea payments/{ref} y la preferencia de Checkout Pro
+│   │   │   ├── status/route.ts        # GET: estado de un pago propio (concilia si sigue pendiente)
+│   │   │   └── mercadopago/webhook/route.ts # POST: aviso de Mercado Pago (firma x-signature)
+│   │   ├── me/profile/route.ts        # PATCH: nombre/avatar/foto + perfil público del foro
+│   │   ├── client-error/route.ts      # POST: errores de la UI → Sentry
 │   │   └── stripe/
 │   │       ├── create-payment/route.ts# POST: crea PaymentIntent en COP
 │   │       └── webhook/route.ts       # POST: evento Stripe → stock, órdenes, planes, emails en 2.º plano
@@ -148,7 +155,8 @@ fitmania/
 ├── init_products.js               # Seed de productos (raíz)
 ├── verify_flow.js                 # Test de stock/orden (raíz)
 ├── vercel.json                    # Config de Vercel (cron de /api/cron/notifications)
-└── next.config.mjs                # ignoreBuildErrors, images.unoptimized
+├── proxy.ts                      # Proxy de Next 16 (antes middleware.ts): CSP con nonce, puertas, CSRF, rate limit
+└── next.config.mjs                # images.unoptimized, allowedDevOrigins (túnel de pruebas)
 ```
 
 > **Nota:** el proyecto real vive en la carpeta anidada `fitmania/fitmania/`. Este `readme.md` se encuentra en la raíz de esa carpeta (junto a `package.json`).
@@ -209,6 +217,22 @@ La navegación pública se define en `components/layout/topbar.tsx` (`navLinks`:
 ---
 
 ## 6. Flujo de pago (planes y tienda)
+
+### 6.0 Mercado Pago (pasarela principal, F1-18 a F1-22)
+1. `/pago?planId=…` o `/pago` con el carrito → **`POST /api/payments/checkout`** con el ID token. El servidor calcula el monto (`lib/payments/pricing.ts`), guarda `payments/{fm_uuid}` en `pending` con la foto del checkout (ítems, precios, días) y devuelve la URL de Checkout Pro.
+2. Mercado Pago avisa a **`POST /api/payments/mercadopago/webhook`**. Con `MERCADOPAGO_WEBHOOK_SECRET` se exige la firma `x-signature` (el proxy conserva el `x-request-id` original en `x-upstream-request-id`). El estado se lee siempre de la API con el access token.
+3. `lib/payments/fulfillment.ts` aplica el resultado en **una transacción** (decisiones en `lib/payments/transitions.ts`, con pruebas):
+   - aprobado → activa el plan (`days` del plan) o descuenta el stock, crea `orders/{ref}`, `inventory_movements` y la notificación; guarda `stockApplied`;
+   - rechazado → `rejected` y correo; un reintento dentro del mismo checkout puede aprobarse después;
+   - reembolso / contracargo → descuenta los días o repone **solo** las unidades que salieron;
+   - monto o moneda distintos → `amount_mismatch` y alerta al admin, sin efecto;
+   - sobreventa → reembolso parcial automático (F1-20).
+4. **Conciliación** (`lib/payments/reconcile.ts`): al volver a `/pago/resultado` y en el cron diario (pendientes con más de 1 h; un checkout sin pagos en Mercado Pago vence a los 4 días).
+5. El admin ve los pagos pendientes, rechazados, con monto alterado, vencidos y reembolsos en la pestaña **Pagos**, y puede conciliar uno a mano.
+
+**Pruebas locales:** `MERCADOPAGO_PUBLIC_URL` = URL https de un túnel (`cloudflared tunnel --url http://localhost:3000`) para el retorno automático y el webhook. `MERCADOPAGO_API_URL` (solo desarrollo) apunta a un simulador de la API para probar escenarios sin navegador. Ninguna de las dos se define en Vercel.
+
+> Lo que sigue (6.1–6.7) describe **Stripe**, que se mantiene en paralelo hasta la salida a producción (F1-23).
 
 FITMANIA procesa pagos con **Stripe PaymentIntents** en **COP (pesos colombianos)**, usando el `CardElement` de Stripe. Hay un único endpoint que crea el cobro y un **webhook** que ejecuta toda la lógica de negocio del lado del servidor (fuente de verdad).
 
@@ -289,7 +313,7 @@ Stripe en modo test: **4242 4242 4242 4242**, cualquier fecha futura y CVC cualq
 ### Acceso (`/fitministration`)
 El panel vive en una URL **oculta** y protegida en dos capas (`components/admin/admin-login-form.tsx`):
 
-1. **Puerta de llave**: al visitar `/fitministration` el middleware exige `?key=<ADMIN_GATE_KEY>` (o una cookie `fitmania_admin_gate` válida por 1 hora, o una sesión admin ya iniciada). Sin esto responde **404**. El formulario limpia la llave de la barra de direcciones tras entrar.
+1. **Puerta de llave**: al visitar `/fitministration` el proxy (`proxy.ts`) exige `?key=<ADMIN_GATE_KEY>` (o una cookie `fitmania_admin_gate` válida por 1 hora, o una sesión admin ya iniciada). Sin esto responde **404**. El formulario limpia la llave de la barra de direcciones tras entrar.
 2. **Login real**: `signInWithEmailAndPassword` de Firebase, y luego `POST /api/admin/login` re-verifica en el servidor que el usuario tenga el **custom claim `admin: true`** y, si está definida, que el correo coincida con `ADMIN_AUTHORIZED_EMAIL`.
 
 Si pasa ambas capas, el servidor crea una **cookie `HttpOnly`** (`fitmania_session`, 1 h) que las rutas `/api/admin/*` re-validan con `verifyAdminRequest`.
@@ -314,7 +338,7 @@ Pestañas:
 - Además lee notificaciones existentes (`low_stock`, `purchase`) y las **marca como leídas** (`PATCH`) o **limpia las leídas** (`DELETE`).
 - Al hacer clic lleva a la pestaña correspondiente (inventario/compras/PQRS).
 
-Todas las rutas admin re-validan la sesión con `verifyAdminRequest` (cookie `HttpOnly` + claim `admin`), salvo `/api/admin/planes`, que depende solo del middleware (⚠ ver `auditoría.md`, hallazgo C-4).
+Todas las rutas admin re-validan la sesión con `verifyAdminRequest` (cookie `HttpOnly` + claim `admin`). Cada acción queda en `audit_logs` con el actor (`actorUid`) y los cambios antes → después (F1-26).
 
 ---
 
@@ -323,7 +347,7 @@ Todas las rutas admin re-validan la sesión con `verifyAdminRequest` (cookie `Ht
 Estación de control de ingresos del gimnasio en `/fitception` (URL también **oculta**).
 
 ### Acceso (doble capa) — `reception-login-form.tsx`
-1. **Puerta de llave**: al visitar `/fitception` el middleware exige `?key=<RECEPTION_GATE_KEY>` (o cookie `fitmania_reception_gate` válida por 1 hora, o una sesión de recepción ya iniciada). Sin esto responde **404**.
+1. **Puerta de llave**: al visitar `/fitception` el proxy (`proxy.ts`) exige `?key=<RECEPTION_GATE_KEY>` (o cookie `fitmania_reception_gate` válida por 1 hora, o una sesión de recepción ya iniciada). Sin esto responde **404**.
 2. **Login real**: `signInWithEmailAndPassword` de Firebase, y luego `POST /api/recepcion/login` exige que el correo coincida exactamente con **`RECEPTION_AUTHORIZED_EMAIL`** (si la variable no está definida, el servidor responde 500) **y** que la cuenta tenga el claim `receptionist: true` (T-16: ya no se auto-otorga; se gestiona con `manage-claims.js` o el panel admin).
 3. **Acceso directo (1 clic)**: las cuentas con rol ven un botón en el **menú de su cuenta** y en **`/perfil`** (`lib/panel-access.ts`, `enterPanel`). Reutiliza la sesión de Firebase ya activa enviando el ID token fresco a `POST /api/recepcion/login`, que crea la cookie y redirige al panel (sin llave ni contraseña).
 
@@ -464,7 +488,7 @@ RECEPTION_AUTHORIZED_EMAIL=      # obligatorio para /fitception
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 
-# Secreto interno del middleware (protege /api/security/log-block; NO reusar el token de Upstash)
+# Secreto interno del proxy (protege /api/security/log-block; NO reusar el token de Upstash)
 INTERNAL_MIDDLEWARE_SECRET=
 
 # Secreto del cron de Vercel (protege /api/cron/notifications; Vercel lo envía como Bearer)
@@ -473,6 +497,15 @@ CRON_SECRET=
 # Cloudinary
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=
+
+# Mercado Pago (Tus integraciones → credenciales y Webhooks)
+MERCADOPAGO_ACCESS_TOKEN=        # de prueba o de producción (ambos empiezan por APP_USR-)
+MERCADOPAGO_WEBHOOK_SECRET=      # clave del webhook (evento "Pagos"); sin ella no se verifica la firma
+MERCADOPAGO_PUBLIC_URL=          # SOLO desarrollo: URL https del túnel. No definir en Vercel
+MERCADOPAGO_API_URL=             # SOLO desarrollo: simulador de la API. No definir en Vercel
+
+# Sentry (opcional; sin DSN no se envía nada)
+SENTRY_DSN=
 ```
 
 La PRIVATE_KEY suele traer `\n` literales: `lib/firebase-admin.ts` los convierte en saltos reales y quita comillas para evitar el error *"Invalid PEM formatted message"*.
@@ -540,9 +573,9 @@ Scripts de `package.json`:
 
 ### Configuración de Next.js (`next.config.mjs`)
 ```js
-{ typescript: { ignoreBuildErrors: true }, images: { unoptimized: true } }
+{ poweredByHeader: false, allowedDevOrigins: ['*.trycloudflare.com'], images: { unoptimized: true } }
 ```
-- Los errores de TS **no bloquean** el build.
+- Los errores de TS **sí bloquean** el build (`ignoreBuildErrors` ya no está).
 - Las imágenes se sirven sin optimización (necesario para las rutas locales de `public/Imagenes/...`).
 
 ### Flujo doble de confirmación de pago
@@ -553,7 +586,7 @@ El pago se confirma **dos veces**:
 > El cliente **ya no escribe** el campo `plan` en Firestore (T-06): solo el webhook (Admin SDK) lo hace.
 
 ### Seguridad del admin
-- Acceso en dos capas: **puerta de llave** (`?key=ADMIN_GATE_KEY` en el middleware) + **login Firebase** que exige el custom claim `admin:true` (y `ADMIN_AUTHORIZED_EMAIL` si está definida).
+- Acceso en dos capas: **puerta de llave** (`?key=ADMIN_GATE_KEY` en el proxy) + **login Firebase** que exige el custom claim `admin:true` (y `ADMIN_AUTHORIZED_EMAIL` si está definida).
 - El **botón de acceso directo** (`lib/panel-access.ts`, menú de cuenta + `/perfil`) no agrega confianza nueva: reutiliza el ID token de la sesión ya activa y el servidor **re-valida el claim** en `POST /api/admin/login` antes de crear la cookie.
 - El claim `admin:true` se asigna con `node scripts/grant-admin.js <email>` o `node scripts/manage-claims.js <email> admin on`.
 - La sesión usa **session cookies de Firebase** (`createSessionCookie` + `verifySessionCookie(..., checkRevoked)`) → revocables (T-15). La cookie es `HttpOnly` `fitmania_session` (1 h).
@@ -561,13 +594,13 @@ El pago se confirma **dos veces**:
 - Las reglas de Firestore bloquean cualquier intento de escritura no admin en `products`, `orders` y `notifications`.
 
 ### Seguridad de recepción
-- Doble capa: **puerta de llave** (`?key=RECEPTION_GATE_KEY` en el middleware) + **login Firebase** que exige que el correo coincida con `RECEPTION_AUTHORIZED_EMAIL` **y** que la cuenta tenga el claim `receptionist:true`.
+- Doble capa: **puerta de llave** (`?key=RECEPTION_GATE_KEY` en el proxy) + **login Firebase** que exige que el correo coincida con `RECEPTION_AUTHORIZED_EMAIL` **y** que la cuenta tenga el claim `receptionist:true`.
 - El **botón de acceso directo** (`lib/panel-access.ts`, menú de cuenta + `/perfil`) no agrega confianza nueva: reutiliza el ID token de la sesión ya activa y el servidor **re-valida el claim y el correo** en `POST /api/recepcion/login` antes de crear la cookie.
 - El claim `receptionist` **ya no se auto-otorga** en el login (T-16): se gestiona centralmente (panel admin o `node scripts/manage-claims.js <email> receptionist on`). Al retirarlo se revocan las sesiones del usuario.
 - La sesión vive en la cookie `HttpOnly` `fitmania_reception_session` (session cookie de Firebase, 1 h, revocable).
 
 ### Cabeceras de seguridad y CSP (T-17)
-- `middleware.ts` aplica **CSP con nonce por request**, más `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` y HSTS (solo producción).
+- `proxy.ts` aplica **CSP con nonce por request**, más `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` y HSTS (solo producción).
 - En **producción** `script-src` usa `'self' 'nonce-…' 'strict-dynamic'` (sin `'unsafe-inline'`/`'unsafe-eval'`); en **desarrollo** se mantienen `'unsafe-eval'`/`'unsafe-inline'` para el HMR. `style-src` conserva `'unsafe-inline'` (la UI usa estilos inline).
 - El nonce exige **renderizado dinámico**: `app/layout.tsx` exporta `dynamic = 'force-dynamic'`, por lo que todas las rutas son `ƒ` (server-rendered on demand).
 
@@ -626,14 +659,14 @@ Puntos asumidos conscientemente o pendientes de cerrar. **Ninguno bloquea el fun
 |---|---|---|---|
 | 1 | **Resend en modo test** — sin dominio verificado solo entrega a `andreselgameroscuro@gmail.com` y suele caer en Spam | 🔴 Alto | Verificar dominio (SPF/DKIM/DMARC) y cambiar `MAIL_FROM` a `no-reply@tudominio`. Ver §18. |
 | 2 | **Stripe en modo test** (`sk_test_...`) | 🔴 Alto | Para cobros reales: `sk_live_...`, endpoint en el Dashboard y `STRIPE_WEBHOOK_SECRET` de producción. `NEXT_PUBLIC_STRIPE_PUBLIC_KEY` debe ser del mismo modo. |
-| 3 | **Idempotencia del webhook de productos**: la orden sí (id = `paymentIntent.id`), pero el **stock no** — un reintento de Stripe descuenta dos veces | 🔴 Alto | Marcar eventos procesados (`events/{event.id}` o flag en la orden) antes de aplicar escrituras de stock. El ramal de planes ya es idempotente (T-09). |
+| 3 | **Webhook de Stripe con lógica duplicada** (Mercado Pago ya es idempotente por transición de estado) | 🟡 Medio | Retirar Stripe antes de producción (F1-23). |
 | 4 | **Campo `precio` vs `price`**: productos usan `precio`, planes usan `price`; `create-payment` lee `precio ?? price` como parche | 🟡 Medio | Unificar a un único nombre de campo en productos y planes (migración + código). |
-| 5 | **`typescript.ignoreBuildErrors: true`** — los errores de TS no bloquean el build | 🟡 Medio | `npx tsc --noEmit` ya pasa limpio → activar `false` en un cambio aparte. |
+| 5 | **ESLint no está instalado** (`npm run lint` falla; la CI usa `typecheck`, `test` y `audit`) | 🟢 Bajo | Instalar `eslint` + `eslint-config-next` con `eslint.config.mjs` y corregir lo que reporte. |
 | 6 | **`force-dynamic` global + CSP con nonce** → todas las rutas son dinámicas (ƒ), sin caché/ISR | 🟡 Medio | El nonce obliga a SSR; evaluar ISR/caché si se prioriza rendimiento sobre la CSP estricta. |
 | 7 | **Imágenes sin optimizar** (`images.unoptimized: true`) | 🟢 Bajo | Necesario hoy por las rutas locales de `public/Imagenes/...`; migrar a Cloudinary/optimizador para rendimiento. |
 | 8 | **Carpeta `scripts/` sin versionar** (`.gitignore`) — bootstrap y diagnóstico no están en el repo | 🟡 Medio | Versionar los scripts no sensibles (`grant-admin`, `manage-claims`, `verify-mail`, `check-*`) o documentarlos para recrearlos. |
 | 9 | **`scripts/simulate_sale.js` con ruta fija** al JSON de la cuenta de servicio | 🟢 Bajo | Migrarlo a leer credenciales de `.env.local` (como el resto). |
-| 10 | **Vulnerabilidades npm no críticas** (13: 9 moderadas, 4 altas) en la cadena `@grpc/grpc-js` del SDK cliente de Firebase | 🟢 Bajo | Único fix es un downgrade a `firebase@9.14.0` (no aceptable). CI (`.github/workflows/security-audit.yml`) falla solo ante **críticas**. Revisar en cada actualización de Firebase. |
+| 10 | **9 vulnerabilidades moderadas** (cadena de `firebase-admin` y `exceljs`); 0 altas y 0 críticas tras Next 16.4.3 | 🟢 Bajo | Requieren versiones mayores (`firebase-admin` 14, `exceljs` 3.4 → revisar compatibilidad). La CI falla ante **altas**. |
 | 11 | **Rotación de credenciales no realizada** (decisión D-1): la contención fue purgar el historial de git (T-03) | 🟡 Medio | Si el repo estuvo público, quien lo clonó conserva copias. Ante actividad rara (Stripe/Gmail) → rotar esa clave puntual. |
 | 12 | **`STRIPE_WEBHOOK_SECRET` local vs producción**: el de la CLI solo vale en local | 🟡 Medio | En Vercel debe ser el secreto del endpoint del Dashboard (no el de `stripe listen`). |
 | 13 | **Datos de prueba en Firestore** — órdenes `sim_*`, `pi_mock_*`, `pi_lowstock_*` de pruebas | 🟢 Bajo | Limpiar colecciones de prueba antes de salir a producción real. |

@@ -91,9 +91,10 @@
 - [x] **F1-08 · Acompañante desde el servidor** — `[CÓDIGO]` — S — Ref 4.20
   - Nuevo `PATCH /api/me/companion`, que valida que el plan esté vigente y permita acompañante. Quitar el `updateDoc('plan.acompanante')`.
   - **Criterio:** guardar el acompañante funciona con las reglas de F1-05.
-- [~] **F1-09 · Dejar de copiar el avatar en los posts** — `[CÓDIGO]` — M — Ref 4.6
+- [x] **F1-09 · Dejar de copiar el avatar en los posts** — `[CÓDIGO]` — M — Ref 4.6
   - Quitar el recorrido de todos los posts en `user-dropdown.tsx:47-75` y resolver el avatar por `autor_id` al mostrar.
   - **Criterio:** cambiar la foto hace una sola escritura.
+  - Cerrado el 2026-10-24: `public_profiles/{uid}` + `PATCH /api/me/profile` (un batch); el foro resuelve la foto por autor. Requiere desplegar reglas y correr la migración 004.
 
 ### 1C. Autenticación y rate limiting
 - [x] **F1-10 · Rate limiting real en el servidor** — `[CÓDIGO]` — M — Ref B5, 4.16
@@ -126,21 +127,24 @@
   - **Criterio:** las cabeceras aparecen en securityheaders.com.
 
 ### 1D. Pagos
-- [~] **F1-17 · Agregar `durationDays` a los planes** — `[CÓDIGO]` — S — Ref B3
+- [x] **F1-17 · Agregar `durationDays` a los planes** — `[CÓDIGO]` — S — Ref B3
   - Campo obligatorio en `planes` y en `components/admin/plan-modal.tsx`.
+  - Hecho: el campo se llama `days`, es obligatorio al crear un plan y el checkout lo copia en la foto del pago. Verificado el 2026-10-24 con `node scripts/check-plan-days.mjs`: los 3 planes (`estandar` 30, `parejas` 40, `dosenuno` 60) lo tienen.
   - **Criterio:** ningún plan sin `durationDays` se puede guardar.
-- [~] **F1-18 · Checkout autenticado con la pasarela local** — `[CÓDIGO]` — L — Ref 4.15, B1 — Depende de F0-01
+- [x] **F1-18 · Checkout autenticado con la pasarela local** — `[CÓDIGO]` — L — Ref 4.15, B1 — Depende de F0-01
   - Hecho (Mercado Pago, en paralelo a Stripe): `POST /api/payments/checkout`, `lib/payments/pricing.ts` (precio compartido con Stripe), `/pago` y `/pago/resultado`. Falta probar con las credenciales de prueba.
   - Nuevo `POST /api/payments/checkout`: verifica el ID token, toma `uid` y email del token y crea `payments/{ref}` con `status: pending`, el snapshot de ítems y precios, el `planId` y el `requestId`.
   - Reemplazar `app/pago/page.tsx` por el widget o checkout de la pasarela (tarjeta, PSE, Nequi).
   - **Criterio:** el body del cliente no puede definir uid, email ni montos.
-- [~] **F1-19 · Webhook idempotente y transaccional** — `[CÓDIGO]` — L — Ref B3, B4, 4.9
+  - Cerrado el 2026-10-24: el checkout solo recibe `planId` o `items`; uid, correo y monto salen del token y del servidor. Probado con el simulador de la API (rechazo, reintento, productos, PSE, Efecty).
+- [x] **F1-19 · Webhook idempotente y transaccional** — `[CÓDIGO]` — L — Ref B3, B4, 4.9
   - Hecho (Mercado Pago): `POST /api/payments/mercadopago/webhook` + `lib/payments/fulfillment.ts` (firma `x-signature`, estado leído de la API, transición de estado en `payments/{ref}`, `payment_events`, 5xx al fallar). Falta configurar `MERCADOPAGO_WEBHOOK_SECRET` y probar reenvíos.
   - Verificar la firma o checksum.
   - Registrar el evento en `payment_events/{eventId}` y omitirlo si ya existe.
   - En una transacción: `pending → approved`, activar el plan con `planes/{planId}.durationDays`, descontar el stock con verificación y crear la orden con el precio del snapshot.
   - **Responder 5xx si algo falla.**
   - **Criterio:** reenviar el mismo evento 3 veces deja un solo efecto, y un fallo forzado provoca el reintento de la pasarela.
+  - Cerrado el 2026-10-24: 3 reenvíos → un solo efecto; un fallo responde 500 y Mercado Pago reintenta. Se corrigieron la firma (el middleware pisaba `x-request-id`) y los reembolsos (escritura antes de lectura en la transacción).
 - [x] **F1-20 · Stock insuficiente al aprobar el pago** — `[CÓDIGO]` — M — Ref 4.9
   - Si al aprobar no alcanza el stock: reembolso automático, notificación al admin y correo al cliente.
   - **Criterio:** dos compras simultáneas del último artículo terminan en una venta y un reembolso.
@@ -151,6 +155,7 @@
   - Hecho: `lib/payments/reconcile.ts`, al volver a `/pago/resultado` y en el cron diario (Vercel Hobby no permite cron horario). Requiere desplegar `firestore.indexes.json`.
   - Cron horario: los `payments` en `pending` con más de 1 h se consultan contra la API de la pasarela.
   - **Criterio:** un pago aprobado cuyo webhook se perdió queda activado en menos de 1 h.
+  - Probado el 2026-10-24: sin webhook, el pago se aprueba al volver a `/pago/resultado` y en el cron (ya sin índice compuesto). En Vercel Hobby el cron es diario: el "menos de 1 h" llega con Vercel Pro (F0-02) y un cron horario.
 - [ ] **F1-23 · Retirar Stripe y el código muerto** — `[CÓDIGO]` — S — Ref 4.15
   - Eliminar `app/api/stripe/*`, las dependencias `stripe` y `@stripe/*`, `BANCOS_PSE` y los dominios de Stripe en la CSP.
   - **Criterio:** `grep -ri stripe` no devuelve código activo.
@@ -164,17 +169,19 @@
 - [x] **F1-25 · Borrar archivos huérfanos** — `[CÓDIGO]` — S — Ref 4.21
   - Guardar `publicId` en el post y borrar en Cloudinary desde el servidor al eliminarlo.
   - **Criterio:** al eliminar un post desaparece su archivo en Cloudinary.
-- [~] **F1-26 · Auditoría con actor y cambios** — `[CÓDIGO]` — M — Ref 4.23
+- [x] **F1-26 · Auditoría con actor y cambios** — `[CÓDIGO]` — M — Ref 4.23
   - `recordAuditLog` exige `actorUid` y `actorEmail`, guarda `before/after` y el `requestId`, y toma la IP de `x-vercel-forwarded-for`.
   - Corregir `admin/planes`, que hoy no registra quién hizo el cambio.
   - **Criterio:** cada acción del admin muestra quién la hizo y qué cambió.
+  - Cerrado el 2026-10-24: `actorUid` en todas las acciones y `changes` (antes → después) o `deleted` en planes, productos y socios; visible en la pestaña Auditoría.
 
 ### 1F. Pruebas
 - [~] **F1-27 · Pruebas de reglas en el CI** — `[CÓDIGO]` — M — Ref 4.3
   - `@firebase/rules-unit-testing` con el emulador, cubriendo `users`, `posts` (y sus subcolecciones), `pqrs`, `orders`, `entry_logs` y `reportes`.
   - **Criterio:** el CI falla si una regla se relaja.
-- [~] **F1-28 · Pruebas del webhook** — `[CÓDIGO]` — M — Ref 4.3
+- [x] **F1-28 · Pruebas del webhook** — `[CÓDIGO]` — M — Ref 4.3
   - Casos: idempotencia, firma inválida, stock insuficiente y fallo con 5xx.
+  - Hecho: las decisiones del webhook viven en `lib/payments/transitions.ts` (funciones puras) y `tests/payment-transitions.test.mts` cubre idempotencia, monto alterado, rechazo después de aprobado, reintento rechazado → aprobado, reembolso de un pago que no aplicó, sobreventa y reposición. La firma inválida está en `tests/mercadopago.test.mts`. El 5xx ante un fallo es del route handler y se valida en sandbox (plan 22-10, §3.2).
   - **Criterio:** la suite pasa en el CI.
 - [x] **F1-29 · Reglas para `reportes` y `pqrs`** — `[CÓDIGO]` — S — Ref 4.20
   - Validar campos y tamaños con `hasOnly`. `reportante_id == auth.uid`.
@@ -233,9 +240,10 @@
 - [x] **F2-10 · Endpoint `/api/health`** — `[CÓDIGO]` — S — Ref 4.8
   - Comprueba Firestore, Redis y las variables críticas, y devuelve `200/503` con la latencia de cada uno.
   - **Criterio:** devuelve 503 si Firestore no responde.
-- [ ] **F2-11 · Sentry en cliente y servidor** — `[CÓDIGO]`+`[CFG]` — M — Ref 4.8
+- [~] **F2-11 · Sentry en cliente y servidor** — `[CÓDIGO]`+`[CFG]` — M — Ref 4.8
   - Errores con `requestId` y sin PII.
   - **Criterio:** un error forzado aparece en Sentry con su `requestId`.
+  - Código listo el 2026-10-24 (`lib/sentry.ts`, sin SDK): servidor vía `onRequestError` y cliente vía `/api/client-error`. Falta `[CFG]`: crear el proyecto en Sentry y definir `SENTRY_DSN` en Vercel.
 - [ ] **F2-12 · Uptime, página de estado y alertas** — `[CFG]` — S — Ref 4.8
   - Monitoreo cada 1 min de `/api/health` y `/`, con alerta por correo o WhatsApp al admin.
   - **Criterio:** una caída simulada genera la alerta en menos de 3 min.
@@ -258,9 +266,10 @@
   - **Criterio:** `localStorage` no contiene datos del perfil ni del plan.
 
 ### 2F. Consumo de base de datos
-- [~] **F2-18 · Recepción busca por UID** — `[CÓDIGO]` — S — Ref 4.6
+- [x] **F2-18 · Recepción busca por UID** — `[CÓDIGO]` — S — Ref 4.6
   - Una sola lectura por escaneo, en lugar de `getDocs(collection('users'))`.
   - **Criterio:** abrir recepción no lee la colección `users`.
+  - Cerrado el 2026-10-24: al abrir recepción solo se leen los socios vigentes (consulta por rango de `plan.expira`).
 - [x] **F2-19 · Calendario desde `daily_stats`** — `[CÓDIGO]` — S — Ref 4.6 — Depende de F2-03
   - **Criterio:** la consulta mensual hace como máximo 31 lecturas.
 - [x] **F2-20 · Panel admin eficiente** — `[CÓDIGO]` — M — Ref 4.6, 4.10, 4.13
@@ -302,9 +311,10 @@
 ## FASE 3 — Negocio, legal, push y SEO (8 – 21 dic)
 
 ### 3A. Estadísticas (funcionalidades pedidas)
-- [~] **F3-01 · Cierre diario y agregados mensuales** — `[CÓDIGO]` — M — Ref 5.2 — Depende de F2-03
+- [x] **F3-01 · Cierre diario y agregados mensuales** — `[CÓDIGO]` — M — Ref 5.2 — Depende de F2-03
   - Cron a las 23:59 America/Bogota: cierra `daily_stats` y consolida `monthly_stats` (visitas, únicos, media y hora pico).
   - **Criterio:** cada día tiene `closedAt` y cada mes tiene su resumen.
+  - Cerrado el 2026-10-24: el cron diario cierra los días anteriores (`closedAt`) y recalcula `monthly_stats`; migración 005 para los días históricos.
 - [x] **F3-02 · Mapa de concurrencia** — `[CÓDIGO]` — M — Ref 5.1
   - Heatmap día × hora (5:00–23:00) para 4, 12 o 52 semanas, y barras del día actual en tiempo real.
   - **Criterio:** el mapa resalta la franja pico, y un clic abre el diario (F3-04).
@@ -316,10 +326,11 @@
   - **Criterio:** se puede navegar por fecha desde el mapa.
 
 ### 3B. Recepción
-- [~] **F3-05 · Directorio de socios por estado** — `[CÓDIGO]` — M — Ref 5.3
+- [x] **F3-05 · Directorio de socios por estado** — `[CÓDIGO]` — M — Ref 5.3
   - `GET /api/recepcion/members?status=&q=&cursor=` con proyección mínima (nombre, foto, estado, vencimiento, días restantes).
   - Filtros: Activos, Por vencer, Vencidos y Sin plan.
   - **Criterio:** la respuesta no incluye peso, altura ni correo completo.
+  - Cerrado el 2026-10-24: `GET /api/recepcion/members?status=&q=&cursor=` con estado y días restantes; directorio con filtros, búsqueda y "Cargar más".
 - [x] **F3-06 · Inventario de solo lectura** — `[CÓDIGO]` — S — Ref 5.4
   - `GET /api/recepcion/inventory` (nombre, stock, umbral). Umbral por producto (`lowStockThreshold`).
   - **Criterio:** recepción ve el stock y no puede modificarlo.
@@ -381,9 +392,10 @@
 - [~] **F3-20 · Imágenes e íconos de la PWA** — `[CÓDIGO]` — M — Ref 4.13
   - Quitar `images.unoptimized`, convertir a WebP o AVIF, renombrar sin espacios y generar íconos 192, 512 y maskable reales.
   - **Criterio:** Lighthouse Performance ≥ 85 en móvil y manifest válido.
-- [~] **F3-21 · Dividir el panel admin** — `[CÓDIGO]` — M — Ref 4.3
+- [x] **F3-21 · Dividir el panel admin** — `[CÓDIGO]` — M — Ref 4.3
   - Rutas o pestañas con carga diferida: socios, ventas, inventario, PQRS, auditoría y estadísticas.
   - **Criterio:** ningún archivo de página supera las 400 líneas.
+  - Cerrado el 2026-10-24: `app/fitministration/page.tsx` 1065 → 288 líneas; pestañas en `components/admin/tabs/*`.
 
 ### 3G. Adiciones recomendadas
 - [x] **F3-22 · Recordatorio de renovación con enlace de pago** — `[CÓDIGO]` — S — Ref 6.2
@@ -421,9 +433,10 @@
 - [ ] **F4-04 · Capacitación de recepción** — `[EXT]` — S — Ref 4.11
   - Escaneo, modo offline, contingencia en papel, inventario y conteo.
   - **Criterio:** cada recepcionista ejecuta un turno simulado.
-- [ ] **F4-05 · Congelar el código y checklist de salida (29-dic)** — `[CÓDIGO]` — S
+- [~] **F4-05 · Congelar el código y checklist de salida (29-dic)** — `[CÓDIGO]` — S
   - Verificar: B1–B10 cerrados, Fases 1 y 2 completas, backup restaurado, simulacro aprobado y legal publicado.
   - **Criterio:** checklist firmado por el dueño y despliegue a producción.
+  - Checklist en `docs/checklist-salida.md` (2026-10-24). Falta completarlo y firmarlo el 29-dic.
 
 ---
 
@@ -629,3 +642,45 @@ Verificado con `next start`: una mutación con `Origin` ajeno recibe 403 y una d
 | Errores | `app/error.tsx` (mensaje genérico + código de referencia) y `app/not-found.tsx` |
 
 **Acción del dueño:** configurar en Firebase Auth → Configuración → *Política de contraseñas* la misma regla (8 caracteres, letras y números) para que también aplique fuera de la app.
+
+### 2026-10-21 — Mercado Pago, recepción y perfil — misma rama `fix/fase1-criticos`
+
+| Tarea | Hecho | Pendiente |
+|---|---|---|
+| F1-18 | Checkout Pro autenticado (`/api/payments/checkout`) con precio del servidor (`lib/payments/pricing.ts`, compartido con Stripe) y aviso de correo sin verificar en `/pago` | Pruebas en sandbox (plan 22-10, §3.2) |
+| F1-19 | Webhook `/api/payments/mercadopago/webhook`: estado leído de la API, transición en `payments/{ref}` dentro de una transacción, `payment_events` | `MERCADOPAGO_WEBHOOK_SECRET` y prueba de firma real |
+| F1-22 | Conciliación en `/pago/resultado` y en el cron diario | Prueba sin webhook ni retorno |
+| Recepción | Sin los 401 al abrir el panel; motor del escáner QR servido desde `/vendor/zxing/` | — |
+| Perfil | La foto subida se muestra en lugar del avatar predeterminado | — |
+
+Probado en sandbox: compra de productos rescatada por el webhook (3 reenvíos, un solo efecto) y plan con tarjeta activado por el webhook, con retorno automático y correo. `npm test` 32/32.
+
+### 2026-10-24 — cierre del código del flujo de compras — misma rama `fix/fase1-criticos`
+
+| Tarea | Hecho | Pendiente |
+|---|---|---|
+| F1-28 | `lib/payments/transitions.ts`: transiciones del webhook y cálculo de stock como funciones puras, usadas por `fulfillment.ts`; 13 pruebas nuevas | — |
+| F1-20 (corrección) | Al aprobar se guarda `payments/{ref}.stockApplied` (unidades que sí salieron). Un reembolso total tras una sobreventa ya no repone unidades que nunca se descontaron | — |
+| F1-17 | Verificado que los 3 planes tienen `days` (`scripts/check-plan-days.mjs`, solo lectura) | — |
+| Panel admin | Pestaña **Pagos** (`/api/admin/payments` + `components/admin/payments-tab.tsx`): pendientes, rechazados, monto alterado, vencidos y reembolsos, con botón **Conciliar** (queda en auditoría). Las notificaciones `payment_alert` y `refund` llevan a esa pestaña | — |
+| `/pago/resultado` | "Intentar nuevamente" vuelve al mismo plan (`/pago?planId=`); en productos el carrito sigue intacto | — |
+| Textos | El carrito dice "Pago seguro con Mercado Pago" y se quitó el modal muerto "Próximamente pasarela de pago" de `components/home/planes.tsx` | — |
+| F1-23 | **Decisión:** Stripe se mantiene en paralelo hasta la salida a producción | Retirarlo antes del go-live |
+
+**2.ª tanda (mismo día):**
+
+| Tarea | Hecho | Pendiente |
+|---|---|---|
+| §3.2 pruebas | Simulador local de la API de Mercado Pago (`MERCADOPAGO_API_URL`, solo desarrollo; el vendedor de prueba no puede crear pagos por API): rechazo, reintento, 3 reenvíos, productos, reembolso de plan y de productos, sobreventa, Efecty, PSE, conciliación (retorno y cron), monto alterado y firma válida/alterada/ausente. Datos de prueba borrados | Repetir con Checkout Pro real tras configurar el webhook (ver plan 24-10) |
+| F1-19 (errores reales) | La firma nunca validaba: el middleware reemplazaba `x-request-id`. Los reembolsos nunca se aplicaban: la transacción escribía antes de leer | — |
+| F1-22 | El cron concilia sin índice compuesto (filtro de un campo) | — |
+| Seguridad | Next.js 16.4.0 → 16.4.3 (RCE crítico GHSA-2464-fhr4-w9xw y otros); `middleware.ts` → `proxy.ts` | 9 moderadas que exigen versiones mayores |
+| F1-26 | Actor y cambios antes/después en la auditoría | — |
+| F2-18 / F3-05 | Directorio de recepción por estado, con búsqueda y paginación | — |
+| F1-09 | Avatar del foro resuelto por autor | Desplegar reglas + migración 004 |
+| F3-01 | Cierre diario y `monthly_stats` | Migración 005 |
+| F3-21 | Panel admin dividido (288 líneas) | Otras páginas > 400 líneas: foro, recepción, pago, perfil, registro |
+| F2-11 | Sentry sin SDK (servidor y cliente) | `SENTRY_DSN` |
+| F4-05 | `docs/checklist-salida.md` | Firma del dueño |
+
+Verificado: `npm test` 60/60, `tsc` sin errores, `next build` y `next start` (CSP, puertas 404, APIs 401/403, salud OK). `npm run lint` no corre: ESLint no está instalado (la CI no lo usa).
