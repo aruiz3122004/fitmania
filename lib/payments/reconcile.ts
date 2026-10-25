@@ -24,18 +24,22 @@ export async function reconcileReference(db: Firestore, ref: string, paymentId?:
 }
 
 const HOUR = 3_600_000;
-// Efecty da hasta ~3 días para pagar en efectivo; después el checkout se da por vencido.
-const EXPIRE_AFTER_MS = 4 * 24 * HOUR;
+// Checkout abierto y abandonado (Mercado Pago no tiene ningún pago con esa referencia):
+// se da por vencido al día siguiente. Si el cliente paga después con el mismo enlace,
+// el webhook lo aprueba igual desde `expired` (ver decideTransition).
+const ABANDONED_AFTER_MS = 24 * HOUR;
+// Presupuesto de tiempo dentro del cron (maxDuration 60 s, con otras tareas después).
+const TIME_BUDGET_MS = 25_000;
 
 /** Cron: pagos `pending` con más de 1 h. Devuelve un resumen para `system/cron`. */
-export async function reconcilePendingPayments(db: Firestore, limit = 50) {
-  const summary = { checked: 0, approved: 0, rejected: 0, expired: 0, errors: 0 };
+export async function reconcilePendingPayments(db: Firestore, limit = 200) {
+  const summary = { checked: 0, approved: 0, rejected: 0, expired: 0, errors: 0, deferred: 0 };
   if (!isMercadoPagoConfigured()) return summary;
 
   const now = Date.now();
   // Filtro de un solo campo (sin índice compuesto): los pendientes son pocos y la
   // antigüedad se aplica aquí. Así el cron no falla si el índice no está desplegado.
-  const snap = await db.collection('payments').where('status', '==', 'pending').limit(500).get();
+  const snap = await db.collection('payments').where('status', '==', 'pending').limit(1000).get();
   const due = snap.docs
     .filter((d) => {
       const createdAt = d.data().createdAt?.toDate?.() as Date | undefined;
@@ -45,14 +49,21 @@ export async function reconcilePendingPayments(db: Firestore, limit = 50) {
     .slice(0, limit);
 
   for (const doc of due) {
+    // Lo que no alcance a revisarse queda para la siguiente ejecución (los más antiguos van primero).
+    if (Date.now() - now > TIME_BUDGET_MS) {
+      summary.deferred = due.length - summary.checked;
+      break;
+    }
     summary.checked++;
     try {
       const results = await reconcileReference(db, doc.id);
       if (results.includes('approved')) summary.approved++;
       else if (results.includes('rejected')) summary.rejected++;
-      else if (results.length === 0 || results.every((r) => r === 'pending')) {
+      else if (results.length === 0) {
+        // Los pagos que siguen pendientes en Mercado Pago (Efecty sin pagar, PSE en
+        // proceso) no se vencen aquí: Mercado Pago los cancela y llega como rechazo.
         const createdAt = doc.data().createdAt?.toDate?.() as Date | undefined;
-        if (createdAt && now - createdAt.getTime() > EXPIRE_AFTER_MS && results.length === 0) {
+        if (createdAt && now - createdAt.getTime() > ABANDONED_AFTER_MS) {
           await doc.ref.update({ status: 'expired', updatedAt: new Date() });
           summary.expired++;
         }
