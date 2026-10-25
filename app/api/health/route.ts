@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { checkEnv } from '@/lib/env';
+import { IS_SANDBOX } from '@/lib/sandbox';
 
 /**
  * GET /api/health — estado de las dependencias críticas (F2-10).
@@ -47,12 +48,13 @@ export async function GET() {
 
   // Configuración mínima para cobrar, enviar correos y correr el cron.
   // Mercado Pago es la única pasarela: sin token no se cobra y sin la clave del
-  // webhook no se puede verificar la firma de los avisos.
+  // webhook no se puede verificar la firma de los avisos. El sandbox simula la
+  // pasarela y guarda los correos en su buzón, así que no necesita ninguno de los dos.
   checks.payments = {
     critical: true,
-    ok: !!process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() && !!process.env.MERCADOPAGO_WEBHOOK_SECRET?.trim(),
+    ok: IS_SANDBOX || (!!process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() && !!process.env.MERCADOPAGO_WEBHOOK_SECRET?.trim()),
   };
-  checks.email = { critical: false, ok: !!process.env.RESEND_API_KEY };
+  checks.email = { critical: false, ok: IS_SANDBOX || !!process.env.RESEND_API_KEY };
   // Cron: configurado y ejecutado en las últimas 26 h (corre una vez al día).
   let cronOk = !!process.env.CRON_SECRET;
   if (cronOk && checks.firestore.ok) {
