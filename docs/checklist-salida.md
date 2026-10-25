@@ -27,7 +27,9 @@ Leyenda: ✅ cerrado · 🟡 código listo, falta configuración o trámite · �
 
 - ✅ Stripe retirado: Mercado Pago es la única pasarela.
 - ✅ Verificación en dos pasos opcional por correo para socios, recepción y admin, con códigos de recuperación. Se exige también en las reglas de Firestore.
-- ✅ CI con tipos, 77 pruebas unitarias, lint, 16 pruebas de reglas en el emulador, build y `npm audit`.
+- ✅ CI con tipos, 80 pruebas unitarias, 17 pruebas de reglas en el emulador, lint, build, 18 corridas E2E (Playwright) y `npm audit`.
+- ✅ Marco de color por plan, página de preguntas frecuentes, pantallas de carga y avisos de proyecto ficticio y de contenido asistido por IA.
+- ✅ Cola sin conexión de recepción con almacenamiento persistente, aviso al cerrar y respaldo CSV.
 - ✅ Conciliación de pagos con presupuesto de tiempo; un checkout abandonado vence a las 24 h.
 - ✅ Rutas sin uso eliminadas (`/api/public/planes`, `/api/public/products`, `/api/admin/stats`, `/api/diag`).
 

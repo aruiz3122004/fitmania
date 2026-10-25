@@ -176,8 +176,9 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 3px solid var(--line);
       <div class="stats" role="list">
         <div role="listitem"><b>54</b><span>rutas de API</span></div>
         <div role="listitem"><b>20</b><span>colecciones con reglas explícitas</span></div>
-        <div role="listitem"><b>77</b><span>pruebas unitarias</span></div>
-        <div role="listitem"><b>16</b><span>pruebas de reglas (emulador)</span></div>
+        <div role="listitem"><b>80</b><span>pruebas unitarias</span></div>
+        <div role="listitem"><b>17</b><span>pruebas de reglas (emulador)</span></div>
+        <div role="listitem"><b>18</b><span>corridas E2E (escritorio y móvil)</span></div>
         <div role="listitem"><b>1</b><span>pasarela de pago</span></div>
         <div role="listitem"><b>ene 2027</b><span>salida prevista</span></div>
       </div>
@@ -353,7 +354,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 3px solid var(--line);
       <h2><span class="q">¿Qué pasa si se cae el internet en la recepción?</span>Recepción y plan B</h2>
       <p class="answer">La recepción sigue funcionando. El pase QR firmado se verifica con la llave pública sin red, los ingresos se encolan en el dispositivo y se envían al volver la conexión, sin duplicados. Si no hay equipo, existe una planilla en papel con el mismo formato.</p>
       <div class="grid2">
-        <div class="note"><h4>Cola offline</h4><p>Cada ingreso guarda un <code>clientId</code> único. Al sincronizar, el servidor ignora los repetidos. <b>Riesgo</b>: la cola vive en <code>localStorage</code>; si alguien borra los datos del navegador antes de sincronizar, esos ingresos se pierden. Hay que entrenar a recepción para no hacerlo y revisar el contador de pendientes.</p></div>
+        <div class="note"><h4>Cola offline</h4><p>Cada ingreso guarda un <code>clientId</code> único. Al sincronizar, el servidor ignora los repetidos. La cola vive en el navegador: se pide almacenamiento persistente, se avisa antes de cerrar o salir con pendientes y hay un botón de respaldo en CSV. Si alguien borra los datos del navegador a mano, se pierden; por eso entra en la capacitación.</p></div>
         <div class="note"><h4>Ingresos y estadísticas</h4><p>El ingreso y su suma en <code>daily_stats</code> se escriben en la misma transacción. Los reportes leen agregados, no miles de registros.</p></div>
         <div class="note"><h4>Punto de venta</h4><p>Efectivo, datáfono o transferencia. El stock se valida dentro de la transacción, así que no se puede vender lo que no hay. El cierre de caja queda en <code>cash_closures</code>.</p></div>
         <div class="note"><h4>PWA</h4><p>El service worker cachea solo recursos estáticos. Nunca cachea <code>/api</code>, los paneles ni <code>/pago</code>, para que nadie vea datos viejos o ajenos.</p></div>
@@ -418,16 +419,17 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 3px solid var(--line);
     <!-- 9 -->
     <section id="calidad">
       <h2><span class="q">¿Cómo se evita romper algo al cambiar el código?</span>Calidad y CI</h2>
-      <p class="answer">Cada push corre en GitHub Actions: tipos, pruebas unitarias, lint, pruebas de reglas en el emulador, build de producción y auditoría de dependencias. Si un paso falla, no se fusiona.</p>
+      <p class="answer">Cada PR a main corre en GitHub Actions: tipos, pruebas unitarias, pruebas de reglas en el emulador, lint, build de producción, pruebas de navegador y auditoría de dependencias. Si un paso falla, no se fusiona.</p>
       <ol class="seq">
         <li><div><span class="who">tsc --noEmit</span>Tipos estrictos en todo el proyecto.</div></li>
-        <li><div><span class="who">npm test</span>77 pruebas de lógica pura: transiciones de pago, cálculo de planes, pase QR, MFA, historial de compras, horario comercial.</div></li>
+        <li><div><span class="who">npm test</span>80 pruebas de lógica pura: transiciones de pago, cálculo de planes, pase QR, MFA, marco por plan, cola sin conexión, historial de compras.</div></li>
         <li><div><span class="who">npm run lint</span>ESLint 9 con la configuración de Next 16. Hoy tiene 0 errores y 231 avisos, que son deuda de estilo.</div></li>
-        <li><div><span class="who">npm run test:rules</span>16 pruebas de <code>firestore.rules</code> con el emulador (Java 21): perfil, plan, foto, MFA, órdenes, pagos, foro.</div></li>
+        <li><div><span class="who">npm run test:rules</span>17 pruebas de <code>firestore.rules</code> con el emulador (Java 21): perfil, plan, foto, MFA, órdenes, pagos, foro y marco del plan.</div></li>
         <li><div><span class="who">next build</span>Build de producción con variables de ejemplo.</div></li>
+        <li><div><span class="who">npm run test:e2e</span>Playwright en escritorio y móvil: preguntas frecuentes, avisos legales, paneles ocultos en 404, CSP con nonce y rutas retiradas.</div></li>
         <li><div><span class="who">npm audit</span>Sin vulnerabilidades altas o críticas.</div></li>
       </ol>
-      <p style="margin-top:12px">Además se hizo una prueba E2E del flujo MFA contra el servidor local (19 de 19), con un usuario temporal que se borró al final. No hay todavía pruebas E2E de navegador (Playwright) en CI. Es lo siguiente que conviene sumar, empezando por login, compra en sandbox y escaneo.</p>
+      <p style="margin-top:12px">Además se hizo una prueba E2E del flujo MFA contra el servidor local (19 de 19), con un usuario temporal que se borró al final. Las pruebas de navegador con login, compra en sandbox y escaneo necesitan el entorno de staging.</p>
     </section>
 
     <!-- 10 -->
@@ -465,8 +467,8 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 3px solid var(--line);
         <li><span class="pill p-warn">alta</span><div><b>Limpiar datos de prueba</b>: usuarios, pagos y órdenes de las pruebas en el proyecto real.</div><span class="who">dev</span></li>
         <li><span class="pill p-warn">alta</span><div><b>Capacitación y simulacro en recepción</b>: escaneo, cola offline, planilla en papel y cierre de caja. No borrar datos del navegador con ingresos pendientes.</div><span class="who">negocio</span></li>
         <li><span class="pill p-info">recomendada</span><div><b>App Check</b> con reCAPTCHA Enterprise en modo obligatorio para Firestore.</div><span class="who">dev</span></li>
-        <li><span class="pill p-info">recomendada</span><div><b>Pruebas E2E de navegador</b> en CI (Playwright) sobre staging.</div><span class="who">dev</span></li>
-        <li><span class="pill p-info">recomendada</span><div><b>Paginar la lista de usuarios del admin</b> antes de pasar de unos miles de socios.</div><span class="who">dev</span></li>
+        <li><span class="pill p-info">recomendada</span><div><b>Pruebas E2E con login y pagos</b> sobre staging. Las públicas ya corren en CI.</div><span class="who">dev</span></li>
+        <li><span class="pill p-info">recomendada</span><div><b>Paginar en el servidor la lista de usuarios del admin</b> antes de pasar de unos miles de socios (la tabla ya muestra 50 por vez).</div><span class="who">dev</span></li>
       </ul>
     </section>
 

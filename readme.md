@@ -563,6 +563,15 @@ La única fuente de verdad es el servidor: el webhook de Mercado Pago, el regres
 
 Todo se puede probar en local (`npm run dev` → `http://localhost:3000`). Mantén la terminal del servidor a la vista: los logs de correo (`[mail]`, `[webhook]`) salen ahí.
 
+### Pruebas automáticas (también corren en el CI)
+
+| Comando | Qué cubre | Requisitos |
+|---|---|---|
+| `npm test` | 80 pruebas de lógica pura: transiciones de pago, planes, pase QR, verificación en dos pasos, marco por plan, cola sin conexión | Ninguno |
+| `npm run test:rules` | 17 pruebas de `firestore.rules` en el emulador (proyecto `demo-`, nunca el real) | Java 21 |
+| `npm run test:e2e` | 9 pruebas de navegador en escritorio y móvil: preguntas frecuentes, avisos legales, paneles ocultos, CSP | `npm run build` antes; en local `PW_CHANNEL=msedge` usa el Edge instalado |
+| `npm run lint` · `npm run typecheck` | Estilo y tipos | Ninguno |
+
 ### Acceso directo por rol (botón, sin llave)
 1. Login en `/login` con la cuenta admin → el menú de cuenta y `/perfil` muestran el botón rojo **"Panel de Administración"**. Clic → llegas a `/fitministration` ya dentro (sin `?key=` ni contraseña).
 2. Repetir con la cuenta de recepción → botón verde **"Panel de Recepción"** → llegas a `/fitception` ya dentro.
