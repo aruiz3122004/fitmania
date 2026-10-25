@@ -57,3 +57,8 @@ scratch/
 *.fitmania_security.md
 *.fitmania_flow.md
 *.fitmania_flow.md
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
