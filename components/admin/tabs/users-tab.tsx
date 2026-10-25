@@ -8,6 +8,23 @@ import { UserPlanModal } from '@/components/admin/user-plan-modal';
 import { formatDate } from '@/lib/admin-format';
 import type { SetConfirm } from '@/components/admin/tabs/types';
 
+const PAGE_SIZE = 50;
+
+// Las fechas llegan serializadas por la API como { _seconds } (o { seconds } / ISO).
+const toMillis = (v: any): number | null => {
+  if (!v) return null;
+  if (typeof v.seconds === 'number') return v.seconds * 1000;
+  if (typeof v._seconds === 'number') return v._seconds * 1000;
+  const t = new Date(v).getTime();
+  return Number.isNaN(t) ? null : t;
+};
+
+// Comillas escapadas y sin fórmulas (=, +, -, @) que Excel ejecutaría al abrir el archivo.
+const csvCell = (value: unknown) => {
+  const text = String(value ?? '');
+  return `"${(/^[=+\-@]/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`;
+};
+
 // F3-21: pestaña "Usuarios" extraída de app/fitministration/page.tsx (sin cambios de lógica).
 export function UsersTab({ usersList, setUsersList, refreshAllData, setConfirmModal }: {
   usersList: any[];
@@ -16,6 +33,7 @@ export function UsersTab({ usersList, setUsersList, refreshAllData, setConfirmMo
   setConfirmModal: SetConfirm;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [visible, setVisible] = useState(PAGE_SIZE);
   // Modal de edición de MEMBRESÍA de usuario (vigencia)
   const [isUserPlanModalOpen, setIsUserPlanModalOpen] = useState(false);
   const [selectedUserForPlan, setSelectedUserForPlan] = useState<any>(null);
@@ -96,17 +114,22 @@ export function UsersTab({ usersList, setUsersList, refreshAllData, setConfirmMo
 
   const handleExportUsersCSV = () => {
     const headers = ['Nombre,Email,Rol,Plan,Status,Registro'];
-    const rows = usersList.map(u => [
-      `"${u.username || 'Desconocido'}"`,
-      `"${u.email || 'N/A'}"`,
-      `"${u.admin ? 'Admin' : 'Socio'}"`,
-      `"${u.plan?.nombre || 'Sin Plan'}"`,
-      `"${u.plan && new Date(u.plan.expira.seconds * 1000 || u.plan.expira) > new Date() ? 'Activo' : 'Inactivo/Vencido'}"`,
-      `"${u.createdAt ? new Date(u.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}"`
-    ].join(','));
-    
-    const csvContent = "data:text/csv;charset=utf-8," + headers.concat(rows).join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const rows = usersList.map(u => {
+      const expira = toMillis(u.plan?.expira);
+      const creado = toMillis(u.createdAt) ?? toMillis(u.creationTime);
+      return [
+        csvCell(u.username || u.displayName || 'Desconocido'),
+        csvCell(u.email || 'N/A'),
+        csvCell(u.admin ? 'Admin' : u.receptionist ? 'Recepción' : 'Socio'),
+        csvCell(u.plan?.nombre || 'Sin Plan'),
+        csvCell(u.plan?.frozen ? 'Congelado' : expira && expira > Date.now() ? 'Activo' : u.plan ? 'Vencido' : 'Sin plan'),
+        csvCell(creado ? new Date(creado).toLocaleDateString('es-CO') : 'N/A'),
+      ].join(',');
+    });
+
+    // BOM para que Excel abra bien las tildes.
+    const csvContent = String.fromCharCode(0xfeff) + headers.concat(rows).join('\n');
+    const encodedUri = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     link.setAttribute("download", "fitmania_usuarios.csv");
@@ -124,6 +147,11 @@ export function UsersTab({ usersList, setUsersList, refreshAllData, setConfirmMo
     downloadNode.click()
     downloadNode.remove()
   }
+
+  const query = searchQuery.trim().toLowerCase();
+  const filtered = query
+    ? usersList.filter(u => [u.email, u.displayName, u.username, u.uid].some(f => typeof f === 'string' && f.toLowerCase().includes(query)))
+    : usersList;
 
   return (
     <>
@@ -143,7 +171,7 @@ export function UsersTab({ usersList, setUsersList, refreshAllData, setConfirmMo
               placeholder="Buscar..."
               className="pl-10 pr-4 py-3 bg-white border-2 border-black rounded-xl outline-none focus:ring-4 focus:ring-red-500/10 transition-all font-bold text-sm w-full md:w-72"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setVisible(PAGE_SIZE); }}
             />
           </div>
         </div>
@@ -158,7 +186,7 @@ export function UsersTab({ usersList, setUsersList, refreshAllData, setConfirmMo
               </tr>
             </thead>
             <tbody className="divide-y-2 divide-zinc-100">
-              {usersList.filter(u => u.email.includes(searchQuery.toLowerCase()) || u.displayName?.toLowerCase().includes(searchQuery.toLowerCase())).map(u => (
+              {filtered.slice(0, visible).map(u => (
                 <tr key={u.uid} className="hover:bg-zinc-50 transition-colors group">
                   <td className="p-6">
                     <div className="flex items-center gap-4">
@@ -206,6 +234,14 @@ export function UsersTab({ usersList, setUsersList, refreshAllData, setConfirmMo
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="p-4 border-t-4 border-black bg-zinc-50 flex flex-wrap items-center justify-between gap-3 text-xs font-black uppercase tracking-widest">
+          <span>{Math.min(visible, filtered.length)} de {filtered.length} {query ? 'resultados' : 'socios'}</span>
+          {filtered.length > visible && (
+            <button onClick={() => setVisible(v => v + PAGE_SIZE)} className="border-2 border-black bg-white hover:bg-zinc-100 px-4 py-2 rounded-xl shadow-[3px_3px_0_0_rgba(0,0,0,1)]">
+              Mostrar {Math.min(PAGE_SIZE, filtered.length - visible)} más
+            </button>
+          )}
         </div>
       </div>
       <UserPlanModal
