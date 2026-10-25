@@ -10,8 +10,8 @@ const CRITICAL = [
   'FIREBASE_CLIENT_EMAIL',
   'NEXT_PUBLIC_FIREBASE_API_KEY',
   'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
-  'STRIPE_SECRET_KEY',
-  'STRIPE_WEBHOOK_SECRET',
+  'MERCADOPAGO_ACCESS_TOKEN',
+  'MERCADOPAGO_WEBHOOK_SECRET',
   'ADMIN_GATE_KEY',
   'RECEPTION_GATE_KEY',
 ] as const;
@@ -28,8 +28,6 @@ const RECOMMENDED: Record<string, string> = {
   CLOUDINARY_API_KEY: 'subidas firmadas',
   CLOUDINARY_API_SECRET: 'subidas firmadas',
   NEXT_PUBLIC_FIREBASE_VAPID_KEY: 'notificaciones push',
-  MERCADOPAGO_ACCESS_TOKEN: 'pagos con Mercado Pago (tarjeta, PSE, Efecty)',
-  MERCADOPAGO_WEBHOOK_SECRET: 'firma de los webhooks de Mercado Pago',
   SENTRY_DSN: 'reporte de errores (Sentry)',
 };
 

@@ -60,20 +60,8 @@ function ResultadoContent() {
       return () => { cancelled = true }
     }
 
-    // Stripe (en paralelo hasta F1-23).
-    const redirectStatus = searchParams.get('redirect_status')
-    const intentId = searchParams.get('payment_intent') || ''
-    setPaymentIntentId(intentId)
- 
-    if (redirectStatus === 'succeeded') {
-      setEstado('exitoso')
-    } else if (redirectStatus === 'failed') {
-      setEstado('fallido')
-    } else if (redirectStatus === 'pending') {
-      setEstado('pendiente')
-    } else {
-      setEstado('fallido')
-    }
+    // Sin referencia de Mercado Pago no hay pago que consultar: no hubo cobro.
+    setEstado('incompleto')
   }, [searchParams, clearCart])
  
   const config = {

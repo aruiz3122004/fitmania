@@ -46,7 +46,12 @@ export async function GET() {
   checks.config = { critical: true, ok: checkEnv().missingCritical.length === 0 };
 
   // Configuración mínima para cobrar, enviar correos y correr el cron.
-  checks.payments = { critical: true, ok: !!process.env.STRIPE_SECRET_KEY && !!process.env.STRIPE_WEBHOOK_SECRET };
+  // Mercado Pago es la única pasarela: sin token no se cobra y sin la clave del
+  // webhook no se puede verificar la firma de los avisos.
+  checks.payments = {
+    critical: true,
+    ok: !!process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() && !!process.env.MERCADOPAGO_WEBHOOK_SECRET?.trim(),
+  };
   checks.email = { critical: false, ok: !!process.env.RESEND_API_KEY };
   // Cron: configurado y ejecutado en las últimas 26 h (corre una vez al día).
   let cronOk = !!process.env.CRON_SECRET;

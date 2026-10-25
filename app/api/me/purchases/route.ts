@@ -8,7 +8,7 @@ import { buildPurchaseHistory, summarizePurchases, type RawDoc } from '@/lib/pur
  * GET /api/me/purchases — historial de compras del usuario (/compras).
  *
  * `payments` no es legible desde el cliente (reglas), por eso lo arma el servidor:
- * pagos de Mercado Pago + órdenes de Stripe/anteriores, solo del uid del token.
+ * pagos de Mercado Pago + órdenes históricas, solo del uid del token.
  */
 const MAX_DOCS = 200;
 

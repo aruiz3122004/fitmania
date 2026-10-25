@@ -72,8 +72,8 @@ function buildCsp(nonce: string): string {
   // Producción: 'nonce' + 'strict-dynamic' (sin 'unsafe-inline' ni 'unsafe-eval').
   // Desarrollo: Next/webpack requieren 'unsafe-eval' e inline para el HMR.
   const scriptSrc = isProd
-    ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://www.google.com https://www.gstatic.com https://va.vercel-scripts.com`
-    : `'self' 'nonce-${nonce}' 'unsafe-eval' 'unsafe-inline' https://*.stripe.com https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com`;
+    ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' https://*.firebaseapp.com https://apis.google.com https://www.google.com https://www.gstatic.com https://va.vercel-scripts.com`
+    : `'self' 'nonce-${nonce}' 'unsafe-eval' 'unsafe-inline' https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com`;
 
   // style-src conserva 'unsafe-inline': la app usa atributos `style=` de React y
   // un <style> inline; en CSP3 un nonce en style-src haría ignorar 'unsafe-inline'.
@@ -81,9 +81,9 @@ function buildCsp(nonce: string): string {
     default-src 'self';
     script-src ${scriptSrc};
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-    img-src 'self' blob: data: https://res.cloudinary.com https://*.googleusercontent.com https://*.stripe.com https://*.firebaseapp.com;
-    connect-src 'self' https://*.stripe.com https://*.googleapis.com https://*.firebaseio.com https://api.cloudinary.com https://res.cloudinary.com https://va.vercel-scripts.com;
-    frame-src 'self' https://*.stripe.com https://*.firebaseapp.com https://www.google.com https://recaptcha.google.com;
+    img-src 'self' blob: data: https://res.cloudinary.com https://*.googleusercontent.com https://*.firebaseapp.com;
+    connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://api.cloudinary.com https://res.cloudinary.com https://va.vercel-scripts.com;
+    frame-src 'self' https://*.firebaseapp.com https://www.google.com https://recaptcha.google.com;
     font-src 'self' data: https://fonts.gstatic.com;
     media-src 'self' blob: https://res.cloudinary.com;
     worker-src 'self' blob:;
@@ -258,7 +258,7 @@ export default async function proxy(request: NextRequest) {
           }), csp);
         }
 
-        // C. Ejecutar Intento Explicito (Pulsó ENTRAR o PAGAR)
+        // C. Ejecutar Intento Explicito (Pulsó ENTRAR)
         const attempts = await redis.incr(attemptsKey);
 
         // Limpiador básico: si es primer error asilar intentos tras 1 hora si el usuario desiste
@@ -306,7 +306,7 @@ export default async function proxy(request: NextRequest) {
           // Interceptamos su llegada porque su único trabajo era alertar al middleware del click
           return applySecurityHeaders(NextResponse.json({ success: true, remaining }), csp);
         } else {
-          // Si es un API Route propio (Stripe, Admin), lo dejamos pasar e inyectamos los headers
+          // Si es un API Route propio (login de paneles), lo dejamos pasar e inyectamos los headers
           const response = NextResponse.next();
           response.headers.set('X-RateLimit-Limit', limit.toString());
           response.headers.set('X-RateLimit-Remaining', remaining.toString());
@@ -354,8 +354,7 @@ export default async function proxy(request: NextRequest) {
   // endpoints llamados servidor a servidor (webhook de pagos y cron), que no traen
   // Origin y se autentican con firma o secreto propios.
   const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
-  const isServerToServer = pathname.startsWith('/api/stripe/webhook')
-    || pathname.startsWith('/api/payments/mercadopago/webhook')
+  const isServerToServer = pathname.startsWith('/api/payments/mercadopago/webhook')
     || pathname.startsWith('/api/cron/');
   if (pathname.startsWith('/api/') && isMutation && !isServerToServer) {
     const origin = request.headers.get('origin');

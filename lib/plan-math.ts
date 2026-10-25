@@ -1,6 +1,6 @@
 /**
  * Cálculo del vencimiento al renovar un plan (B3 / F3-25). Función pura para
- * poder probarla sin Stripe ni Firestore (F1-28).
+ * poder probarla sin pasarela ni Firestore (F1-28).
  *
  * - Plan vigente: los días nuevos se suman al vencimiento actual.
  * - Plan vencido o inexistente: los días cuentan desde hoy.

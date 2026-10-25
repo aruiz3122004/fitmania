@@ -2,291 +2,14 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { loadStripe } from '@stripe/stripe-js'
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 export const dynamic = 'force-dynamic'
 
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { useAuthStore, useCartStore } from '@/lib/store'
 import { auth, db } from '@/lib/firebase'
-import { doc } from 'firebase/firestore'
-import { ShieldCheck, CreditCard, Loader2, AlertTriangle, Timer } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { ShieldCheck, Loader2, AlertTriangle } from 'lucide-react'
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
-import { getRateLimitStatus, consumeRateLimitAttempt, formatTimeLeft } from '@/lib/rate-limit-client'
-
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!)
-
-const CARD_ELEMENT_OPTIONS = {
-  style: {
-    base: {
-      fontSize: '16px',
-      fontFamily: 'inherit',
-      color: '#374151',
-      '::placeholder': { color: '#9ca3af' },
-    },
-    invalid: { color: '#DC2626' },
-  },
-}
-
-function CheckoutForm({ amount, concept, planId, cartItems, montoFormateado }: {
-  amount: number
-  concept: string
-  planId?: string
-  cartItems: any[]
-  montoFormateado: string
-}) {
-  const stripe = useStripe()
-  const elements = useElements()
-  const { user, updateUser } = useAuthStore()
-  const { clearCart } = useCartStore()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-
-  // Rate Limit States
-  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null)
-  const [secondsLeft, setSecondsLeft] = useState(0)
-  const [isBlocked, setIsBlocked] = useState(false)
-
-  // Countdown effect
-  useEffect(() => {
-    if (secondsLeft <= 0) {
-      if (isBlocked) setIsBlocked(false)
-      return
-    }
-    const timer = setInterval(() => setSecondsLeft(prev => prev - 1), 1000)
-    return () => clearInterval(timer)
-  }, [secondsLeft, isBlocked])
-
-  // Initial check
-  useEffect(() => {
-    const checkStatus = async () => {
-      const status = await getRateLimitStatus()
-      setRemainingAttempts(status.remaining)
-      if (!status.success) {
-        setIsBlocked(true)
-        setSecondsLeft(status.secondsLeft)
-        setError(status.message || 'Límite de intentos de pago excedido')
-      }
-    }
-    checkStatus()
-  }, [])
-
-  const handlePagar = async () => {
-    if (!stripe || !elements || isBlocked) return
-    setError('')
-    setLoading(true)
-
-    try {
-      // 1. Consumimos un intento al presionar COMPRAR
-      const status = await consumeRateLimitAttempt()
-      setRemainingAttempts(status.remaining)
-
-      if (!status.success) {
-        setIsBlocked(true)
-        setSecondsLeft(status.secondsLeft)
-        setError(status.message || 'Demasiados intentos de pago.')
-        setLoading(false)
-        return
-      }
-
-      // El servidor identifica al comprador por el ID token (no por datos del body).
-      const idToken = await auth.currentUser?.getIdToken()
-      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión para pagar.')
-
-      const res = await fetch('/api/stripe/create-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({
-          planId,
-          items: !planId && cartItems.length > 0
-            ? cartItems.map((item) => ({ id: item.id, cantidad: item.cantidad }))
-            : undefined,
-        }),
-      })
-
-      // Update remaining from headers
-      const remaining = res.headers.get('X-RateLimit-Remaining')
-      if (remaining) setRemainingAttempts(parseInt(remaining))
-
-      if (!res.ok) {
-        const data = await res.json()
-        if (res.status === 429) {
-          setIsBlocked(true)
-          const reset = parseInt(res.headers.get('X-RateLimit-Reset') || '0')
-          const wait = Math.max(0, Math.ceil((reset - Date.now()) / 1000))
-          setSecondsLeft(wait)
-          throw new Error(data.error || 'Seguridad: Demasiados intentos de pago.')
-        }
-        throw new Error(data.error || 'Error al procesar el pago')
-      }
-
-      const { clientSecret } = await res.json()
-
-      const cardElement = elements.getElement(CardElement)!
-      const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: cardElement,
-          billing_details: {
-            name: user?.username || '',
-            email: user?.email || '',
-          },
-        },
-      })
-
-      if (stripeError) throw new Error(stripeError.message)
-
-      if (paymentIntent?.status === 'succeeded') {
-        // El correo de confirmación lo envía el webhook de Stripe (firma verificada),
-        // no el cliente. Se eliminó /api/send-email por ser un relé de correo abierto (T-04).
-        setSuccess(true)
-        
-
-        if (cartItems && cartItems.length > 0) {
-           clearCart() // Vaciamos el carrito tras compra exitosa
-        }
-
-        // 3. Actualización local OPTIMISTA del plan (sin escribir Firestore).
-        // La fuente de verdad es el webhook de Stripe (T-06, auditoría C-3): el
-        // cliente ya no puede autoproclamarse plan en la base de datos.
-        if (user?.uid) {
-          const conceptoLCase = concept.toLowerCase()
-
-          if (conceptoLCase.includes('plan') || conceptoLCase.includes('mensualidad') || conceptoLCase.includes('parejas') || conceptoLCase.includes('dos en uno')) {
-            let dias = 30
-            if (conceptoLCase.includes('parejas')) dias = 40
-            else if (conceptoLCase.includes('dos en uno')) dias = 60
-
-            const ahora = new Date()
-            const expira = new Date()
-            expira.setDate(ahora.getDate() + dias)
-
-            updateUser({
-              plan: {
-                nombre: concept,
-                precio: amount,
-                dias_total: dias,
-                inicio: ahora,
-                expira: expira,
-              },
-            })
-          }
-        }
-      }
-    } catch (err: any) {
-      setError(err.message || 'Error al procesar el pago')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (success) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-5xl mb-4">✅</p>
-        <h2 className="font-display text-2xl text-secondary tracking-wider mb-2 uppercase italic">¡PAGO EXITOSO!</h2>
-        <p className="font-body text-gray-500 mb-6 font-bold">Recibirás un correo de confirmación en unos minutos.</p>
-        <a href="/" className="inline-block font-label font-bold text-sm text-white bg-green-600 px-8 py-4 border-4 border-black shadow-[6px_6px_0_0_rgba(0,0,0,1)] hover:-translate-y-1 transition-all">
-          IR AL INICIO
-        </a>
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      <style jsx global>{`
-        @keyframes comicShake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-6px); }
-          75% { transform: translateX(6px); }
-        }
-        .animate-shake {
-          animation: comicShake 0.1s ease-in-out 4;
-        }
-      `}</style>
-
-      {/* Attempts Remaining */}
-      {!isBlocked && remainingAttempts !== null && (
-        <div className="flex items-center justify-between mb-4 px-2">
-          <span className="font-label text-[10px] uppercase font-black text-gray-400 tracking-widest">Seguridad del Pago</span>
-          <div className="flex gap-1">
-             {[...Array(5)].map((_, i) => (
-                <div key={i} className={cn(
-                  "w-2.5 h-2.5 rounded-full border-2 border-secondary",
-                  i < remainingAttempts ? "bg-primary" : "bg-red-100"
-                )} />
-             ))}
-          </div>
-        </div>
-      )}
-
-      <div className="bg-secondary text-white border-3 border-secondary p-5 mb-6 shadow-comic-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-label text-xs text-white/60 uppercase tracking-wider mb-1">Concepto</p>
-            <p className="font-label font-bold text-base">{concept}</p>
-          </div>
-          <div className="text-right">
-            <p className="font-label text-xs text-white/60 uppercase tracking-wider mb-1">Total</p>
-            <p className="font-display text-2xl text-accent">{montoFormateado}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className={cn("mb-6 transition-all duration-300", (isBlocked || error) && "animate-shake")}>
-        <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider mb-2 block px-1">
-          Datos de la tarjeta (Visa/Mastercard)
-        </label>
-        <div className={cn(
-          "border-4 border-secondary px-4 py-5 transition-all shadow-[4px_4px_0_0_rgba(0,0,0,0.1)]",
-          isBlocked ? "bg-gray-100 opacity-50 grayscale" : "bg-white"
-        )}>
-          <CardElement options={CARD_ELEMENT_OPTIONS} />
-        </div>
-        <p className="font-label text-[10px] text-gray-400 mt-3 font-bold uppercase tracking-widest">
-          💡 Daviplata: usa tu tarjeta virtual Mastercard
-        </p>
-      </div>
-
-      {isBlocked ? (
-        <div className="bg-primary text-white p-6 mb-6 rounded-xl border-4 border-navy-dark flex flex-col items-center shadow-comic">
-          <AlertTriangle className="w-12 h-12 mb-2 animate-bounce" />
-          <div className="bg-navy-dark px-4 py-1 rounded-full text-xl font-black flex items-center gap-2 mb-3">
-            <Timer className="w-5 h-5" />
-            {formatTimeLeft(secondsLeft)}
-          </div>
-          <p className="font-label text-xs text-center uppercase tracking-widest font-black leading-tight">
-            Pasarela Bloqueada <br />Demasiados intentos de pago
-          </p>
-        </div>
-      ) : error ? (
-        <div className="bg-red-light border-3 border-primary p-4 mb-6 flex items-center gap-4 animate-in slide-in-from-top">
-          <AlertTriangle className="w-6 h-6 text-primary shrink-0" />
-          <p className="font-label text-[11px] font-black text-primary uppercase leading-tight tracking-wider">{error}</p>
-        </div>
-      ) : null}
-
-      <button
-        onClick={handlePagar}
-        disabled={loading || !stripe || isBlocked}
-        className="w-full flex items-center justify-center gap-3 font-display italic text-2xl tracking-[2px] text-white bg-primary py-5 border-4 border-secondary shadow-comic transition-all hover:bg-red-dark hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[8px_8px_0_var(--navy)] disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed"
-      >
-        {loading
-          ? <><Loader2 className="w-8 h-8 animate-spin" />PROCESANDO...</>
-          : <><CreditCard className="w-8 h-8" />COMPRAR AHORA</>
-        }
-      </button>
-
-      <div className="flex items-center justify-center gap-2 mt-6">
-        <ShieldCheck className="w-5 h-5 text-gray-500" />
-        <p className="font-label text-[10px] text-gray-400 font-bold uppercase tracking-widest">Pago 100% Seguro con <strong>Stripe Encryption</strong></p>
-      </div>
-    </div>
-  )
-}
 
 /**
  * F1-18: pago con Mercado Pago (Checkout Pro: tarjeta, PSE, Efecty). El servidor
@@ -358,8 +81,6 @@ function PagoContent() {
   const [loading, setLoading] = useState(true)
 
   const planId = searchParams.get('planId')
-  const conceptoLegacy = searchParams.get('concepto')
-  const montoLegacy = Number(searchParams.get('monto')) || 0
 
   useEffect(() => {
     async function loadPlan() {
@@ -377,13 +98,11 @@ function PagoContent() {
       } else if (items.length > 0) {
         const total = items.reduce((acc, item) => acc + (item.precio * item.cantidad), 0)
         setPlanData({ name: "Compra de Productos", price: total })
-      } else if (conceptoLegacy && montoLegacy) {
-        setPlanData({ name: conceptoLegacy, price: montoLegacy })
       }
       setLoading(false)
     }
     loadPlan()
-  }, [planId, items, conceptoLegacy, montoLegacy])
+  }, [planId, items])
 
   const montoFormateado = new Intl.NumberFormat('es-CO', {
     style: 'currency', currency: 'COP', minimumFractionDigits: 0,
@@ -445,23 +164,6 @@ function PagoContent() {
             <MercadoPagoCheckout planId={planId || undefined} cartItems={items} />
           </div>
 
-          {/* Stripe se mantiene en paralelo mientras se valida Mercado Pago (F1-23 pendiente). */}
-          <details className="bg-white border-4 border-secondary p-6">
-            <summary className="font-label font-bold text-xs text-secondary uppercase tracking-wider cursor-pointer">
-              Otra opción: tarjeta internacional (Stripe)
-            </summary>
-            <div className="mt-6">
-            <Elements stripe={stripePromise}>
-              <CheckoutForm 
-                amount={planData?.price || 0} 
-                concept={planData?.name || ''} 
-                planId={planId || undefined}
-                montoFormateado={montoFormateado} 
-                cartItems={items} 
-              />
-            </Elements>
-            </div>
-          </details>
         </div>
       </section>
       <Footer />
@@ -484,15 +186,3 @@ export default function PagoPage() {
   )
 }
 
-
-
-
-// ## Para probar con Daviplata:
-// 1. Abre Daviplata → **Tarjeta virtual** → copia el número Mastercard
-// 2. Úsala en el formulario con la fecha y CVV que te da la app
-
-// Para pruebas sin Daviplata:
-// ```
-// Número: 4242 4242 4242 4242
-// Fecha:  12/34
-// CVC:    123

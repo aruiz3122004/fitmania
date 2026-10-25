@@ -4,7 +4,7 @@
  * Une dos fuentes sin duplicar:
  *  - `payments/{ref}` (Mercado Pago): todos los intentos con su estado. Si se aprobó,
  *    `orders/{ref}` (mismo id) aporta los reembolsos.
- *  - `orders/{id}` sin pago de Mercado Pago: compras de Stripe y anteriores.
+ *  - `orders/{id}` sin pago de Mercado Pago: compras históricas (p. ej. de Stripe, ya retirado).
  *
  * Se ocultan los checkouts abiertos y abandonados (sin pago en Mercado Pago) y los
  * vencidos: el usuario nunca llegó a pagar. Sin imports con alias: se prueba con node --test.
