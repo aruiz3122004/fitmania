@@ -4,13 +4,20 @@ import { useState, useRef } from 'react'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
+import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
+import { PrivacySection } from '@/components/profile/privacy-section'
+import { PushSettings } from '@/components/profile/push-settings'
+import { TwoFactorSettings } from '@/components/profile/two-factor-settings'
 import { useAuthStore } from '@/lib/store'
-import { db } from '@/lib/firebase'
+import { auth, db } from '@/lib/firebase'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import { doc, updateDoc } from 'firebase/firestore'
-import { Save, UserCircle, Camera, Loader2, ShieldCheck, Clock, Calendar, QrCode, Users } from 'lucide-react'
+import { saveMyProfile } from '@/lib/author-profiles'
+import Link from 'next/link'
+import { Save, UserCircle, Camera, Loader2, ShieldCheck, Clock, Calendar, QrCode, Users, Receipt } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
-import QRCode from 'react-qr-code'
+import { PLAN_FRAMES, planTier } from '@/lib/plan-theme'
+import { AccessPass } from '@/components/profile/access-pass'
 import { usePanelAccess, enterPanel } from '@/lib/panel-access'
 
 const formatDate = (dateValue: any) => {
@@ -72,16 +79,21 @@ export default function PerfilPage() {
     setIsSavingCompanion(true);
     setStatus('Guardando acompañante...');
     try {
-      const companionData = {
-        nombre: compNombre,
-        email: compEmail,
-        rutinaDias: compDias
-      };
-      
-      await updateDoc(doc(db, 'users', user.uid), {
-        'plan.acompanante': companionData
+      // Lo escribe el servidor: las reglas no permiten al cliente tocar `plan` (F1-08).
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Sesión expirada');
+      const res = await fetch('/api/me/companion', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ nombre: compNombre, email: compEmail, rutinaDias: compDias }),
       });
-      
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatus(data.error || 'Error al guardar acompañante.');
+        return;
+      }
+      const companionData = data.acompanante;
+
       updateUser({
         ...user,
         plan: {
@@ -126,17 +138,18 @@ export default function PerfilPage() {
 
     try {
       // Upload to Cloudinary
-      const resultado = await uploadToCloudinary(file)
+      const resultado = await uploadToCloudinary(file, 'avatar')
       const downloadURL = resultado.url
 
-      // Update cloudinary storage
-      await updateDoc(doc(db, 'users', user.uid), { photoURL: downloadURL })
+      // F1-09: perfil y perfil público del foro en una sola escritura (servidor).
+      await saveMyProfile({ photoURL: downloadURL })
 
       // Update local state
       updateUser({ photoURL: downloadURL })
       setStatus('Avatar actualizado correctamente.')
-    } catch {
-      setStatus('No se pudo subir la imagen. Intenta de nuevo.')
+    } catch (err: any) {
+      // uploadToCloudinary explica el motivo (formato, tamaño, límite por hora).
+      setStatus(err?.message || 'No se pudo subir la imagen. Intenta de nuevo.')
       setAvatarPreview(null)
     } finally {
       setIsUploadingAvatar(false)
@@ -144,6 +157,9 @@ export default function PerfilPage() {
       e.target.value = ''
     }
   }
+
+  // F3-10: peso/altura solo se editan con autorización de datos sensibles vigente.
+  const [sensitiveConsent, setSensitiveConsent] = useState(false)
 
   const handleSave = async () => {
     if (!user?.uid) {
@@ -154,26 +170,33 @@ export default function PerfilPage() {
     setIsSaving(true)
     setStatus('')
     try {
-      const payload = {
+      const payload: { username: string; peso?: number | null; altura?: number | null } = {
         username: username.trim(),
-        peso: peso ? Number(peso) : null,
-        altura: altura ? Number(altura) : null,
       }
-      await updateDoc(doc(db, 'users', user.uid), payload)
+      // El nombre es público (foro): va por el servidor junto con el perfil público.
+      if (payload.username !== user.username) await saveMyProfile({ username: payload.username })
+      if (sensitiveConsent) {
+        payload.peso = peso ? Number(peso) : null
+        payload.altura = altura ? Number(altura) : null
+        await updateDoc(doc(db, 'users', user.uid), { peso: payload.peso, altura: payload.altura })
+      }
       updateUser({
         username: payload.username,
         peso: payload.peso || undefined,
         altura: payload.altura || undefined,
       })
       setStatus('Configuracion guardada.')
-    } catch {
-      setStatus('No se pudo guardar la configuracion.')
+    } catch (err: any) {
+      setStatus(err?.message || 'No se pudo guardar la configuracion.')
     } finally {
       setIsSaving(false)
     }
   }
 
   const currentAvatar = avatarPreview || user?.photoURL
+  const planActive = !!(user?.plan && !user.plan.frozen && new Date(user.plan.expira) > new Date())
+  const tier = planTier(user?.plan)
+  const frame = PLAN_FRAMES[tier]
 
   return (
     <main>
@@ -181,6 +204,7 @@ export default function PerfilPage() {
       <section className="mt-[72px] min-h-screen bg-muted py-16">
         <div className="max-w-[900px] mx-auto px-8">
           <SectionHeader label="TU PERFIL" title="CONFIGURACION" titleAccent="BASICA" />
+          <EmailVerificationBanner />
 
           <div className="bg-white border-3 border-secondary shadow-comic p-8">
             <div className="flex flex-col md:flex-row items-center gap-8 mb-8 pb-8 border-b-2 border-dashed border-gray-100">
@@ -194,6 +218,8 @@ export default function PerfilPage() {
                   borderColor="border-black"
                   bgColor="bg-gray-100"
                   circleClassName="shadow-[4px_4px_0_0_rgba(0,0,0,1)]"
+                  isPremium={planActive}
+                  tier={tier}
                   fallback={<UserCircle className="w-16 h-16 text-gray-400" />}
                 />
 
@@ -215,7 +241,7 @@ export default function PerfilPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   className="hidden"
                   onChange={handleAvatarChange}
                 />
@@ -233,17 +259,18 @@ export default function PerfilPage() {
                   >
                     {isUploadingAvatar ? 'Cargando...' : 'Cambiar Imagen'}
                   </button>
+                  <Link
+                    href="/compras"
+                    className="inline-flex items-center gap-2 font-label text-xs font-black uppercase tracking-widest bg-white text-black px-4 py-2 border-2 border-black rounded shadow-[2px_2px_0_0_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    Mis compras
+                  </Link>
                 </div>
               </div>
 
-              {/* QR ACCESS PASS - UNIVERSAL */}
-              <div className="shrink-0 p-4 bg-white border-4 border-black rounded-3xl shadow-[6px_6px_0_0_rgba(22,163,74,1)] flex flex-col items-center group hover:scale-105 transition-transform">
-                <QRCode value={user?.uid || 'no-session'} size={100} />
-                <div className="mt-2 flex items-center gap-1">
-                  <QrCode className="w-3 h-3 text-green-600" />
-                  <span className="text-[9px] font-black text-black uppercase tracking-widest">Access Pass</span>
-                </div>
-              </div>
+              {/* F2-05: pase de acceso firmado y renovable (QR antiguo = UID fijo). */}
+              <AccessPass uid={user?.uid} />
             </div>
 
             <div className="grid sm:grid-cols-2 gap-4 mb-6">
@@ -261,7 +288,9 @@ export default function PerfilPage() {
                   type="number"
                   value={peso}
                   onChange={(e) => setPeso(e.target.value)}
-                  className="w-full mt-2 border-2 border-gray-200 px-3 py-2 outline-none focus:border-primary"
+                  disabled={!sensitiveConsent}
+                  title={sensitiveConsent ? undefined : 'Autoriza el tratamiento de datos sensibles en "Privacidad y datos"'}
+                  className="w-full mt-2 border-2 border-gray-200 px-3 py-2 outline-none focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
@@ -270,7 +299,9 @@ export default function PerfilPage() {
                   type="number"
                   value={altura}
                   onChange={(e) => setAltura(e.target.value)}
-                  className="w-full mt-2 border-2 border-gray-200 px-3 py-2 outline-none focus:border-primary"
+                  disabled={!sensitiveConsent}
+                  title={sensitiveConsent ? undefined : 'Autoriza el tratamiento de datos sensibles en "Privacidad y datos"'}
+                  className="w-full mt-2 border-2 border-gray-200 px-3 py-2 outline-none focus:border-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -285,6 +316,20 @@ export default function PerfilPage() {
             </button>
 
             {status && <p className="mt-4 font-label text-sm text-gray-600">{status}</p>}
+
+            <TwoFactorSettings />
+
+            <PushSettings />
+
+            <PrivacySection
+              onSensitiveChange={(granted) => {
+                setSensitiveConsent(granted)
+                if (!granted) {
+                  setPeso('')
+                  setAltura('')
+                }
+              }}
+            />
           </div>
 
           {/* Acceso al personal (solo roles con claim admin/receptionist) */}
@@ -325,21 +370,30 @@ export default function PerfilPage() {
 
           {/* Sección de Membresía */}
           {user?.plan && (
-            <div className="mt-8 bg-zinc-900 border-3 border-black shadow-[8px_8px_0_0_rgba(220,38,38,1)] p-8 text-white animate-in slide-in-from-bottom-4 duration-500">
+            <div
+              className="mt-8 bg-zinc-900 border-3 border-black p-8 text-white animate-in slide-in-from-bottom-4 duration-500"
+              style={{ boxShadow: `8px 8px 0 0 ${frame.solid}` }}
+            >
                <div className="flex items-center gap-3 mb-6">
-                  <ShieldCheck className="text-primary w-8 h-8" />
+                  <ShieldCheck className="w-8 h-8" style={{ color: frame.solid }} />
                   <h3 className="font-display text-2xl tracking-[2px]">MI MEMBRESÍA</h3>
+                  <span className={`ml-auto border-2 px-3 py-1 rounded-lg font-label text-[10px] font-black uppercase tracking-widest ${frame.badge}`}>
+                    <span aria-hidden="true">{frame.icon}</span> {frame.label}
+                  </span>
                </div>
                
                <div className="grid md:grid-cols-2 gap-8">
                   <div className="space-y-4">
                      <div>
                         <p className="text-[10px] font-black uppercase text-zinc-500 tracking-[3px]">Plan Activo</p>
-                        <p className="text-2xl font-black italic text-primary uppercase">{user.plan.nombre}</p>
+                        <p className="text-2xl font-black italic uppercase" style={{ color: frame.solid }}>{user.plan.nombre}</p>
                      </div>
                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-                        <p className="text-xs font-bold uppercase tracking-widest text-green-500">Estado: Activo</p>
+                        {/* Antes decía "Activo" aunque el plan estuviera vencido o congelado. */}
+                        <div className={`w-3 h-3 rounded-full ${planActive ? 'bg-green-500 animate-pulse' : user.plan.frozen ? 'bg-blue-400' : 'bg-zinc-500'}`} />
+                        <p className={`text-xs font-bold uppercase tracking-widest ${planActive ? 'text-green-500' : user.plan.frozen ? 'text-blue-400' : 'text-zinc-400'}`}>
+                          Estado: {planActive ? 'Activo' : user.plan.frozen ? 'Congelado' : 'Vencido'}
+                        </p>
                      </div>
                   </div>
 

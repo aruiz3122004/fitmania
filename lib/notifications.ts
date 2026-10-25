@@ -1,5 +1,8 @@
 import type { Firestore } from 'firebase-admin/firestore';
-import { getDateKeyInAppTz } from '@/lib/datetime';
+import { formatInAppTz, getDateKeyInAppTz } from '@/lib/datetime';
+import { sendPlanReminderEmail } from '@/services/mail';
+import { SITE_URL } from '@/lib/site';
+import { sendPendingNewsPush, sendPushToUser } from '@/lib/push-server';
 
 /**
  * T-18 (auditoría): la generación de notificaciones de "plan por vencer" se
@@ -14,6 +17,8 @@ export interface NotificationGenerationResult {
   created: number;
   /** Cantidad de planes activos evaluados. */
   evaluated: number;
+  /** Recordatorios enviados por correo a los socios (F3-22). */
+  emailed: number;
 }
 
 export async function generatePlanExpiryNotifications(
@@ -22,15 +27,36 @@ export async function generatePlanExpiryNotifications(
   const now = new Date();
   const dateKey = getDateKeyInAppTz(now);
 
-  const usersSnapshot = await db.collection('users').where('plan', '!=', null).get();
-  const batch = db.batch();
+  // Solo los planes que vencen en los próximos 5 días (antes: todos los usuarios con plan).
+  // Un plan congelado tiene `expira` = momento del congelamiento, así que queda fuera.
+  const usersSnapshot = await db
+    .collection('users')
+    .where('plan.expira', '>=', now)
+    .where('plan.expira', '<=', new Date(now.getTime() + 5 * 86_400_000))
+    .get();
+
+  // F2-23: sin N+1 ni límite de 500. Antes se hacía un `get()` por socio para ver si
+  // el aviso ya existía y todo iba en un único batch (falla con >500 escrituras).
+  // Ahora `create()` con ID determinista falla solo si ya existe (idempotente) y
+  // BulkWriter agrupa y reintenta las escrituras sin tope.
+  const writer = db.bulkWriter();
+  writer.onWriteError((error) => {
+    if (error.code === 6 /* ALREADY_EXISTS: el aviso de hoy ya existe */) return false;
+    return error.failedAttempts < 3;
+  });
+
   let created = 0;
   let evaluated = 0;
+  const pending: Promise<unknown>[] = [];
+  // F3-22: recordatorio al SOCIO (antes solo se avisaba al admin). Se envía solo si el
+  // aviso del día se creó en esta ejecución → como máximo un correo por umbral.
+  const reminders: Parameters<typeof sendPlanReminderEmail>[0][] = [];
+  const pushes: { uid: string; daysLeft: number; planName: string; url: string }[] = [];
 
   for (const doc of usersSnapshot.docs) {
     const userData = doc.data();
     const plan = userData.plan;
-    if (!plan || !plan.expira) continue;
+    if (!plan || !plan.expira || plan.frozen) continue;
 
     evaluated++;
 
@@ -39,42 +65,75 @@ export async function generatePlanExpiryNotifications(
       (expirationDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    const planRef = db.collection('notifications');
-
-    // ID determinista por (tipo, uid, día) → idempotente: el job puede correr
-    // varias veces al día sin duplicar avisos.
+    let notifId: string | null = null;
+    let mensaje = '';
+    // ID determinista por (tipo, uid, día) → el job puede correr varias veces al día sin duplicar.
     if (diffDays <= 5 && diffDays > 1) {
-      const notifId = `plan5_${doc.id}_${dateKey}`;
-      const notifRef = planRef.doc(notifId);
-      const existing = await notifRef.get();
-      if (!existing.exists) {
-        batch.set(notifRef, {
-          tipo: 'plan_expiry',
-          mensaje: `El plan de ${userData.displayName || userData.username} vence en 5 días.`,
-          uid: doc.id,
-          leido: false,
-          fecha: new Date(),
-        });
-        created++;
-      }
+      notifId = `plan5_${doc.id}_${dateKey}`;
+      mensaje = `El plan de ${userData.displayName || userData.username} vence en ${diffDays} días.`;
     } else if (diffDays <= 1 && diffDays >= 0) {
-      const notifId = `plan1_${doc.id}_${dateKey}`;
-      const notifRef = planRef.doc(notifId);
-      const existing = await notifRef.get();
-      if (!existing.exists) {
-        batch.set(notifRef, {
+      notifId = `plan1_${doc.id}_${dateKey}`;
+      mensaje = `¡URGENTE! El plan de ${userData.displayName || userData.username} vence mañana.`;
+    }
+    if (!notifId) continue;
+
+    pending.push(
+      writer
+        .create(db.collection('notifications').doc(notifId), {
           tipo: 'plan_expiry',
-          mensaje: `¡URGENTE! El plan de ${userData.displayName || userData.username} vence mañana.`,
+          mensaje,
           uid: doc.id,
           leido: false,
           fecha: new Date(),
-        });
-        created++;
-      }
+        })
+        .then(() => {
+          created++;
+          pushes.push({
+            uid: doc.id,
+            daysLeft: diffDays,
+            planName: plan.nombre || 'tu plan',
+            url: plan.planId ? `/pago?planId=${encodeURIComponent(plan.planId)}` : '/planes',
+          });
+          if (userData.email) {
+            reminders.push({
+              to: userData.email,
+              customerName: userData.username || 'Socio',
+              planName: plan.nombre || 'tu plan',
+              daysLeft: diffDays,
+              expiresOn: formatInAppTz(expirationDate, { day: 'numeric', month: 'long', year: 'numeric' }),
+              renewUrl: plan.planId ? `${SITE_URL}/pago?planId=${encodeURIComponent(plan.planId)}` : `${SITE_URL}/planes`,
+            });
+          }
+        })
+        .catch(() => { /* ya existía o falló tras reintentos: no se cuenta */ })
+    );
+  }
+
+  await writer.close();
+  await Promise.all(pending);
+
+  // Envío secuencial (pocos por día) para no exceder el rate limit del proveedor de correo.
+  let emailed = 0;
+  for (const reminder of reminders) {
+    try {
+      await sendPlanReminderEmail(reminder);
+      emailed++;
+    } catch (error) {
+      console.error('[cron] No se pudo enviar el recordatorio de plan a', reminder.to, error);
     }
   }
 
-  if (created > 0) await batch.commit();
+  // F3-14: también por push (transaccional: se permite a cualquier hora).
+  for (const p of pushes) {
+    await sendPushToUser(p.uid, 'reminders', {
+      title: p.daysLeft <= 1 ? '⏰ Tu plan vence mañana' : `🔔 Tu plan vence en ${p.daysLeft} días`,
+      body: `Renueva ${p.planName} y los días se suman a los que te quedan.`,
+      url: p.url,
+    }, db);
+  }
 
-  return { created, evaluated };
+  // Noticias publicadas fuera de la franja legal que quedaron pendientes de push.
+  await sendPendingNewsPush(db).catch((err) => console.error('[cron] push de noticias:', err));
+
+  return { created, evaluated, emailed };
 }

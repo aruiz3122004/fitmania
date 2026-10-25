@@ -19,20 +19,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'No hay ventas activas para archivar' }, { status: 200 });
     }
 
-    // Usar Batch de Firebase para escrituras masivas seguras
-    const batch = adminDb.batch();
-
+    // BulkWriter en lugar de un único batch: el batch falla con más de 500 escrituras.
+    // TODO(F2-24): reemplazar el "archivo" por cierres de periodo (sales_periods).
+    const writer = adminDb.bulkWriter();
     snapshot.docs.forEach((doc) => {
-      batch.update(doc.ref, { archived: true });
+      writer.update(doc.ref, { archived: true, archivedAt: new Date() });
     });
-
-    await batch.commit();
+    await writer.close();
 
     await recordAuditLog({
       action: 'ARCHIVE_SALES',
       category: 'ADMIN_ACTION',
       details: `Se realizó un archivo masivo de caja (Corte de mes). Ventas archivadas: ${snapshot.docs.length}`,
       adminEmail: decodedToken.email,
+      actorUid: decodedToken.uid,
       targetId: 'ALL_SALES',
       request: req,
     });

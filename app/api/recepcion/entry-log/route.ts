@@ -1,49 +1,180 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { sendPushToUser } from '@/lib/push-server';
 import type { Query } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyReceptionRequest } from '@/lib/auth-helpers';
-import { getDateKeyInAppTz, formatInAppTz } from '@/lib/datetime';
+import { getDateKeyInAppTz, formatInAppTz, getHourKeyInAppTz } from '@/lib/datetime';
+import { DAILY_STATS, recordEntryInDailyStats } from '@/lib/attendance';
+import { maskEmail } from '@/lib/reception-members';
+import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 import ExcelJS from 'exceljs';
 
 // T-19: límites de exportación para no agotar memoria/tiempo en la función serverless.
 const MAX_EXPORT_DAYS = 92;    // ~3 meses por exportación
 const MAX_EXPORT_ROWS = 20000; // tope de filas por exportación
 
+// Ventana anti-duplicados: un mismo socio no se registra dos veces dentro de este lapso
+// (doble escaneo, reintento del botón). Evita inflar el conteo de asistencia.
+const DUPLICATE_WINDOW_MS = 3 * 60 * 60 * 1000; // 3 horas
+
+/** Convierte un Timestamp de Firestore, Date o string ISO a Date (o null). */
+function toDate(value: any): Date | null {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') return value.toDate();
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 // ─── POST: Registrar una nueva entrada ───
+// F2-03 (parcial) / A08: el cliente SOLO envía el `userId` escaneado. Nombre, correo y
+// estado del plan los deriva el servidor desde `users/{uid}` (antes los enviaba el
+// navegador de recepción y se podían alterar). Quien autoriza queda registrado con
+// su uid/correo real, y el registro es atómico con su copia en `checkIns`.
 export async function POST(request: NextRequest) {
   try {
-    // Verificar sesión de recepción: cookie HttpOnly + email autorizado (T-10, auditoría M-2)
+    // Verificar sesión de recepción: cookie HttpOnly + claim (T-10, auditoría M-2)
     const decoded = await verifyReceptionRequest(request);
     if (!decoded) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { userId, userName, userEmail, hasPlanActivo, planNombre } = body;
-
-    if (!userId || !userName || !userEmail) {
+    const body = await request.json().catch(() => null);
+    const userId = typeof body?.userId === 'string' ? body.userId.trim() : '';
+    if (!userId || userId.includes('/') || userId.length > 128) {
       return NextResponse.json({ error: 'Datos incompletos.' }, { status: 400 });
     }
 
-    const now = new Date();
+    // F2-06 / F2-07: ingresos diferidos (sin conexión o cargados desde la planilla en
+    // papel) traen su hora real y un `clientId` único que hace idempotente el reintento.
+    const deferredSource = body?.source === 'offline' || body?.source === 'manual' ? body.source : null;
+    let now = new Date();
+    let clientId: string | null = null;
+    if (deferredSource) {
+      const occurred = new Date(body?.occurredAt);
+      const maxBackdate = 7 * 24 * 60 * 60 * 1000;
+      if (Number.isNaN(occurred.getTime()) || occurred.getTime() > now.getTime() + 5 * 60 * 1000 || now.getTime() - occurred.getTime() > maxBackdate) {
+        return NextResponse.json({ error: 'Fecha del ingreso diferido inválida (máximo 7 días atrás).' }, { status: 400 });
+      }
+      now = occurred;
+      clientId = typeof body?.clientId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(body.clientId) ? body.clientId : null;
+      if (!clientId) return NextResponse.json({ error: 'clientId inválido.' }, { status: 400 });
+    }
     // Formato YYYY-MM-DD en la zona horaria de la app (T-20: sin offsets manuales)
     const dateStr = getDateKeyInAppTz(now);
 
     const firestore = getAdminFirestore();
-    const entryRef = firestore.collection('entry_logs').doc();
+    const userRef = firestore.collection('users').doc(userId);
+    const entryRef = clientId
+      ? firestore.collection('entry_logs').doc(`${deferredSource}_${clientId}`)
+      : firestore.collection('entry_logs').doc();
+    const checkInRef = firestore.collection('checkIns').doc(entryRef.id);
+    const sameDayQuery = firestore
+      .collection('entry_logs')
+      .where('userId', '==', userId)
+      .where('date', '==', dateStr);
 
-    await entryRef.set({
-      userId,
-      userName,
-      userEmail,
-      hasPlanActivo: hasPlanActivo ?? false,
-      planNombre: planNombre || null,
-      timestamp: now,
-      date: dateStr,
-      authorizedBy: 'Recepcionista',
+    const result = await firestore.runTransaction(async (tx) => {
+      const userSnap = await tx.get(userRef);
+      if (!userSnap.exists) return { status: 'not_found' as const };
+      // Reintento de sincronización de un ingreso diferido ya registrado.
+      if (clientId && (await tx.get(entryRef)).exists) {
+        return { status: 'duplicate' as const, lastEntry: now };
+      }
+
+      // Anti-duplicados dentro de la transacción (dos escaneos simultáneos no pasan ambos).
+      const sameDay = await tx.get(sameDayQuery);
+      const lastEntry = sameDay.docs
+        .map((d) => toDate(d.data().timestamp))
+        .filter((d): d is Date => !!d)
+        .sort((a, b) => b.getTime() - a.getTime())[0];
+      // abs(): un ingreso diferido puede ser anterior al último registrado.
+      if (lastEntry && Math.abs(now.getTime() - lastEntry.getTime()) < DUPLICATE_WINDOW_MS) {
+        return { status: 'duplicate' as const, lastEntry };
+      }
+
+      const user = userSnap.data() || {};
+      const expira = toDate(user.plan?.expira);
+      const hasPlanActivo = !!expira && expira.getTime() > now.getTime();
+      const userName = String(user.username || user.email || 'Socio');
+      const userEmail = String(user.email || '');
+
+      const authorizedBy = {
+        authorizedBy: decoded.email || 'Recepcionista',
+        authorizedByUid: decoded.uid,
+      };
+
+      tx.set(entryRef, {
+        userId,
+        userName,
+        userEmail,
+        hasPlanActivo,
+        planNombre: user.plan?.nombre || null,
+        planExpira: expira,
+        timestamp: now,
+        date: dateStr,
+        source: deferredSource || 'qr',
+        ...authorizedBy,
+      });
+      // Copia para el historial individual del panel de recepción (antes la escribía el cliente).
+      tx.set(checkInRef, {
+        userId,
+        userName,
+        timestamp: now,
+        hasPlanActivo,
+        ...authorizedBy,
+      });
+
+      // F3-26: último ingreso del socio (lista de socios en riesgo de abandono).
+      const previousLast = toDate(user.lastEntryAt);
+      if (!previousLast || previousLast.getTime() < now.getTime()) {
+        tx.update(userRef, { lastEntryAt: now });
+      }
+
+      // F2-03: agregados del día en la misma transacción (mapa de concurrencia, medias, diario).
+      recordEntryInDailyStats(firestore, tx, {
+        date: dateStr,
+        hourKey: getHourKeyInAppTz(now),
+        isFirstOfDay: sameDay.empty,
+        hasPlanActivo,
+      });
+
+      return { status: 'created' as const, hasPlanActivo, planNombre: user.plan?.nombre || null, userName };
     });
 
-    return NextResponse.json({ success: true, entryId: entryRef.id });
+    if (result.status === 'not_found') {
+      return NextResponse.json({ error: 'Socio no encontrado.' }, { status: 404 });
+    }
+    if (result.status === 'duplicate') {
+      return NextResponse.json(
+        {
+          error: `Este socio ya registró ingreso a las ${formatInAppTz(result.lastEntry, { hour: '2-digit', minute: '2-digit', hour12: false })}.`,
+          duplicate: true,
+        },
+        { status: 409 }
+      );
+    }
+
+    // F3-14: aviso al socio (también alerta antifraude si alguien usa su pase).
+    if (!deferredSource) {
+      const hora = formatInAppTz(now, { hour: '2-digit', minute: '2-digit', hour12: false });
+      after(() =>
+        sendPushToUser(userId, 'entries', {
+          title: '✅ Ingreso registrado',
+          body: result.hasPlanActivo
+            ? `Bienvenido a FITMANIA. Ingreso registrado a las ${hora}.`
+            : `Ingreso registrado a las ${hora}. Tu plan no está vigente: renuévalo en la app.`,
+          url: '/perfil',
+        })
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      entryId: entryRef.id,
+      hasPlanActivo: result.hasPlanActivo,
+      planNombre: result.planNombre,
+      userName: result.userName,
+    });
   } catch (error: any) {
     console.error('Error en POST /api/recepcion/entry-log:', error);
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
@@ -68,6 +199,10 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get('from'); // YYYY-MM-DD (rango, T-19)
     const to = searchParams.get('to');     // YYYY-MM-DD (rango, T-19)
     const isExport = format === 'json' || format === 'excel';
+    if (isExport) {
+      const rl = await limitAction(`reception-export:${decoded.uid}`, 30, 3600);
+      if (!rl.ok) return tooManyRequests(rl.retryAfter, 'Límite de descargas por hora alcanzado.');
+    }
 
     // T-19: la exportación NO debe cargar toda la colección en memoria.
     // Se exige un rango acotado: un día (`date`) o `from` + `to`.
@@ -101,27 +236,35 @@ export async function GET(request: NextRequest) {
     // ─── Obtener días con entradas (para el calendario) ───
     if (action === 'calendar') {
       const month = searchParams.get('month'); // YYYY-MM
-      let calQuery = firestore.collection('entry_logs').orderBy('date', 'desc');
-      
-      if (month) {
-        // Filtrar por rango del mes: YYYY-MM-01 a YYYY-MM-31
-        const startDate = `${month}-01`;
-        const endDate = `${month}-31`;
-        calQuery = firestore
+      if (!month || !/^[0-9]{4}-[0-9]{2}$/.test(month)) {
+        return NextResponse.json({ error: 'Parámetro `month` requerido (YYYY-MM).' }, { status: 400 });
+      }
+      const startDate = `${month}-01`;
+      const endDate = `${month}-31`;
+
+      // F2-19: se leen los agregados diarios (≤ 31 documentos) en lugar de todas las
+      // entradas del mes (~3 000 lecturas).
+      const statsSnap = await firestore
+        .collection(DAILY_STATS)
+        .where('date', '>=', startDate)
+        .where('date', '<=', endDate)
+        .get();
+      let days = statsSnap.docs
+        .filter((doc) => (Number(doc.data().visits) || 0) > 0)
+        .map((doc) => doc.id);
+
+      // Respaldo para meses anteriores a los agregados (sin `daily_stats`).
+      if (statsSnap.empty) {
+        const legacySnap = await firestore
           .collection('entry_logs')
           .where('date', '>=', startDate)
           .where('date', '<=', endDate)
-          .orderBy('date', 'desc') as any;
+          .select('date')
+          .get();
+        days = Array.from(new Set(legacySnap.docs.map((doc) => doc.data().date).filter(Boolean)));
       }
 
-      const calSnap = await calQuery.get();
-      const daysSet = new Set<string>();
-      calSnap.docs.forEach((doc) => {
-        const d = doc.data();
-        if (d.date) daysSet.add(d.date);
-      });
-
-      return NextResponse.json({ days: Array.from(daysSet) });
+      return NextResponse.json({ days });
     }
 
     // ─── Construir query sin índice compuesto ───
@@ -147,7 +290,8 @@ export async function GET(request: NextRequest) {
         id: doc.id,
         userId: d.userId,
         userName: d.userName,
-        userEmail: d.userEmail,
+        // Minimización: recepción no necesita el correo completo del socio.
+        userEmail: maskEmail(d.userEmail),
         hasPlanActivo: d.hasPlanActivo,
         planNombre: d.planNombre,
         timestamp: ts,

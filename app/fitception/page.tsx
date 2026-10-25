@@ -4,17 +4,41 @@ import { useState, useEffect } from 'react'
 import { Toaster, toast } from 'sonner'
 
 import { ReceptionLoginForm } from '@/components/recepcion/reception-login-form'
-import { db, auth } from '@/lib/firebase'
-import { collection, getDocs, doc, setDoc, query, where, orderBy, limit } from 'firebase/firestore'
-import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList } from 'lucide-react'
+import { auth } from '@/lib/firebase'
+import { signOut } from 'firebase/auth'
+import { useIdleLogout } from '@/lib/use-idle-logout'
+import { beep, daysLeft, useHidScanner } from '@/lib/scan-feedback'
+import { verifyPassOffline, ACCESS_TOKEN_PREFIX } from '@/lib/access-token-client'
+import { cacheMembers, cachedMembers, enqueueOfflineEntry, offlineEntriesCsv, pendingOfflineEntries, requestPersistentStorage, syncOfflineEntries } from '@/lib/offline-entries'
+import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList, Package } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
-import EntryHistoryTab from '@/components/recepcion/entry-history-tab'
+import { ManualEntryForm } from '@/components/recepcion/manual-entry-form'
+import { MembersDirectory } from '@/components/recepcion/members-directory'
+import { ListSkeleton } from '@/components/ui/comic-skeleton'
 
-const Scanner = dynamic(() => import('@yudiel/react-qr-scanner').then((mod) => mod.Scanner), {
+// Pestañas secundarias de recepción: se descargan al abrirlas (el escáner va primero).
+const tabLoading = () => <ListSkeleton rows={3} label="Cargando la pestaña" />
+const EntryHistoryTab = dynamic(() => import('@/components/recepcion/entry-history-tab'), { loading: tabLoading })
+const InventoryTab = dynamic(() => import('@/components/recepcion/inventory-tab'), { loading: tabLoading })
+const CashTab = dynamic(() => import('@/components/recepcion/cash-tab'), { loading: tabLoading })
+
+
+// El lector (barcode-detector/zxing-wasm) descarga su .wasm de jsDelivr por defecto,
+// y la CSP no permite ese origen: se sirve una copia propia desde /vendor/zxing/
+// (tests/zxing-wasm.test.mts verifica que coincida con la versión instalada).
+const Scanner = dynamic(() => import('@yudiel/react-qr-scanner').then((mod) => {
+  mod.setZXingModuleOverrides({
+    locateFile: (path: string, prefix: string) =>
+      path.endsWith('.wasm') ? `/vendor/zxing/${path}` : prefix + path,
+  })
+  return mod.Scanner
+}), {
   ssr: false,
   loading: () => <div className="w-full h-64 bg-zinc-100 animate-pulse flex items-center justify-center font-black uppercase text-zinc-400">Iniciando Cámara...</div>
 })
+
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutos
 
 export default function ReceptionPage() {
   const [visualState, setVisualState] = useState<'login' | 'unauthorized' | 'dashboard'>('login')
@@ -27,13 +51,59 @@ export default function ReceptionPage() {
   const [userOrders, setUserOrders] = useState<any[]>([])
   const [userCheckIns, setUserCheckIns] = useState<any[]>([])
   const [isFetchingLogs, setIsFetchingLogs] = useState(false)
+  // F2-06: ingresos pendientes de sincronizar y estado de la red.
+  const [pendingSync, setPendingSync] = useState(0)
+  const [isOnline, setIsOnline] = useState(true)
+
+  useEffect(() => {
+    setPendingSync(pendingOfflineEntries().length)
+    setIsOnline(navigator.onLine)
+    const trySync = async () => {
+      if (!navigator.onLine || pendingOfflineEntries().length === 0) return
+      const { synced, remaining } = await syncOfflineEntries()
+      setPendingSync(remaining)
+      if (synced > 0) toast.success(`${synced} ingreso(s) sin conexión sincronizado(s).`)
+    }
+    const goOnline = () => { setIsOnline(true); trySync() }
+    const goOffline = () => setIsOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    const timer = setInterval(trySync, 60_000)
+    trySync()
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+      clearInterval(timer)
+    }
+  }, [])
+
+  // La cola vive en este navegador: se pide que no se borre sola y se avisa antes de
+  // cerrar la pestaña con ingresos sin enviar.
+  useEffect(() => { requestPersistentStorage() }, [])
+  useEffect(() => {
+    if (pendingSync === 0) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [pendingSync])
+
+  const downloadPendingBackup = () => {
+    const blob = new Blob([String.fromCharCode(0xfeff) + offlineEntriesCsv()], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ingresos-pendientes-${new Date().toISOString().slice(0, 16).replace(':', '')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   useEffect(() => {
     // Verificar la sesión leyendo la cookie HttpOnly vía el servidor
     const checkReceptionSession = async () => {
       try {
-        const res = await fetch('/api/auth/verify?role=reception');
-        if (res.ok) {
+        const res = await fetch('/api/auth/verify?role=recepcion');
+        const { valid } = res.ok ? await res.json() : { valid: false };
+        if (valid) {
           // Si la cookie es válida, verificar estado de Firebase
           const unsubscribe = auth.onAuthStateChanged((user) => {
             if (user) {
@@ -62,130 +132,162 @@ export default function ReceptionPage() {
     return () => { if (unsubscribeFirebase) unsubscribeFirebase(); };
   }, []);
 
-  const fetchUsers = async (isRetry = false) => {
+  // F2-18: el directorio y la ficha del socio vienen del servidor con datos mínimos
+  // (antes el navegador leía toda la colección `users`, con peso, altura y correo).
+  // Al abrir solo se piden los socios vigentes (simulador, planilla y caché sin conexión);
+  // los demás se consultan desde el directorio.
+  const fetchUsers = async () => {
     try {
-      const snap = await getDocs(collection(db, 'users'))
-      const users: any[] = []
-      snap.forEach(doc => {
-        users.push({ id: doc.id, ...doc.data() })
-      })
-      setUsersList(users)
-      setLoading(false)
-    } catch (e: any) {
-      console.error("Error al cargar usuarios:", e)
-      // Si es error de permisos y no hemos reintentado, refrescamos token y reintentamos
-      if (e.code === 'permission-denied' && !isRetry && auth.currentUser) {
-        console.log("Detectado error de permisos. Refrescando token...")
-        try {
-          await auth.currentUser.getIdToken(true)
-          return fetchUsers(true)
-        } catch (refreshErr) {
-          console.error("Error al refrescar token:", refreshErr)
-        }
+      const res = await fetch('/api/recepcion/members?status=active&limit=1000')
+      if (res.status === 401) {
+        setVisualState('login')
+        return
       }
-      toast.error('Error de permisos: Asegúrate de estar autorizado para recepción.')
+      if (!res.ok) throw new Error('members')
+      const data = await res.json()
+      const members = Array.isArray(data.members) ? data.members : []
+      setUsersList(members)
+      cacheMembers(members) // F2-06: directorio disponible sin conexión
+    } catch (e) {
+      console.error("Error al cargar socios:", e)
+      const cached = cachedMembers()
+      if (cached) {
+        setUsersList(cached.members)
+        toast.warning('Sin conexión: usando el directorio guardado.')
+      } else {
+        toast.error('No se pudo cargar el directorio de socios.')
+      }
     } finally {
-      if (!isRetry) setLoading(false)
+      setLoading(false)
     }
   }
 
-  const handleScan = async (text: string) => {
-    if (!text) return;
-    const user = usersList.find(u => u.id === text)
-    if (user) {
-      setScannedUser(user)
-      setShowScanner(false)
-      toast.success('Usuario encontrado')
-
-      // Fetch additional logs
-      setIsFetchingLogs(true)
-      try {
-        // Orders: Fetch all user orders and sort locally to avoid index requirement
-        const ordersQuery = query(
-          collection(db, 'orders'),
-          where('uid', '==', user.id)
-        )
-        const ordersSnap = await getDocs(ordersQuery)
-        const orders: any[] = []
-        ordersSnap.forEach(d => orders.push({ id: d.id, ...d.data() }))
-        
-        // Sort by 'fecha' descending and take top 5
-        const sortedOrders = orders.sort((a, b) => {
-          const timeA = a.fecha?.seconds || 0
-          const timeB = b.fecha?.seconds || 0
-          return timeB - timeA
-        }).slice(0, 5)
-        
-        setUserOrders(sortedOrders)
-
-        // Check-ins: Fetch all user check-ins and sort locally
-        const checkinsQuery = query(
-          collection(db, 'checkIns'),
-          where('userId', '==', user.id)
-        )
-        const checkinsSnap = await getDocs(checkinsQuery)
-        const checkins: any[] = []
-        checkinsSnap.forEach(d => checkins.push({ id: d.id, ...d.data() }))
-        
-        // Sort by 'timestamp' descending and take top 5
-        const sortedCheckins = checkins.sort((a, b) => {
-          const timeA = a.timestamp?.seconds || 0
-          const timeB = b.timestamp?.seconds || 0
-          return timeB - timeA
-        }).slice(0, 5)
-        
-        setUserCheckIns(sortedCheckins)
-
-      } catch (err) {
-        console.error("Error fetching user logs:", err)
-      } finally {
-        setIsFetchingLogs(false)
+  // F2-06: sin red el pase firmado se verifica localmente con la clave pública.
+  const scanOffline = async (code: string) => {
+    if (code.startsWith(ACCESS_TOKEN_PREFIX)) {
+      const result = await verifyPassOffline(code)
+      if (!result.ok) {
+        toast.error(result.reason)
+        return
       }
+      const p = result.payload
+      setScannedUser({
+        id: p.uid,
+        username: p.n,
+        photoURL: null,
+        plan: p.pe ? { nombre: p.p || 'Plan', expira: { seconds: Math.floor(p.pe / 1000) } } : null,
+        offline: true,
+      })
     } else {
-      toast.error('Código QR Invalido o Usuario no encontrado')
+      // QR antiguo (UID): solo si el socio está en el directorio guardado.
+      const member = (cachedMembers()?.members || []).find((m: any) => m.id === code)
+      if (!member) {
+        toast.error('Sin conexión: código no verificable.')
+        return
+      }
+      setScannedUser({ ...member, offline: true })
+    }
+    setUserOrders([])
+    setUserCheckIns([])
+    setShowScanner(false)
+    toast.warning('Modo sin conexión: el ingreso se sincronizará al volver la red.')
+  }
+
+  const handleScan = async (text: string, manual = false) => {
+    const code = text?.trim()
+    if (!code) return;
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      await scanOffline(code)
+      return
+    }
+
+    setIsFetchingLogs(true)
+    try {
+      const res = await fetch('/api/recepcion/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, manual }),
+      })
+      if (res.status === 401) {
+        setVisualState('login')
+        return
+      }
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error || (res.status === 404 ? 'Código QR inválido o socio no encontrado' : 'Error consultando el socio'))
+        return
+      }
+      setScannedUser(data.member)
+      setUserOrders(Array.isArray(data.orders) ? data.orders : [])
+      setUserCheckIns(Array.isArray(data.checkIns) ? data.checkIns : [])
+      setShowScanner(false)
+      toast.success(data.signed ? 'Pase verificado' : 'Usuario encontrado (QR antiguo)')
+    } catch (err) {
+      // Error de red: se intenta la verificación local.
+      console.error("Error consultando socio:", err)
+      await scanOffline(code)
+    } finally {
+      setIsFetchingLogs(false)
     }
   }
 
   const handleSimulateScan = () => {
-    handleScan(simulatorId)
+    handleScan(simulatorId, true)
+  }
+
+  const queueOffline = () => {
+    enqueueOfflineEntry(scannedUser.id, scannedUser.username || 'Socio')
+    setPendingSync(pendingOfflineEntries().length)
+    toast.warning('Sin conexión: ingreso guardado en este equipo; se sincroniza al volver la red.')
+    setScannedUser(null)
+    setSimulatorId('')
   }
 
   const handleAuthorize = async () => {
     if (!scannedUser) return;
 
-    try {
-      // 1. Registro en checkIns (para vista individual del usuario)
-      const checkInRef = doc(collection(db, 'checkIns'))
-      await setDoc(checkInRef, {
-        userId: scannedUser.id,
-        userName: scannedUser.username || scannedUser.email,
-        timestamp: new Date(),
-        authorizedBy: 'Recepcionista'
-      });
+    if (scannedUser.offline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      queueOffline()
+      return
+    }
 
-      // 2. Registro en entry_logs (historial empresarial vía API server-side)
-      const hasPlanActivo = scannedUser.plan && new Date(scannedUser.plan.expira.seconds * 1000) > new Date();
-      await fetch('/api/recepcion/entry-log', {
+    try {
+      // El servidor registra entry_logs + checkIns en una transacción, deriva el estado
+      // del plan desde Firestore y rechaza duplicados (409). Solo se envía el uid.
+      const res = await fetch('/api/recepcion/entry-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: scannedUser.id,
-          userName: scannedUser.username || scannedUser.email,
-          userEmail: scannedUser.email,
-          hasPlanActivo: !!hasPlanActivo,
-          planNombre: scannedUser.plan?.nombre || null,
-        }),
+        body: JSON.stringify({ userId: scannedUser.id }),
       });
+      const data = await res.json().catch(() => ({}));
 
-      toast.success('Acceso autorizado y registrado.')
+      if (!res.ok) {
+        if (res.status === 409) {
+          toast.warning(data.error || 'Este socio ya registró su ingreso.')
+        } else {
+          toast.error(data.error || 'Error al registrar acceso.')
+        }
+        return
+      }
+
+      if (data.hasPlanActivo) {
+        toast.success('Acceso autorizado y registrado.')
+      } else {
+        toast.warning('Ingreso registrado SIN plan activo.')
+      }
       setScannedUser(null)
       setSimulatorId('')
     } catch (error) {
-      toast.error('Error al registrar acceso.')
+      // Se cayó la red al registrar: se guarda para sincronizar.
+      queueOffline()
     }
   }
 
   const handleLogout = async () => {
+    if (pendingSync > 0 && !window.confirm(
+      `Hay ${pendingSync} ingreso(s) sin enviar en este equipo. Se enviarán cuando vuelvas a entrar a recepción desde este mismo navegador. ¿Salir de todos modos?`
+    )) return
     // Cerrar SOLO la sesión del panel de recepción (cookie HttpOnly).
     // No usar auth.signOut(): cerraba la cuenta de Firebase y obligaba a
     // volver a iniciar sesión en el sitio. La cuenta debe permanecer activa.
@@ -195,6 +297,27 @@ export default function ReceptionPage() {
       window.location.href = '/';
     }
   };
+
+  // F2-04: sonido distinto según el estado del plan del socio escaneado.
+  useEffect(() => {
+    if (!scannedUser) return
+    const left = daysLeft(scannedUser.plan?.expira?.seconds)
+    beep(left !== null && left > 0)
+  }, [scannedUser])
+
+  // F2-04: lectores QR USB (teclean el código + Enter) en la pestaña de escaneo.
+  useHidScanner(visualState === 'dashboard' && activeTab === 'scanner' && !scannedUser, (code) => handleScan(code))
+
+  // F1-15: tras 30 min sin actividad se cierra el panel Y la cuenta de Firebase, para
+  // que volver a entrar exija la contraseña (un equipo desatendido no queda abierto).
+  useIdleLogout(visualState === 'dashboard', IDLE_TIMEOUT_MS, async () => {
+    try {
+      await fetch('/api/recepcion/logout', { method: 'POST' });
+      await signOut(auth);
+    } finally {
+      window.location.href = '/login?motivo=inactividad';
+    }
+  });
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-zinc-950 font-display text-white text-2xl uppercase tracking-widest animate-pulse">Cargando Sistema...</div>
@@ -223,8 +346,6 @@ export default function ReceptionPage() {
     )
   }
 
-  const activeMembers = usersList.filter(u => u.plan && new Date(u.plan.expira.seconds * 1000) > new Date())
-
   return (
     <div className="min-h-screen bg-green-50 font-sans text-zinc-900 pb-20">
       <Toaster position="top-center" richColors />
@@ -240,9 +361,25 @@ export default function ReceptionPage() {
             <p className="font-label text-[10px] uppercase tracking-[3px] text-green-200">Fitmania Command Center</p>
           </div>
         </div>
-        <button onClick={handleLogout} className="flex items-center gap-2 bg-black text-white px-4 py-2 border-2 border-white rounded font-label text-xs uppercase font-bold hover:bg-zinc-800 transition-colors">
-          <LogOut className="w-4 h-4" /> Salir
-        </button>
+        <div className="flex items-center gap-3">
+          {(!isOnline || pendingSync > 0) && (
+            <span className={`px-3 py-2 border-2 border-black rounded font-label text-[10px] uppercase font-black ${isOnline ? 'bg-yellow-300 text-black' : 'bg-red-600 text-white'}`}>
+              {isOnline ? 'Sincronizando' : 'Sin conexión'}{pendingSync > 0 ? ` · ${pendingSync} pendiente(s)` : ''}
+            </span>
+          )}
+          {pendingSync > 0 && (
+            <button
+              onClick={downloadPendingBackup}
+              title="Descarga los ingresos sin enviar por si se borran los datos de este navegador"
+              className="px-3 py-2 border-2 border-black rounded bg-white text-black font-label text-[10px] uppercase font-black hover:bg-yellow-100"
+            >
+              Respaldo CSV
+            </button>
+          )}
+          <button onClick={handleLogout} className="flex items-center gap-2 bg-black text-white px-4 py-2 border-2 border-white rounded font-label text-xs uppercase font-bold hover:bg-zinc-800 transition-colors">
+            <LogOut className="w-4 h-4" /> Salir
+          </button>
+        </div>
       </header>
 
       {/* Tabs */}
@@ -268,6 +405,20 @@ export default function ReceptionPage() {
           <ClipboardList className="w-4 h-4 mx-auto mb-1 sm:hidden" />
           Historial
         </button>
+        <button
+          onClick={() => setActiveTab('inventory')}
+          className={`flex-1 max-w-[180px] py-4 rounded-t-2xl font-black uppercase text-xs sm:text-sm border-t-4 border-x-4 border-black transition-all ${activeTab === 'inventory' ? 'bg-white shadow-[0_-4px_0_0_rgba(22,163,74,1)]' : 'bg-green-200 text-green-800 border-b-4 hover:bg-green-300'}`}
+        >
+          <Package className="w-4 h-4 mx-auto mb-1 sm:hidden" />
+          Inventario
+        </button>
+        <button
+          onClick={() => setActiveTab('cash')}
+          className={`flex-1 max-w-[180px] py-4 rounded-t-2xl font-black uppercase text-xs sm:text-sm border-t-4 border-x-4 border-black transition-all ${activeTab === 'cash' ? 'bg-white shadow-[0_-4px_0_0_rgba(22,163,74,1)]' : 'bg-green-200 text-green-800 border-b-4 hover:bg-green-300'}`}
+        >
+          <ShoppingCart className="w-4 h-4 mx-auto mb-1 sm:hidden" />
+          Caja
+        </button>
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-8">
@@ -282,7 +433,8 @@ export default function ReceptionPage() {
                 {/* Real Scanner */}
                 {showScanner ? (
                   <div className="w-full max-w-sm mb-8 border-8 border-black rounded-3xl overflow-hidden relative shadow-[8px_8px_0_0_rgba(22,163,74,1)]">
-                    <Scanner onScan={(result) => { if (result && result.length > 0) handleScan(result[0].rawValue) }} onError={(e) => console.log(e)} />
+                    {/* sound={false}: el pitido de la librería es un data: URL que la CSP bloquea; suena beep() (F2-04). */}
+                    <Scanner sound={false} onScan={(result) => { if (result && result.length > 0) handleScan(result[0].rawValue) }} onError={(e) => console.log(e)} />
                     <button onClick={() => setShowScanner(false)} className="absolute top-4 right-4 bg-red-600 text-white font-bold p-2 text-xs border-2 border-black rounded-lg">Cerrar Camara</button>
                   </div>
                 ) : (
@@ -318,6 +470,26 @@ export default function ReceptionPage() {
               </div>
             ) : (
               <div className="animate-in zoom-in-95 duration-300 w-full">
+                {(() => {
+                  const left = daysLeft(scannedUser.plan?.expira?.seconds)
+                  const active = left !== null && left > 0
+                  return (
+                    <div
+                      role="status"
+                      className={`mb-6 rounded-3xl border-4 border-black p-6 text-center text-white shadow-[8px_8px_0_0_rgba(0,0,0,1)] ${active ? 'bg-green-600' : 'bg-red-600'}`}
+                    >
+                      <p className="font-display italic text-5xl sm:text-6xl uppercase leading-none">{active ? 'ACTIVO' : scannedUser.plan ? 'VENCIDO' : 'SIN PLAN'}</p>
+                      <p className="font-black uppercase tracking-widest text-sm mt-2">
+                        {active
+                          ? `${left} día${left === 1 ? '' : 's'} restante${left === 1 ? '' : 's'}`
+                          : scannedUser.plan
+                            ? `Venció hace ${Math.abs(left ?? 0)} día${Math.abs(left ?? 0) === 1 ? '' : 's'}`
+                            : 'El socio no tiene membresía'}
+                        {scannedUser.offline ? ' · verificado sin conexión' : ''}
+                      </p>
+                    </div>
+                  )
+                })()}
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 p-6 sm:p-8 bg-zinc-50 border-4 border-black rounded-3xl mb-8 relative shadow-[8px_8px_0_0_rgba(0,0,0,1)] text-center sm:text-left">
                   {scannedUser.plan && new Date(scannedUser.plan.expira.seconds * 1000) > new Date() ? (
                     <div className="absolute -top-4 -right-4 w-12 h-12 bg-green-500 border-4 border-black rounded-full flex items-center justify-center animate-bounce shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
@@ -387,7 +559,7 @@ export default function ReceptionPage() {
                               <p className="text-xs font-black text-green-500">${order.total}</p>
                             </div>
                             <p className="text-[10px] text-zinc-300 font-medium truncate">
-                              {order.items?.map((it: any) => it.nombre).join(', ')}
+                              {order.concepto || order.items?.map((it: any) => it.nombre).join(', ')}
                             </p>
                           </div>
                         ))
@@ -443,44 +615,23 @@ export default function ReceptionPage() {
 
         {/* History Tab */}
         {activeTab === 'history' && (
-          <EntryHistoryTab />
+          <>
+            <ManualEntryForm members={usersList} />
+            <EntryHistoryTab />
+          </>
         )}
 
-        {/* Members Directory Tab */}
+        {activeTab === 'inventory' && (
+          <InventoryTab />
+        )}
+
+        {activeTab === 'cash' && (
+          <CashTab />
+        )}
+
+        {/* Members Directory Tab (F3-05) */}
         {activeTab === 'members' && (
-          <div className="bg-white p-6 sm:p-12 border-x-4 border-b-4 border-black rounded-b-[2rem] shadow-[12px_12px_0_0_rgba(0,0,0,1)]">
-            <div className="flex items-center gap-3 mb-8">
-              <Users className="w-8 h-8 text-black" />
-              <h2 className="font-display text-3xl uppercase italic">Directorio de Miembros Activos</h2>
-            </div>
-
-            <div className="space-y-4">
-              {activeMembers.map(user => (
-                <div key={user.id} className="p-5 border-4 border-black rounded-2xl shadow-[6px_6px_0_0_rgba(0,0,0,1)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div>
-                    <p className="font-black uppercase text-xl">{user.username}</p>
-                    <p className="font-label text-xs text-zinc-500 font-bold tracking-widest">{user.plan.nombre}</p>
-                  </div>
-
-                  {user.plan.acompanante ? (
-                    <div className="bg-blue-50 border-2 border-blue-600 p-3 rounded-lg flex items-center gap-3 w-full sm:w-auto">
-                      <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white"><Users className="w-4 h-4" /></div>
-                      <div className="flex-1">
-                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Acompañante</p>
-                        <p className="font-bold text-sm">{user.plan.acompanante.nombre}</p>
-                        <p className="text-[10px] font-bold text-zinc-500 uppercase">Días permitidos: {user.plan.acompanante.rutinaDias?.join(', ')}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-[10px] font-bold text-zinc-400 border-2 border-zinc-200 px-3 py-1 rounded-full uppercase">Individual</span>
-                  )}
-                </div>
-              ))}
-              {activeMembers.length === 0 && (
-                <p className="text-center font-bold text-zinc-400 py-12">No hay miembros activos actualmente.</p>
-              )}
-            </div>
-          </div>
+          <MembersDirectory onSelectAction={(id) => { setActiveTab('scanner'); handleScan(id, true) }} />
         )}
 
       </main>

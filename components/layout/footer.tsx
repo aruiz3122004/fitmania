@@ -1,5 +1,6 @@
-import { Instagram, Facebook, MessageCircle } from 'lucide-react'
+import { Instagram, Facebook, MessageCircle, Info, Sparkles } from 'lucide-react'
 import Link from 'next/link'
+import { IS_FICTIONAL, LEGAL_ENTITY, OPENING_HOURS, PROJECT_NOTICE } from '@/lib/legal'
 
 export function Footer() {
   return (
@@ -35,7 +36,9 @@ export function Footer() {
             Cra. 54 # 66-12, Nte. Centro Histórico<br />Barranquilla, Atlantico, Colombia
           </p>
           <p className="font-body text-[0.9rem] text-white/90 leading-relaxed">
-            Lun - Sab: 5:00 AM - 10:00 PM<br />Dom: 7:00 AM - 4:00 PM
+            {OPENING_HOURS.map((h) => (
+              <span key={h.corto} className="block">{h.corto}: {h.horas}</span>
+            ))}
           </p>
         </div>
 
@@ -45,10 +48,10 @@ export function Footer() {
             CONTACTO
           </h4>
           <p className="font-body text-[0.9rem] text-white/90 mb-3">
-            +57 300 123 4567
+            {LEGAL_ENTITY.telefono}
           </p>
-          <p className="font-body text-[0.9rem] text-white/90">
-            info@fitmania.com
+          <p className="font-body text-[0.9rem] text-white/90 break-all">
+            {LEGAL_ENTITY.correoDatos}
           </p>
         </div>
 
@@ -91,9 +94,45 @@ export function Footer() {
 
       {/* Bottom bar */}
       <div className="border-t-3 border-black/20 text-center py-6 px-8 relative z-10">
+        {/* F3-09: enlaces legales obligatorios (Ley 1581 / Ley 1480). */}
+        <nav className="flex flex-wrap justify-center gap-x-5 gap-y-2 mb-3 font-label text-[0.75rem] text-white/90 underline">
+          <Link href="/legal/privacidad">Tratamiento de datos</Link>
+          <Link href="/legal/terminos">Términos y condiciones</Link>
+          <Link href="/legal/cookies">Cookies</Link>
+          <Link href="/pqrs">PQRS</Link>
+          <Link href="/preguntas-frecuentes">Preguntas frecuentes</Link>
+        </nav>
         <p className="font-label text-[0.8rem] text-white/80 tracking-[1px]">
           &copy; 2026 FITMANIA. Todos los derechos reservados. Tu Pasion. Tu Fuerza.
         </p>
+        {/* Aviso del proyecto como recuadro de cómic: legible sin competir con el resto del pie. */}
+        <aside aria-label="Aviso del proyecto" className="relative max-w-[820px] mx-auto mt-7 bg-secondary border-[3px] border-white/90 shadow-[5px_5px_0_rgba(0,0,0,0.35)] px-4 sm:px-6 pt-6 pb-4 text-left">
+          <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 -rotate-2 bg-accent text-secondary font-display text-sm tracking-[2px] px-3 py-0.5 border-2 border-secondary shadow-[2px_2px_0_var(--navy)] whitespace-nowrap">
+            ¡OJO, ES UNA DEMO!
+          </span>
+          <div className={`grid gap-4 ${IS_FICTIONAL ? 'sm:grid-cols-2 sm:divide-x sm:divide-white/15' : ''}`}>
+            {IS_FICTIONAL && (
+              <div className="flex gap-3">
+                <span className="shrink-0 w-8 h-8 grid place-items-center bg-primary border-2 border-white/80 rounded-full" aria-hidden>
+                  <Info className="w-4 h-4" />
+                </span>
+                <div>
+                  <p className="font-display text-[0.95rem] tracking-[1.5px] text-accent leading-none mb-1">PROYECTO DE PORTAFOLIO</p>
+                  <p className="font-body text-[0.72rem] text-white/80 leading-relaxed">{PROJECT_NOTICE.fictional}</p>
+                </div>
+              </div>
+            )}
+            <div className={`flex gap-3 ${IS_FICTIONAL ? 'sm:pl-4' : ''}`}>
+              <span className="shrink-0 w-8 h-8 grid place-items-center bg-accent text-secondary border-2 border-white/80 rounded-full" aria-hidden>
+                <Sparkles className="w-4 h-4" />
+              </span>
+              <div>
+                <p className="font-display text-[0.95rem] tracking-[1.5px] text-accent leading-none mb-1">HECHO CON AYUDA DE IA</p>
+                <p className="font-body text-[0.72rem] text-white/80 leading-relaxed">{PROJECT_NOTICE.ai}</p>
+              </div>
+            </div>
+          </div>
+        </aside>
       </div>
     </footer>
   )

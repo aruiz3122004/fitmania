@@ -12,13 +12,32 @@ export async function POST(request: Request) {
   if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   try {
-    const { pqrsId, responseMessage, userEmail, userName, originalMessage } = await request.json();
+    const body = await request.json();
+    const pqrsId = typeof body?.pqrsId === 'string' ? body.pqrsId : '';
+    const responseMessage = typeof body?.responseMessage === 'string' ? body.responseMessage.trim() : '';
 
-    if (!pqrsId || !responseMessage || !userEmail) {
+    if (!pqrsId || pqrsId.includes('/') || !responseMessage) {
       return NextResponse.json({ error: 'Faltan datos requeridos' }, { status: 400 });
+    }
+    if (responseMessage.length > 5000) {
+      return NextResponse.json({ error: 'La respuesta supera 5000 caracteres.' }, { status: 400 });
     }
 
     const db = getAdminFirestore();
+
+    // F1-04: destinatario, nombre y mensaje original salen del ticket guardado,
+    // no del body (antes se podía enviar el correo a cualquier dirección).
+    const pqrsSnap = await db.collection('pqrs').doc(pqrsId).get();
+    if (!pqrsSnap.exists) {
+      return NextResponse.json({ error: 'PQRS no encontrada' }, { status: 404 });
+    }
+    const ticket = pqrsSnap.data() || {};
+    const userEmail = String(ticket.userEmail || '');
+    const userName = String(ticket.userName || 'Usuario');
+    const originalMessage = String(ticket.mensaje || '');
+    if (!userEmail) {
+      return NextResponse.json({ error: 'La PQRS no tiene correo de contacto.' }, { status: 400 });
+    }
 
     // 1. Marcar el PQRS como resuelto en Firestore (fuente de verdad).
     await db.collection('pqrs').doc(pqrsId).update({
@@ -33,6 +52,7 @@ export async function POST(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Respuesta oficial enviada vía Email al socio ${userEmail} para el ticket ${pqrsId}`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: pqrsId,
       request: request,
     });
@@ -56,6 +76,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error al responder PQRS:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/admin/pqrs/respond]', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }

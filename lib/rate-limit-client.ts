@@ -13,9 +13,9 @@ export interface RateLimitStatus {
 /**
  * Consulta al servidor el estado actual del Rate Limit para la IP actual (SIN RESTAR INTENTOS).
  */
-export async function getRateLimitStatus(): Promise<RateLimitStatus> {
+export async function getRateLimitStatus(group: 'public' | 'panel' = 'public'): Promise<RateLimitStatus> {
   try {
-    const response = await fetch('/api/security/check', { method: 'GET' });
+    const response = await fetch(`/api/security/check?group=${group}`, { method: 'GET' });
     const data = await response.json();
 
     const remaining = data.remaining !== undefined ? data.remaining : parseInt(response.headers.get('X-RateLimit-Remaining') || '5');
@@ -76,16 +76,9 @@ export async function consumeRateLimitAttempt(): Promise<RateLimitStatus> {
   }
 }
 
-/**
- * Limpia el historial de fallos del rate limit si el usuario ingresó correctamente.
- */
-export async function clearRateLimit(): Promise<void> {
-  try {
-    await fetch('/api/security/success', { method: 'POST' });
-  } catch (e) {
-    console.error('Error limpiando rate limit:', e);
-  }
-}
+// F1-10: `clearRateLimit()` se eliminó. El reinicio del contador lo hace el servidor
+// tras un login de panel verificado (lib/rate-limit-server.ts); desde el cliente
+// era una puerta trasera para anular el bloqueo.
 
 /**
  * Formatea los segundos restantes en un formato amigable (MM:SS)

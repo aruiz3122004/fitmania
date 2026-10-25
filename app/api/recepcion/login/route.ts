@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { isReceptionEmailAllowed } from '@/lib/auth-helpers';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { resetRateLimitFor } from '@/lib/rate-limit-server';
+import { GATE_COOKIE, createGateToken, gateCookieOptions, getGateSecret } from '@/lib/gate-token';
+import { isMfaSatisfied } from '@/lib/mfa-server';
+
+// F1-15: la recepción trabaja todo el día; la sesión cubre un turno completo.
+const SESSION_SECONDS = 12 * 60 * 60; // 12 horas
 
 export async function POST(request: Request) {
   try {
@@ -15,19 +22,14 @@ export async function POST(request: Request) {
     // Verificar que el token Firebase es válido
     const decodedToken = await adminAuth.verifyIdToken(idToken);
 
-    // Verificar que el email está autorizado para recepción (sin hardcodear en el cliente)
-    const authorizedEmail = process.env.RECEPTION_AUTHORIZED_EMAIL;
-    if (!authorizedEmail) {
-      console.error('RECEPTION_AUTHORIZED_EMAIL no está configurada en las variables de entorno');
-      return NextResponse.json({ error: 'Configuración del servidor incompleta.' }, { status: 500 });
-    }
-
-    if (decodedToken.email?.toLowerCase() !== authorizedEmail.toLowerCase()) {
+    // F1-14: lista blanca opcional (varios correos); la autorización real es el claim.
+    if (!isReceptionEmailAllowed(decodedToken.email)) {
       await recordAuditLog({
         action: 'LOGIN_FAILED',
         category: 'AUTH_FAILURE',
         details: `Intento de acceso denegado a Recepción. Razón: Correo no autorizado. Email: ${decodedToken.email}`,
         adminEmail: decodedToken.email,
+        actorUid: decodedToken.uid,
         targetId: decodedToken.uid,
         request: request,
       });
@@ -42,15 +44,25 @@ export async function POST(request: Request) {
         category: 'AUTH_FAILURE',
         details: `Intento de acceso denegado a Recepción. Razón: Sin claim de recepcionista. Email: ${decodedToken.email}`,
         adminEmail: decodedToken.email,
+        actorUid: decodedToken.uid,
         targetId: decodedToken.uid,
         request: request,
       });
       return NextResponse.json({ error: 'Acceso denegado: tu cuenta no tiene el rol de recepción asignado.' }, { status: 403 });
     }
 
+    // Verificación en dos pasos por correo (opcional): si está activa, esta sesión debe
+    // haberla completado antes de recibir la cookie del panel.
+    if (!(await isMfaSatisfied(decodedToken))) {
+      return NextResponse.json(
+        { error: 'Completa la verificación en dos pasos para entrar al panel.', code: 'mfa_required' },
+        { status: 401 }
+      );
+    }
+
     // Crear session cookie de Firebase (revocable) en lugar del ID token crudo (T-15).
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {
-      expiresIn: 60 * 60 * 1000, // 1 hora en ms
+      expiresIn: SESSION_SECONDS * 1000,
     });
 
     const response = NextResponse.json({ success: true, uid: decodedToken.uid }, { status: 200 });
@@ -58,16 +70,30 @@ export async function POST(request: Request) {
     response.cookies.set('fitmania_reception_session', sessionCookie, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'strict', // Solo en navegación propia del sitio (defensa CSRF)
       path: '/',
-      maxAge: 60 * 60, // 1 hora
+      maxAge: SESSION_SECONDS,
     });
+
+    // F1-12: token de puerta firmado con la misma vigencia que la sesión.
+    const gateSecret = getGateSecret('recepcion');
+    if (gateSecret) {
+      response.cookies.set(
+        GATE_COOKIE.recepcion,
+        await createGateToken('recepcion', gateSecret, SESSION_SECONDS),
+        gateCookieOptions(SESSION_SECONDS)
+      );
+    }
+
+    // F1-10: acceso verificado → reiniciar el contador de intentos de esta IP.
+    await resetRateLimitFor(request);
 
     await recordAuditLog({
       action: 'LOGIN_RECEPTION',
       category: 'AUTH_SUCCESS',
       details: 'Inicio de sesión de Recepción exitoso.',
       adminEmail: decodedToken.email,
+      actorUid: decodedToken.uid,
       targetId: decodedToken.uid,
       request: request,
     });

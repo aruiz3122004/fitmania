@@ -8,7 +8,9 @@ import { Footer } from '@/components/layout/footer'
 import { useAuthStore } from '@/lib/store'
 import { auth, db } from '@/lib/firebase'
 import { getAvatarUrlById } from '@/lib/avatar-utils'
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'
+import { sendPasswordResetEmail } from 'firebase/auth'
+import { signInWithOptionalTotp, promptTotpCode } from '@/lib/mfa-client'
+import { ensureMfaVerified } from '@/lib/mfa-email-client'
 import { doc, getDoc } from 'firebase/firestore'
 import { 
   Mail, 
@@ -21,7 +23,7 @@ import {
   Timer 
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getRateLimitStatus, consumeRateLimitAttempt, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
+import { getRateLimitStatus, consumeRateLimitAttempt, formatTimeLeft } from '@/lib/rate-limit-client'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -47,6 +49,13 @@ export default function LoginPage() {
     const timer = setInterval(() => setSecondsLeft(prev => prev - 1), 1000)
     return () => clearInterval(timer)
   }, [secondsLeft, isBlocked])
+
+  // Aviso cuando el panel de recepción cerró la sesión por inactividad (F1-15).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('motivo') === 'inactividad') {
+      setSuccess('Tu sesión se cerró por inactividad. Inicia sesión de nuevo para continuar.')
+    }
+  }, [])
 
   // Status check on mount
   useEffect(() => {
@@ -83,7 +92,10 @@ export default function LoginPage() {
         return
       }
 
-      const credentials = await signInWithEmailAndPassword(auth, email, password)
+      // F1-13: si la cuenta tiene verificación en dos pasos, se pide el código TOTP.
+      const credentials = await signInWithOptionalTotp(email, password, promptTotpCode)
+      // Código por correo si la cuenta activó la verificación en dos pasos.
+      await ensureMfaVerified()
       let userData: any = null;
       
       try {
@@ -105,15 +117,20 @@ export default function LoginPage() {
         plan: userData?.plan || null,
       })
 
-      // EXITO: Limpiamos por completo el historial de fallos y rate limit
-      await clearRateLimit()
 
       router.push('/')
     } catch (err: any) {
-      if (err?.code === 'auth/invalid-credential') {
-        setError('Credenciales invalidas.')
+      // Mensaje genérico: no revelar si el correo existe ni detalles internos de Firebase.
+      if (['auth/invalid-credential', 'auth/user-not-found', 'auth/wrong-password', 'auth/invalid-email'].includes(err?.code)) {
+        setError('Correo o contraseña incorrectos.')
+      } else if (err?.code === 'auth/too-many-requests') {
+        setError('Demasiados intentos. Espera unos minutos o restablece tu contraseña.')
+      } else if (err?.code === 'auth/invalid-verification-code') {
+        setError('El código de verificación no es correcto.')
       } else {
-        setError(err.message || 'Error al iniciar sesion. Intenta de nuevo.')
+        setError(err?.message?.startsWith('Se requiere') || err?.message?.startsWith('Verificación en dos pasos')
+          ? err.message
+          : 'No se pudo iniciar sesión. Intenta de nuevo.')
       }
     } finally {
       setLoading(false)
@@ -130,12 +147,13 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await sendPasswordResetEmail(auth, email)
-      setSuccess('Se ha enviado un enlace para restablecer tu contraseña a tu correo. Revisa tu bandeja de entrada.')
+      setSuccess('Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.')
     } catch (err: any) {
-      if (err.code === 'auth/user-not-found') {
-        setError('No existe un usuario con este correo.')
+      // Misma respuesta exista o no la cuenta (evita enumerar correos registrados).
+      if (err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-email') {
+        setSuccess('Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.')
       } else {
-        setError('Error al enviar el correo. Verifica tu conexion.')
+        setError('No se pudo enviar el correo. Verifica tu conexión e intenta de nuevo.')
       }
     } finally {
       setLoading(false)

@@ -12,11 +12,11 @@ import {
   Lightbulb,
   Send,
   CheckCircle,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck
 } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
-import { db } from '@/lib/firebase'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { auth } from '@/lib/firebase'
 import { Loader2 } from 'lucide-react'
 
 const tiposPQRS = [
@@ -52,6 +52,15 @@ const tiposPQRS = [
     color: 'bg-green-500',
     borderColor: 'border-green-500',
   },
+  {
+    // F3-11: canal de habeas data (consultas 10 días hábiles, reclamos 15 días hábiles).
+    id: 'datos_personales',
+    label: 'Datos personales',
+    icon: ShieldCheck,
+    description: 'Consulta, actualiza, rectifica o suprime tus datos personales (Ley 1581 de 2012).',
+    color: 'bg-purple-600',
+    borderColor: 'border-purple-600',
+  },
 ]
 
 export default function PQRSPage() {
@@ -68,30 +77,17 @@ export default function PQRSPage() {
 
     setLoading(true)
     try {
-      const now = new Date()
-      const fecha = now.toLocaleDateString('es-CO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
+      // El servidor radica la PQRS (nombre y correo del perfil, límite anti-spam).
+      const idToken = await auth.currentUser?.getIdToken()
+      if (!idToken) throw new Error('Tu sesión expiró. Inicia sesión de nuevo.')
+      const res = await fetch('/api/pqrs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ tipo: selectedTipo, mensaje }),
       })
-      const hora = now.toLocaleTimeString('es-CO', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'No se pudo enviar la solicitud.')
 
-      const docRef = await addDoc(collection(db, 'pqrs'), {
-        tipo: selectedTipo,
-        mensaje,
-        userId: user.uid,
-        userName: user.username || 'Usuario',
-        userEmail: user.email,
-        fecha,
-        hora,
-        createdAt: serverTimestamp(),
-        status: 'pending'
-      })
-      
       setIsSubmitted(true)
     } catch (error) {
       console.error('Error submitting PQRS:', error)
@@ -188,7 +184,7 @@ export default function PQRSPage() {
                   <h3 className="font-display text-xl text-secondary tracking-wider mb-4">
                     SELECCIONA EL TIPO
                   </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     {tiposPQRS.map((tipo) => {
                       const Icon = tipo.icon
                       const isSelected = selectedTipo === tipo.id
@@ -228,6 +224,7 @@ export default function PQRSPage() {
                     value={mensaje}
                     onChange={(e) => setMensaje(e.target.value)}
                     placeholder="Describe tu peticion, queja, reclamo o sugerencia en detalle..."
+                    maxLength={3000}
                     className="w-full font-body text-gray-700 p-4 border-3 border-gray-200 focus:border-primary outline-none resize-none transition-colors"
                     rows={6}
                     required
@@ -281,6 +278,10 @@ export default function PQRSPage() {
                 <li className="font-body text-sm text-gray-600 flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-500"></span>
                   Sugerencias: 10 dias habiles
+                </li>
+                <li className="font-body text-sm text-gray-600 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-purple-600"></span>
+                  Datos personales: consultas 10 y reclamos 15 dias habiles
                 </li>
               </ul>
             </div>

@@ -11,6 +11,12 @@ function getAdminApp(): admin.app.App {
   }
 
   const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim();
+
+  // Pruebas locales contra los emuladores (FIRESTORE_EMULATOR_HOST y
+  // FIREBASE_AUTH_EMULATOR_HOST): no hacen falta credenciales.
+  if (process.env.FIRESTORE_EMULATOR_HOST && process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    return admin.initializeApp({ projectId: projectId || 'demo-fitmania' });
+  }
   const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim();
   const rawKey = process.env.FIREBASE_PRIVATE_KEY || '';
   const b64Key = process.env.FIREBASE_PRIVATE_KEY_B64 || '';
@@ -66,3 +72,4 @@ function getAdminApp(): admin.app.App {
 // que la inicialización ocurra dentro del flujo de la petición (SSR/API).
 export const getAdminAuth = () => getAdminApp().auth();
 export const getAdminFirestore = () => getAdminApp().firestore();
+export const getAdminMessaging = () => getAdminApp().messaging();

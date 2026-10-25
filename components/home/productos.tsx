@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { SectionHeader } from '@/components/ui/section-header'
+import { ProductosSkeleton } from '@/components/ui/comic-skeleton'
 import { useCartStore, type CartItem } from '@/lib/store'
 import { 
   Pill, 
@@ -14,7 +15,6 @@ import {
   Heart, 
   Zap, 
   Award,
-  Loader2,
   AlertCircle
 } from 'lucide-react'
 import { db } from '@/lib/firebase'
@@ -185,12 +185,25 @@ function cn(...inputs: any[]) {
   return inputs.filter(Boolean).join(' ');
 }
 
-export function Productos() {
-  const [groupedProducts, setGroupedProducts] = useState<Record<string, Product[]>>({});
-  const [loading, setLoading] = useState(true);
+function groupByCategory(products: Product[]): Record<string, Product[]> {
+  const grouped: Record<string, Product[]> = {};
+  for (const prod of products) {
+    if (!grouped[prod.categoria]) grouped[prod.categoria] = [];
+    grouped[prod.categoria].push(prod);
+  }
+  return grouped;
+}
+
+export function Productos({ initialProducts }: { initialProducts?: Product[] | null } = {}) {
+  // F2-21: con datos del servidor no se abre un listener de Firestore por visitante.
+  const [groupedProducts, setGroupedProducts] = useState<Record<string, Product[]>>(
+    initialProducts ? groupByCategory(initialProducts) : {}
+  );
+  const [loading, setLoading] = useState(!initialProducts);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialProducts) return;
     // Simplificamos la consulta para evitar errores de índices compuestos faltantes
     const q = query(collection(db, 'products'), orderBy('nombre', 'asc'));
     
@@ -213,16 +226,9 @@ export function Productos() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [initialProducts]);
 
-  if (loading) {
-    return (
-      <div className="py-20 flex flex-col items-center justify-center space-y-4">
-        <Loader2 className="w-12 h-12 text-primary animate-spin" />
-        <p className="font-display text-2xl text-secondary tracking-widest italic animate-pulse">CARGANDO Battle Shop...</p>
-      </div>
-    );
-  }
+  if (loading) return <ProductosSkeleton />;
 
   if (error) {
     return (

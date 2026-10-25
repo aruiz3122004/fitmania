@@ -9,6 +9,9 @@
 // Sin dominio, Resend solo permite "onboarding@resend.dev" y solo hacia el
 // correo dueño de la cuenta (modo pruebas).
 
+import { getAdminFirestore } from '@/lib/firebase-admin'
+import { IS_SANDBOX } from '@/lib/sandbox'
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 
 /**
@@ -25,11 +28,32 @@ const ADMIN_COPY_EMAIL = process.env.ADMIN_COPY_EMAIL || process.env.ADMIN_AUTHO
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
+/**
+ * Escapa texto antes de insertarlo en el HTML del correo. Nombres, conceptos y
+ * mensajes de PQRS los escribe el usuario; sin escapar se podía inyectar HTML
+ * (enlaces de phishing) en correos que además llegan en copia al administrador.
+ */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/** Igual que `escapeHtml`, conservando los saltos de línea del texto. */
+function escapeMultiline(value: unknown): string {
+  return escapeHtml(value).replace(/\r?\n/g, '<br/>')
+}
+
 interface SendMailOptions {
   from: string
   to: string
   subject: string
   html: string
+  /** `false` para correos con secretos (códigos de verificación): sin copia al admin. */
+  adminCopy?: boolean
 }
 
 /**
@@ -39,7 +63,39 @@ interface SendMailOptions {
  * fallos de red/timeout). Los errores definitivos (remitente sin dominio
  * verificado, destinatario inválido, etc.) se propagan de inmediato.
  */
+/** F2-25: rastro de cada correo (enviado o fallido) en `email_events`, sin el cuerpo. */
+async function logEmailEvent(event: { to: string; subject: string; status: 'sent' | 'failed'; attempts: number; providerId?: string; error?: string }) {
+  try {
+    await getAdminFirestore().collection('email_events').add({ ...event, createdAt: new Date() })
+  } catch (err) {
+    console.error('[mail] No se pudo registrar el evento de correo:', err)
+  }
+}
+
 async function sendWithRetry(mail: SendMailOptions, maxAttempts = 3) {
+  // Sandbox: ningún correo sale. Se guarda en el buzón simulado y el visitante lo lee
+  // desde la barra del sandbox (así ve recibos y códigos sin un correo real).
+  if (IS_SANDBOX) {
+    const ref = await getAdminFirestore().collection('sandbox_mail').add({
+      to: (mail.to || '').trim().toLowerCase(),
+      subject: mail.subject,
+      html: mail.html,
+      createdAt: new Date(),
+    })
+    await logEmailEvent({ to: mail.to, subject: mail.subject, status: 'sent', attempts: 1, providerId: `sandbox_${ref.id}` })
+    return { id: ref.id }
+  }
+  try {
+    const data = await sendWithRetryInner(mail, maxAttempts)
+    await logEmailEvent({ to: mail.to, subject: mail.subject, status: 'sent', attempts: data?.__attempt || 1, providerId: data?.id })
+    return data
+  } catch (err: any) {
+    await logEmailEvent({ to: mail.to || '', subject: mail.subject, status: 'failed', attempts: maxAttempts, error: String(err?.message || err).slice(0, 300) })
+    throw err
+  }
+}
+
+async function sendWithRetryInner(mail: SendMailOptions, maxAttempts: number) {
   if (!RESEND_API_KEY) {
     throw new Error('Falta RESEND_API_KEY en las variables de entorno.')
   }
@@ -51,7 +107,7 @@ async function sendWithRetry(mail: SendMailOptions, maxAttempts = 3) {
 
   // Copia al admin (BCC); se evita duplicar si el destinatario ya es el admin.
   const adminCopy =
-    ADMIN_COPY_EMAIL && ADMIN_COPY_EMAIL.trim().toLowerCase() !== to.toLowerCase()
+    mail.adminCopy !== false && ADMIN_COPY_EMAIL && ADMIN_COPY_EMAIL.trim().toLowerCase() !== to.toLowerCase()
       ? ADMIN_COPY_EMAIL.trim()
       : null
 
@@ -83,7 +139,7 @@ async function sendWithRetry(mail: SendMailOptions, maxAttempts = 3) {
         console.log(
           `[mail] Enviado a ${to}${adminCopy ? ` (copia a ${adminCopy})` : ''} (id: ${data?.id || 'sin-id'}, intento ${attempt}/${maxAttempts})`
         )
-        return data
+        return { ...data, __attempt: attempt }
       }
 
       const bodyText = await res.text().catch(() => '')
@@ -180,7 +236,7 @@ export async function sendPaymentSuccessEmail(data: PaymentEmailData) {
               <tr>
                 <td style="padding:40px;">
                   <p style="color:#333;font-size:16px;line-height:1.6;margin-top:0;">
-                    Hola <strong>${data.customerName}</strong>,<br/>
+                    Hola <strong>${escapeHtml(data.customerName)}</strong>,<br/>
                     gracias por hacer parte de nuestros servicios en <strong>Fitmania</strong>. Tu pago ha sido procesado correctamente.
                   </p>
 
@@ -193,19 +249,19 @@ export async function sendPaymentSuccessEmail(data: PaymentEmailData) {
                         <table width="100%" cellpadding="0" cellspacing="0">
                           <tr>
                             <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#666;font-size:14px;">Concepto</td>
-                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;font-weight:600;">${data.concept}</td>
+                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;font-weight:600;">${escapeHtml(data.concept)}</td>
                           </tr>
                           <tr>
                             <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#666;font-size:14px;">Banco</td>
-                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${data.bank}</td>
+                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${escapeHtml(data.bank)}</td>
                           </tr>
                           <tr>
                             <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#666;font-size:14px;">Fecha</td>
-                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${data.date}</td>
+                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${escapeHtml(data.date)}</td>
                           </tr>
                           <tr>
                             <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#666;font-size:14px;">ID Transacción</td>
-                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:12px;text-align:right;font-family:monospace;">${data.transactionId}</td>
+                            <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:12px;text-align:right;font-family:monospace;">${escapeHtml(data.transactionId)}</td>
                           </tr>
                           <tr>
                             <td style="padding:16px 0 8px;color:#1a1a2e;font-size:16px;font-weight:700;">TOTAL PAGADO</td>
@@ -279,7 +335,7 @@ export async function sendPaymentFailedEmail(data: Pick<PaymentEmailData, 'to' |
               <tr>
                 <td style="padding:40px;">
                   <p style="color:#333;font-size:16px;line-height:1.6;margin-top:0;">
-                    Hola <strong>${data.customerName}</strong>,
+                    Hola <strong>${escapeHtml(data.customerName)}</strong>,
                   </p>
                   <p style="color:#555;font-size:15px;line-height:1.8;">
                     No hemos detectado el movimiento mediante su cuenta bancaria. Si considera que se trata de un error, por favor diríjase a la página principal de Fitmania en la sección de <strong>PQRS</strong> ubicada en la página principal y háganos saber su inconformidad, o si lo desea, diríjase al punto físico de la tienda.
@@ -329,7 +385,7 @@ export async function sendOrderReceiptEmail(data: OrderReceiptData) {
 
   const itemsHtml = data.items.map(item => `
     <tr>
-      <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;">${item.nombre} x${item.cantidad}</td>
+      <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;">${escapeHtml(item.nombre)} x${escapeHtml(item.cantidad)}</td>
       <td style="padding:8px 0;border-bottom:1px solid #e0e0e0;color:#333;font-size:14px;text-align:right;">${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(item.precio * item.cantidad)}</td>
     </tr>
   `).join('')
@@ -356,7 +412,7 @@ export async function sendOrderReceiptEmail(data: OrderReceiptData) {
           <p style="margin:5px 0 0;font-size:12px;opacity:0.8;">DETALLE DE TU COMPRA</p>
         </div>
         <div class="content">
-          <p>Hola <strong>${data.customerName}</strong>,</p>
+          <p>Hola <strong>${escapeHtml(data.customerName)}</strong>,</p>
           <p>Tu pedido ha sido procesado con éxito. Aquí tienes el detalle de tus productos:</p>
           
           <table class="receipt-table">
@@ -376,9 +432,9 @@ export async function sendOrderReceiptEmail(data: OrderReceiptData) {
           </table>
 
           <div style="background:#f9f9f9;padding:20px;border-radius:4px;font-size:13px;color:#666;">
-            <p style="margin:0;"><strong>Banco:</strong> ${data.bank}</p>
-            <p style="margin:5px 0;"><strong>Fecha:</strong> ${data.date}</p>
-            <p style="margin:5px 0;"><strong>ID Transacción:</strong> ${data.transactionId}</p>
+            <p style="margin:0;"><strong>Banco:</strong> ${escapeHtml(data.bank)}</p>
+            <p style="margin:5px 0;"><strong>Fecha:</strong> ${escapeHtml(data.date)}</p>
+            <p style="margin:5px 0;"><strong>ID Transacción:</strong> ${escapeHtml(data.transactionId)}</p>
           </div>
         </div>
         <div class="footer">
@@ -427,17 +483,17 @@ export async function sendPqrsReplyEmail(data: PqrsReplyData) {
           <p style="margin:5px 0 0;font-size:12px;opacity:0.8;">RESPUESTA A TU SOLICITUD</p>
         </div>
         <div class="content">
-          <p>Hola <strong>${data.customerName}</strong>,</p>
+          <p>Hola <strong>${escapeHtml(data.customerName)}</strong>,</p>
           <p>Hemos recibido tu PQRS y un administrador de Fitmania ha revisado tu caso. Aquí tienes nuestra respuesta:</p>
           
           <div class="quote">
             <strong>Tu comentario original:</strong><br/>
-            "${data.originalMessage}"
+            "${escapeMultiline(data.originalMessage)}"
           </div>
 
           <div class="response">
             <strong>Respuesta del Administrador:</strong><br/>
-            ${data.adminResponse}
+            ${escapeMultiline(data.adminResponse)}
           </div>
 
           <p>Esperamos que esta respuesta sea satisfactoria. Hemos marcado tu solicitud como <strong>RESUELTA</strong>.</p>
@@ -457,4 +513,107 @@ export async function sendPqrsReplyEmail(data: PqrsReplyData) {
     subject: '📝 Respuesta a tu PQRS - Fitmania',
     html,
   })
+}
+interface PlanReminderData {
+  to: string
+  customerName: string
+  planName: string
+  daysLeft: number
+  expiresOn: string
+  renewUrl: string
+}
+
+/**
+ * Recordatorio de renovación al socio (F3-22). Correo transaccional del servicio
+ * (no promocional): informa el vencimiento y enlaza al pago de su mismo plan.
+ */
+export async function sendPlanReminderEmail(data: PlanReminderData) {
+  const urgent = data.daysLeft <= 1
+  const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8" /></head>
+    <body style="font-family:'Segoe UI',Arial,sans-serif;line-height:1.6;color:#333;">
+      <div style="max-width:600px;margin:0 auto;padding:20px;border:1px solid #e0e0e0;">
+        <div style="background:#1a1a2e;color:#fff;padding:20px;text-align:center;">
+          <h1 style="margin:0;color:#D32F2F;">FIT<span style="color:#f5c518;">MANIA</span></h1>
+          <p style="margin:5px 0 0;font-size:12px;opacity:0.8;">${urgent ? 'TU PLAN VENCE MAÑANA' : 'TU PLAN ESTÁ POR VENCER'}</p>
+        </div>
+        <div style="padding:30px;">
+          <p>Hola <strong>${escapeHtml(data.customerName)}</strong>,</p>
+          <p>Tu plan <strong>${escapeHtml(data.planName)}</strong> vence el <strong>${escapeHtml(data.expiresOn)}</strong>
+            (${data.daysLeft <= 0 ? 'hoy' : data.daysLeft === 1 ? 'en 1 día' : `en ${data.daysLeft} días`}).</p>
+          <p>Si renuevas antes del vencimiento, los nuevos días se suman a los que te quedan: no pierdes ninguno.</p>
+          <p style="text-align:center;margin:30px 0;">
+            <a href="${escapeHtml(data.renewUrl)}" style="background:#D32F2F;color:#fff;padding:14px 28px;text-decoration:none;font-weight:bold;border:3px solid #1a1a2e;">RENOVAR MI PLAN</a>
+          </p>
+          <p>¡Te esperamos en el gimnasio!<br/><strong>El equipo de Fitmania</strong></p>
+        </div>
+        <div style="font-size:12px;color:#999;text-align:center;margin-top:30px;">
+          Recibes este correo porque tienes un plan activo en Fitmania. © 2026 Fitmania.
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+
+  await sendWithRetry({
+    from: MAIL_FROM,
+    to: data.to,
+    subject: urgent ? '⏰ Tu plan Fitmania vence mañana' : '🔔 Tu plan Fitmania está por vencer',
+    html,
+  })
+}
+
+interface MfaCodeData {
+  to: string
+  customerName: string
+  code: string
+  purpose: 'login' | 'enable' | 'disable'
+}
+
+const MFA_PURPOSE_TEXT: Record<MfaCodeData['purpose'], string> = {
+  login: 'iniciar sesión en tu cuenta',
+  enable: 'activar la verificación en dos pasos',
+  disable: 'desactivar la verificación en dos pasos',
+}
+
+/**
+ * Código de verificación en dos pasos. Sin copia al admin (el código es un secreto)
+ * y sin reintentos largos: el usuario puede pedir otro código.
+ */
+export async function sendMfaCodeEmail(data: MfaCodeData) {
+  const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8" /></head>
+    <body style="font-family:'Segoe UI',Arial,sans-serif;line-height:1.6;color:#333;">
+      <div style="max-width:600px;margin:0 auto;padding:20px;border:1px solid #e0e0e0;">
+        <div style="background:#1a1a2e;color:#fff;padding:20px;text-align:center;">
+          <h1 style="margin:0;color:#D32F2F;">FIT<span style="color:#f5c518;">MANIA</span></h1>
+          <p style="margin:5px 0 0;font-size:12px;opacity:0.8;">VERIFICACIÓN EN DOS PASOS</p>
+        </div>
+        <div style="padding:30px;">
+          <p>Hola <strong>${escapeHtml(data.customerName)}</strong>,</p>
+          <p>Usa este código para ${MFA_PURPOSE_TEXT[data.purpose]}:</p>
+          <p style="font-size:36px;font-weight:bold;letter-spacing:10px;text-align:center;background:#f5f5f5;padding:20px;border:2px dashed #1a1a2e;margin:24px 0;">${escapeHtml(data.code)}</p>
+          <p>El código vence en <strong>10 minutos</strong> y solo sirve una vez.</p>
+          <p style="color:#D32F2F;"><strong>Nadie de Fitmania te pedirá este código.</strong> Si no fuiste tú, cambia tu contraseña de inmediato.</p>
+        </div>
+        <div style="font-size:12px;color:#999;text-align:center;margin-top:30px;">
+          © 2026 Fitmania. Por favor no respondas a este correo.
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+
+  await sendWithRetry({
+    from: MAIL_FROM,
+    to: data.to,
+    // El asunto queda en `email_events`: nunca debe llevar el código.
+    subject: '🔐 Tu código de verificación - Fitmania',
+    html,
+    adminCopy: false,
+  }, 2)
 }

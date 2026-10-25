@@ -8,7 +8,9 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    // F1-04: tope duro para no permitir lecturas masivas (`?limit=100000`).
+    const requested = parseInt(searchParams.get('limit') || '50', 10);
+    const limit = Math.min(200, Math.max(1, Number.isFinite(requested) ? requested : 50));
     
     // Fetch logs from Firestore
     const db = getAdminFirestore();
@@ -27,6 +29,8 @@ export async function GET(request: Request) {
     return NextResponse.json(logs);
   } catch (error: any) {
     console.error('Error fetching audit logs:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/admin/logs]', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }

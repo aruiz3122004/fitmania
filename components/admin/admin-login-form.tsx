@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { auth } from '@/lib/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import React, { useState, useEffect } from 'react';
+import { signInWithOptionalTotp, promptTotpCode } from '@/lib/mfa-client';
+import { ensureMfaVerified } from '@/lib/mfa-email-client';
 import Image from 'next/image';
 import {
   ShieldCheck,
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { getRateLimitStatus, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client';
+import { getRateLimitStatus, formatTimeLeft } from '@/lib/rate-limit-client';
 
 interface AdminLoginFormProps {
   onSuccess: () => void;
@@ -60,7 +60,7 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
 
     // 2. Cargar estado de rate limit
     const checkInitialStatus = async () => {
-      const status = await getRateLimitStatus();
+      const status = await getRateLimitStatus('panel');
       setRemainingAttempts(status.remaining);
       if (!status.success) {
         setIsBlocked(true);
@@ -80,7 +80,10 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
 
     try {
       // 1. Autenticar con Firebase (client-side)
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      // F1-13: si la cuenta tiene verificación en dos pasos, se pide el código TOTP.
+      const userCredential = await signInWithOptionalTotp(email, password, promptTotpCode);
+      // Código por correo si la cuenta activó la verificación en dos pasos.
+      await ensureMfaVerified();
 
       // 2. Verificar claim de admin antes de enviar al servidor
       const idTokenResult = await userCredential.user.getIdTokenResult();
@@ -118,8 +121,6 @@ export function AdminLoginForm({ onSuccess }: AdminLoginFormProps) {
       setAuthSuccess(true);
       toast.success('Acceso Autorizado');
       
-      // Limpiar rate limit histórico de fallos exitosamente
-      await clearRateLimit();
 
       // Limpiar la URL (quitar la ?key= de la barra de direcciones)
       if (typeof window !== 'undefined') {

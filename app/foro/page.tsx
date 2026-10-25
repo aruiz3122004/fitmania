@@ -1,13 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
+import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
+import { useAuthorAvatars } from '@/lib/author-profiles'
 import { useAuthStore } from '@/lib/store'
 import { FitAvatar } from '@/components/ui/fit-avatar'
-import { db } from '@/lib/firebase'
+import { PostSkeleton } from '@/components/ui/comic-skeleton'
+import { planTier, PLAN_TIERS, type PlanTier } from '@/lib/plan-theme'
+import { checkForumRate, formatCountdown, remainingForumPosts, FORUM_BURST, type ForumRate } from '@/lib/forum-rate'
+import { auth, db } from '@/lib/firebase'
 import {
   addDoc,
   arrayRemove,
@@ -21,7 +26,13 @@ import {
   doc,
   deleteDoc,
   where,
-  limit
+  limit,
+  writeBatch,
+  getCountFromServer,
+  getDocs,
+  startAfter,
+  type QueryDocumentSnapshot,
+  type DocumentData
 } from 'firebase/firestore'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import {
@@ -39,6 +50,7 @@ import {
   Pencil,
   Check,
   X,
+  Clock,
 } from 'lucide-react'
 
 type ForumComment = {
@@ -47,8 +59,11 @@ type ForumComment = {
   autor_username: string
   autor_avatar?: string
   autor_is_premium?: boolean
+  autor_plan_tier?: string | null
   contenido: string
   created_at: Date
+  /** Comentario antiguo guardado en el array `comentarios` del post (antes de F1-07). */
+  legacy?: boolean
 }
 
 type ForumPost = {
@@ -57,6 +72,7 @@ type ForumPost = {
   autor_username: string
   autor_avatar: string
   autor_is_premium?: boolean
+  autor_plan_tier?: string | null
   contenido: string
   imagen_url: string | null
   tipo_recurso?: 'image' | 'video'
@@ -65,24 +81,29 @@ type ForumPost = {
   created_at: Date
 }
 
-const noticias = [
+type Noticia = { id: string; imagen: string | null; titulo: string; descripcion: string }
+
+// F3-16: las noticias se administran desde el panel (colección `news`). Estas se
+// muestran solo si todavía no hay ninguna publicada.
+
+// Marco del autor en el foro: el guardado en el post o, para posts antiguos propios, el del plan actual.
+function authorTier(stored: unknown, ownPlan?: { planId?: string | null; nombre?: string | null } | null): PlanTier {
+  if (typeof stored === 'string' && (PLAN_TIERS as string[]).includes(stored)) return stored as PlanTier
+  return ownPlan ? planTier(ownPlan) : 'estandar'
+}
+
+const NOTICIAS_RESPALDO: Noticia[] = [
   {
-    id: 1,
-    imagen: '/images/gym1.jpg',
-    titulo: 'Nueva zona de CrossFit',
-    descripcion: 'Inauguramos nuestra nueva area de entrenamiento CrossFit con equipos de ultima generacion.',
+    id: 'respaldo-1',
+    imagen: '/Imagenes/Fitmania%20Gym.jpeg',
+    titulo: 'Bienvenido a FITMANIA',
+    descripcion: 'Entrena con los mejores equipos y entrenadores de Barranquilla.',
   },
   {
-    id: 2,
-    imagen: '/images/gym2.jpg',
-    titulo: 'Torneo de Fuerza 2026',
-    descripcion: 'Participa en nuestro proximo torneo de levantamiento de pesas. Premios increibles!',
-  },
-  {
-    id: 3,
-    imagen: '/images/gym3.jpg',
-    titulo: 'Clases de Yoga',
-    descripcion: 'Nuevas clases de yoga todos los sabados a las 8AM. Relaja cuerpo y mente.',
+    id: 'respaldo-2',
+    imagen: '/Imagenes/Tienda%20Fitmania.jpeg',
+    titulo: 'Visita nuestra tienda',
+    descripcion: 'Suplementos, snacks saludables y ropa deportiva para tu rutina.',
   },
 ]
 
@@ -100,6 +121,20 @@ function formatDate(date: Date) {
 
 function NewsSlider() {
   const [current, setCurrent] = useState(0)
+  const [noticias, setNoticias] = useState<Noticia[]>(NOTICIAS_RESPALDO)
+
+  useEffect(() => {
+    fetch('/api/public/news')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setNoticias(data)
+          setCurrent(0)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   const next = () => setCurrent((c) => (c + 1) % noticias.length)
   const prev = () => setCurrent((c) => (c - 1 + noticias.length) % noticias.length)
 
@@ -111,7 +146,7 @@ function NewsSlider() {
             key={noticia.id}
             className={`absolute inset-0 transition-opacity duration-500 ${index === current ? 'opacity-100' : 'opacity-0'}`}
           >
-            <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${noticia.imagen})`, backgroundColor: '#1a1a2e' }} />
+            <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: noticia.imagen ? `url(${noticia.imagen})` : undefined, backgroundColor: '#1a1a2e' }} />
             <div className="absolute inset-0 bg-gradient-to-r from-navy/90 via-navy/70 to-transparent" />
             <div className="absolute inset-0 flex items-center px-8 md:px-16">
               <div className="max-w-lg">
@@ -163,6 +198,44 @@ function PostCard({
 }) {
   const { user, isAuthenticated } = useAuthStore()
   const [showComments, setShowComments] = useState(false)
+  // F1-07: los comentarios viven en posts/{id}/comments (cada autor edita/borra los suyos).
+  // Los antiguos del array embebido se siguen mostrando hasta migrarlos.
+  const [subComments, setSubComments] = useState<ForumComment[]>([])
+  const [subCount, setSubCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    // Conteo barato (agregación) sin descargar los comentarios.
+    getCountFromServer(collection(db, 'posts', post.id, 'comments'))
+      .then((snap) => setSubCount(snap.data().count))
+      .catch(() => setSubCount(0))
+  }, [post.id])
+
+  useEffect(() => {
+    if (!showComments) return
+    const q = query(collection(db, 'posts', post.id, 'comments'), orderBy('created_at', 'asc'), limit(200))
+    return onSnapshot(q, (snap) => {
+      const list = snap.docs.map((d) => {
+        const c = d.data() as any
+        return {
+          id: d.id,
+          autor_id: c.autor_id || '',
+          autor_username: c.autor_username,
+          autor_avatar: c.autor_avatar || '',
+          autor_is_premium: !!c.autor_is_premium,
+          autor_plan_tier: c.autor_plan_tier ?? null,
+          contenido: c.contenido || '',
+          created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
+        }
+      })
+      setSubComments(list)
+      setSubCount(list.length)
+    })
+  }, [showComments, post.id])
+
+  const allComments: ForumComment[] = [...post.comentarios.map((c) => ({ ...c, legacy: true })), ...subComments]
+  // F1-09: foto actual de cada autor (perfil público); si no hay, la guardada en el post.
+  const authorAvatars = useAuthorAvatars([post.autor_id, ...allComments.map((c) => c.autor_id)])
+  const commentCount = post.comentarios.length + (subCount ?? 0)
   const [newComment, setNewComment] = useState('')
   const [isCommenting, setIsCommenting] = useState(false)
   const [showReport, setShowReport] = useState(false)
@@ -202,17 +275,16 @@ function PostCard({
     if (!reportReason || !user) return
 
     try {
-      await addDoc(collection(db, 'reportes'), {
-        reportante: user.username,
-        reportante_id: user.uid,
-        publicacion_id: post.id,
-        autor_publicacion: post.autor_username,
-        motivo: reportReason,
-        fecha_publicacion: post.created_at,
-        fecha_reporte: new Date()
+      // El servidor registra el reporte (datos del post y del socio, sin duplicados).
+      const idToken = await auth.currentUser?.getIdToken()
+      if (!idToken) throw new Error('sin sesión')
+      const res = await fetch('/api/forum/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ postId: post.id, motivo: reportReason }),
       })
+      if (!res.ok) throw new Error('reporte')
 
-      console.log(`Email mock a: administrador@fitmania.com\nAsunto: Reporte de publicacion\nMensaje: El usuario ${user.username} ha reportado la publicacion de ${post.autor_username} subida el ${post.created_at}. Motivo: ${reportReason}`)
       setReportStatus('success')
     } catch (err) {
       console.error('Error al guardar reporte:', err)
@@ -232,6 +304,12 @@ function PostCard({
     try {
       await onAddComment(post.id, content)
       setNewComment('')
+    } catch (err: any) {
+      alert(
+        err?.code === 'permission-denied'
+          ? 'No se pudo comentar. Verifica tu correo (revisa tu bandeja o reenvía el enlace desde tu perfil).'
+          : 'No se pudo enviar el comentario. Intenta de nuevo.'
+      )
     } finally {
       setIsCommenting(false)
     }
@@ -245,13 +323,14 @@ function PostCard({
           const isPostPremium = post.autor_is_premium || (user?.uid === post.autor_id && currentUserIsPremium)
           return (
             <FitAvatar
-              src={post.autor_avatar || null}
+              src={authorAvatars[post.autor_id] || post.autor_avatar || null}
               alt={post.autor_username}
               size={48}
               borderWidth="border-3"
               borderColor="border-secondary"
               bgColor="bg-primary"
               isPremium={isPostPremium}
+              tier={authorTier(post.autor_plan_tier, user?.uid === post.autor_id ? user?.plan : null)}
               fallback={<UserCircle className="w-8 h-8 text-gray-400" />}
             />
           )
@@ -360,7 +439,7 @@ function PostCard({
           className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-secondary transition-colors"
         >
           <MessageCircle className="w-5 h-5" />
-          <span>{post.comentarios.length}</span>
+          <span>{commentCount}</span>
         </button>
         <button onClick={handleShare} className="flex items-center gap-2 font-label text-sm text-gray-500 hover:text-secondary transition-colors">
           <Share2 className="w-5 h-5" />
@@ -539,15 +618,15 @@ function PostCard({
 
       {showComments && (
         <div className="border-t-2 border-gray-200 bg-gray-50 p-4">
-          {post.comentarios.map((comment) => {
+          {allComments.map((comment) => {
             // If the comment doesn't have a stored avatar, fall back to the current user's photo (for old comments)
-            const commentAvatar = comment.autor_avatar || (user?.username === comment.autor_username ? user?.photoURL : null) || null
+            const commentAvatar = authorAvatars[comment.autor_id] || comment.autor_avatar || (user?.username === comment.autor_username ? user?.photoURL : null) || null
             // Premium detection: use stored value, but also check if comment is from current premium user (for old comments without the field)
             const currentUserIsPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
             const isCommentPremium = comment.autor_is_premium || (user?.username === comment.autor_username && currentUserIsPremium)
             const isCommentAuthor = user?.uid === comment.autor_id
-            const canDeleteComment = isCommentAuthor || isAuthor
-            const canEditComment = isCommentAuthor
+            const canDeleteComment = comment.legacy ? isAuthor : (isCommentAuthor || isAuthor)
+            const canEditComment = isCommentAuthor && (!comment.legacy || isAuthor)
             const isEditing = editingCommentId === comment.id
 
             return (
@@ -559,6 +638,7 @@ function PostCard({
                   borderColor="border-secondary"
                   bgColor="bg-primary"
                   isPremium={isCommentPremium}
+                  tier={authorTier(comment.autor_plan_tier, isCommentAuthor ? user?.plan : null)}
                   fallback={
                     <span className="font-label font-bold text-xs text-white">
                       {comment.autor_username?.charAt(0) || 'U'}
@@ -641,6 +721,7 @@ function PostCard({
                 borderColor="border-secondary"
                 bgColor="bg-primary"
                 isPremium={!!(user?.plan && new Date(user.plan.expira) > new Date())}
+                tier={planTier(user?.plan)}
                 fallback={
                   <span className="font-label font-bold text-xs text-white">
                     {user?.username?.charAt(0) || 'U'}
@@ -653,6 +734,7 @@ function PostCard({
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Escribe un comentario..."
+                  maxLength={1000}
                   className="flex-1 min-w-0 font-body text-sm px-3 py-2 border-2 border-gray-200 focus:border-primary outline-none"
                 />
                 <button
@@ -671,12 +753,24 @@ function PostCard({
   )
 }
 
-function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File | null) => Promise<void> }) {
+function CreatePostForm({ onPublish, rate }: { onPublish: (content: string, file: File | null) => Promise<void>; rate: ForumRate | null }) {
   const { user, isAuthenticated } = useAuthStore()
   const [content, setContent] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [filePreview, setFilePreview] = useState<string | null>(null)
   const [isPublishing, setIsPublishing] = useState(false)
+  const [publishError, setPublishError] = useState('')
+  const [now, setNow] = useState(() => Date.now())
+  const rateCheck = checkForumRate(rate, new Date(now))
+  const cooldownMs = rateCheck.allowed ? 0 : rateCheck.retryAt.getTime() - now
+  const remaining = remainingForumPosts(rate, new Date(now))
+
+  // Cuenta regresiva: solo late mientras dura la pausa.
+  useEffect(() => {
+    if (rateCheck.allowed) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [rateCheck.allowed])
 
   // Cleanup object URL when component unmounts or file changes
   useEffect(() => {
@@ -691,15 +785,28 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
 
   const handlePublish = async () => {
     const text = content.trim()
-    if (!text || isPublishing) return
+    if (!text || isPublishing || cooldownMs > 0) return
     setIsPublishing(true)
+    setPublishError('')
     try {
       await onPublish(text, selectedFile)
       setContent('')
       setSelectedFile(null)
       setFilePreview(null)
+    } catch (err: any) {
+      // Las reglas exigen correo verificado, máx. 2000 caracteres (F1-06 / F1-07) y la
+      // pausa antispam. Si el reloj del equipo va adelantado, la pausa puede no haber
+      // terminado aún en el servidor.
+      setPublishError(
+        err?.code === 'permission-denied'
+          ? remaining <= 1
+            ? 'No se pudo publicar. Si acabas de cumplir la pausa, espera unos segundos y vuelve a intentarlo; si no, verifica tu correo.'
+            : 'No se pudo publicar. Verifica tu correo (revisa tu bandeja o reenvía el enlace desde tu perfil).'
+          : err?.message || 'No se pudo publicar. Intenta de nuevo.'
+      )
     } finally {
       setIsPublishing(false)
+      setNow(Date.now())
     }
   }
 
@@ -726,6 +833,7 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
             borderColor="border-secondary"
             bgColor="bg-primary"
             isPremium={!!(user?.plan && new Date(user.plan.expira) > new Date())}
+            tier={planTier(user?.plan)}
             fallback={<span className="font-display text-lg text-white">{user?.username?.charAt(0) || 'U'}</span>}
           />
         </div>
@@ -736,7 +844,24 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
             placeholder="Comparte tu experiencia de entrenamiento..."
             className="w-full font-body text-gray-700 p-3 border-2 border-gray-200 focus:border-primary outline-none resize-none"
             rows={3}
+            maxLength={2000}
           />
+          {publishError && cooldownMs <= 0 && (
+            <p role="alert" className="mt-2 font-label text-xs font-bold text-primary">{publishError}</p>
+          )}
+          {cooldownMs > 0 ? (
+            <div role="status" className="mt-2 flex items-start gap-2 bg-accent/20 border-2 border-secondary px-3 py-2">
+              <Clock className="w-4 h-4 mt-0.5 shrink-0 text-secondary" aria-hidden />
+              <p className="font-body text-xs text-secondary leading-snug">
+                <span className="font-bold">¡Pausa de {formatCountdown(cooldownMs)}!</span> Publicaste {FORUM_BURST} veces seguidas.
+                Así el foro se mantiene tranquilo para todos; puedes seguir comentando y reaccionando.
+              </p>
+            </div>
+          ) : remaining < FORUM_BURST && (
+            <p className="mt-1 font-body text-[0.7rem] text-gray-500">
+              Te {remaining === 1 ? 'queda 1 publicación' : `quedan ${remaining} publicaciones`} antes de una pausa de 5 minutos.
+            </p>
+          )}
           
           {filePreview && (
             <div className="relative mt-2 inline-block">
@@ -775,10 +900,10 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
             </label>
             <button
               onClick={handlePublish}
-              disabled={!content.trim() || isPublishing}
+              disabled={!content.trim() || isPublishing || cooldownMs > 0}
               className="font-label font-bold text-sm text-white bg-primary px-6 py-3 sm:py-2 border-2 border-secondary shadow-comic-sm transition-all hover:bg-red-dark hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[5px_5px_0_var(--navy)] disabled:opacity-50"
             >
-              {isPublishing ? 'PUBLICANDO...' : 'PUBLICAR'}
+              {isPublishing ? 'PUBLICANDO...' : cooldownMs > 0 ? `ESPERA ${formatCountdown(cooldownMs)}` : 'PUBLICAR'}
             </button>
           </div>
         </div>
@@ -789,70 +914,101 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
 
 export default function ForoPage() {
   const { user } = useAuthStore()
-  const [posts, setPosts] = useState<ForumPost[]>([])
-  const [pageLimit, setPageLimit] = useState(5)
-  const [hasMore, setHasMore] = useState(false)
+  // F2-22: la primera página se escucha en tiempo real; las demás se piden con cursor
+  // (`startAfter`) al navegar. Páginas de 10 para no saturar la vista ni las lecturas.
+  const PAGE_SIZE = 10
+  const [page, setPage] = useState(0)
+  const [livePosts, setLivePosts] = useState<ForumPost[]>([])
+  const [liveHasMore, setLiveHasMore] = useState(false)
+  const [pagePosts, setPagePosts] = useState<ForumPost[]>([])
+  const [pageHasMore, setPageHasMore] = useState(false)
+  const [loadingPage, setLoadingPage] = useState(false)
+  const [postsLoaded, setPostsLoaded] = useState(false)
+  // Último documento de cada página: cursores[i] abre la página i + 1.
+  const cursorsRef = useRef<QueryDocumentSnapshot<DocumentData>[]>([])
+  const listTopRef = useRef<HTMLDivElement>(null)
+  const [rate, setRate] = useState<ForumRate | null>(null)
+  const toForumPost = (docItem: QueryDocumentSnapshot<DocumentData>): ForumPost => {
+    const raw = docItem.data() as any
+    return {
+      id: docItem.id,
+      autor_id: raw.autor_id,
+      autor_username: raw.autor_username,
+      autor_avatar: raw.autor_avatar || '',
+      autor_is_premium: !!raw.autor_is_premium,
+      autor_plan_tier: raw.autor_plan_tier ?? null,
+      contenido: raw.contenido || '',
+      imagen_url: raw.imagen_url || null,
+      tipo_recurso: raw.tipo_recurso || 'image',
+      likes: Array.isArray(raw.likes) ? raw.likes : [],
+      comentarios: Array.isArray(raw.comentarios)
+        ? raw.comentarios.map((c: any) => ({
+          id: c.id,
+          autor_id: c.autor_id || '',
+          autor_username: c.autor_username,
+          autor_avatar: c.autor_avatar || '',
+          autor_is_premium: !!c.autor_is_premium,
+          contenido: c.contenido,
+          created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
+        }))
+        : [],
+      created_at: raw.created_at?.toDate ? raw.created_at.toDate() : new Date(),
+    }
+  }
 
-  useEffect(() => {
-    // Definimos el limite de 30 días para descartar basura antigua en memoria
+  const baseQuery = () => {
+    // Límite de 30 días para no cargar publicaciones antiguas.
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    return [collection(db, 'posts'), where('created_at', '>=', thirtyDaysAgo), orderBy('created_at', 'desc')] as const
+  }
 
-    const postsRef = collection(db, 'posts')
-    // Pedimos (pageLimit + 1) para saber si hay un elemento extra en la paginación siguiente
-    const postsQuery = query(
-      postsRef, 
-      where('created_at', '>=', thirtyDaysAgo),
-      orderBy('created_at', 'desc'), 
-      limit(pageLimit + 1)
-    )
-
-    const unsubscribe = onSnapshot(postsQuery, (snapshot) => {
-      let isMore = false;
-      const docsToProcess = [...snapshot.docs]
-      
-      if (docsToProcess.length > pageLimit) {
-        isMore = true;
-        docsToProcess.pop(); // Remove the extra doc so we only render current limit
-      }
-      setHasMore(isMore);
-
-      const data: ForumPost[] = docsToProcess.map((docItem) => {
-        const raw = docItem.data() as any
-        return {
-          id: docItem.id,
-          autor_id: raw.autor_id,
-          autor_username: raw.autor_username,
-          autor_avatar: raw.autor_avatar || '',
-          autor_is_premium: !!raw.autor_is_premium,
-          contenido: raw.contenido || '',
-          imagen_url: raw.imagen_url || null,
-          tipo_recurso: raw.tipo_recurso || 'image',
-          likes: Array.isArray(raw.likes) ? raw.likes : [],
-          comentarios: Array.isArray(raw.comentarios)
-            ? raw.comentarios.map((c: any) => ({
-              id: c.id,
-              autor_id: c.autor_id || '',
-              autor_username: c.autor_username,
-              autor_avatar: c.autor_avatar || '',
-              autor_is_premium: !!c.autor_is_premium,
-              contenido: c.contenido,
-              created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
-            }))
-            : [],
-          created_at: raw.created_at?.toDate ? raw.created_at.toDate() : new Date(),
-        }
-      })
-      setPosts(data)
+  useEffect(() => {
+    const [ref, ...constraints] = baseQuery()
+    // Se pide uno extra para saber si existe una página siguiente.
+    const unsubscribe = onSnapshot(query(ref, ...constraints, limit(PAGE_SIZE + 1)), (snapshot) => {
+      const docs = snapshot.docs.slice(0, PAGE_SIZE)
+      setLivePosts(docs.map(toForumPost))
+      setLiveHasMore(snapshot.docs.length > PAGE_SIZE)
+      if (docs.length) cursorsRef.current[0] = docs[docs.length - 1]
+      setPostsLoaded(true)
     })
-
     return () => unsubscribe()
-  }, [pageLimit])
+  }, [])
 
-  const handleLoadMore = () => {
-    if (pageLimit < 50) {
-      setPageLimit((prev) => prev + 5)
+  // Contador antispam propio (lo validan las reglas; aquí solo se muestra).
+  useEffect(() => {
+    if (!user?.uid) { setRate(null); return }
+    return onSnapshot(doc(db, 'forum_rate', user.uid), (snap) => {
+      const data = snap.data({ serverTimestamps: 'estimate' })
+      setRate(data ? { count: Number(data.count) || 0, last: data.last?.toDate ? data.last.toDate() : null } : null)
+    }, () => setRate(null))
+  }, [user?.uid])
+
+  const posts = page === 0 ? livePosts : pagePosts
+  const hasNextPage = page === 0 ? liveHasMore : pageHasMore
+
+  const goToPage = async (target: number) => {
+    if (target < 0 || loadingPage) return
+    if (target === 0) {
+      setPage(0)
+    } else {
+      const cursor = cursorsRef.current[target - 1]
+      if (!cursor) return
+      setLoadingPage(true)
+      try {
+        const [ref, ...constraints] = baseQuery()
+        const snap = await getDocs(query(ref, ...constraints, startAfter(cursor), limit(PAGE_SIZE + 1)))
+        const docs = snap.docs.slice(0, PAGE_SIZE)
+        if (docs.length) cursorsRef.current[target] = docs[docs.length - 1]
+        setPagePosts(docs.map(toForumPost))
+        setPageHasMore(snap.docs.length > PAGE_SIZE)
+        setPage(target)
+      } finally {
+        setLoadingPage(false)
+      }
     }
+    listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const handleLike = async (postId: string) => {
@@ -865,50 +1021,66 @@ export default function ForoPage() {
     await updateDoc(postRef, {
       likes: hasLiked ? arrayRemove(user.uid) : arrayUnion(user.uid),
     })
+    setPagePosts((prev) => prev.map((p) => p.id !== postId ? p : {
+      ...p,
+      likes: hasLiked ? p.likes.filter((id) => id !== user.uid) : [...p.likes, user.uid],
+    }))
   }
 
   const handlePublish = async (content: string, file: File | null) => {
     if (!user?.uid) return
+    // Antes de subir el archivo: si está en pausa no tiene sentido gastar la subida.
+    const check = checkForumRate(rate)
+    if (!check.allowed) {
+      throw new Error(`Ya publicaste ${FORUM_BURST} veces seguidas. Podrás volver a publicar en ${formatCountdown(check.retryAt.getTime() - Date.now())}.`)
+    }
 
     let imageUrl: string | null = null
+    let imagePublicId: string | null = null
     let resourceType: 'image' | 'video' = 'image'
     if (file) {
-      const resultado = await uploadToCloudinary(file)
+      const resultado = await uploadToCloudinary(file, 'forum')
       imageUrl = resultado.url
+      imagePublicId = resultado.publicId
       resourceType = resultado.resourceType as 'image' | 'video'
     }
 
     const isPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
 
-    await addDoc(collection(db, 'posts'), {
+    // El post y el contador van en el mismo lote: las reglas rechazan uno sin el otro.
+    const batch = writeBatch(db)
+    batch.set(doc(collection(db, 'posts')), {
       autor_id: user.uid,
       autor_username: user.username,
       autor_avatar: user.photoURL || '',
       autor_is_premium: isPremium,
+      autor_plan_tier: isPremium ? planTier(user.plan) : null,
       contenido: content,
       imagen_url: imageUrl,
+      // F1-25: permite borrar el archivo en Cloudinary cuando se elimine el post.
+      imagen_public_id: imagePublicId,
       tipo_recurso: resourceType,
       likes: [],
       comentarios: [],
       created_at: serverTimestamp(),
     })
+    batch.set(doc(db, 'forum_rate', user.uid), { count: check.nextCount, last: serverTimestamp() })
+    await batch.commit()
   }
 
   const handleAddComment = async (postId: string, content: string) => {
     if (!user?.uid) return
-    const postRef = doc(db, 'posts', postId)
     const isPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
 
-    await updateDoc(postRef, {
-      comentarios: arrayUnion({
-        id: `${user.uid}-${Date.now()}`,
-        autor_id: user.uid,
-        autor_username: user.username,
-        autor_avatar: user.photoURL || '',
-        autor_is_premium: isPremium,
-        contenido: content,
-        created_at: new Date(),
-      }),
+    // F1-07: comentario como documento propio (antes arrayUnion en el post).
+    await addDoc(collection(db, 'posts', postId, 'comments'), {
+      autor_id: user.uid,
+      autor_username: user.username,
+      autor_avatar: user.photoURL || '',
+      autor_is_premium: isPremium,
+      autor_plan_tier: isPremium ? planTier(user.plan) : null,
+      contenido: content,
+      created_at: serverTimestamp(),
     })
   }
 
@@ -927,8 +1099,23 @@ export default function ForoPage() {
       <section className="mt-[72px] min-h-screen bg-muted py-16">
         <div className="max-w-[900px] mx-auto px-4 sm:px-8">
           <SectionHeader label="COMUNIDAD FITMANIA" title="NUESTRO" titleAccent="FORO" />
+          <EmailVerificationBanner />
           <NewsSlider />
-          <CreatePostForm onPublish={handlePublish} />
+          <CreatePostForm onPublish={handlePublish} rate={rate} />
+          <div ref={listTopRef} className="scroll-mt-24" />
+          {!postsLoaded && (
+            <div aria-busy="true">
+              <span role="status" className="sr-only">Cargando publicaciones</span>
+              <PostSkeleton />
+              <PostSkeleton />
+            </div>
+          )}
+          {postsLoaded && posts.length === 0 && (
+            <div className="bg-white border-3 border-dashed border-secondary p-10 text-center mb-6">
+              <p className="font-display text-2xl text-secondary tracking-wider mb-2">¡EL FORO ESTÁ EN CALMA!</p>
+              <p className="font-body text-sm text-gray-600">No hay publicaciones de los últimos 30 días. Sé el primero en contar cómo va tu entreno.</p>
+            </div>
+          )}
           {posts.map((post) => (
             <PostCard
               key={post.id}
@@ -936,43 +1123,71 @@ export default function ForoPage() {
               onLike={handleLike}
               onAddComment={handleAddComment}
               onDeletePost={async (id: string) => {
-                await deleteDoc(doc(db, 'posts', id))
+                // F1-25: el servidor borra el post, sus comentarios y su archivo en Cloudinary.
+                const idToken = await auth.currentUser?.getIdToken()
+                const res = await fetch(`/api/forum/posts/${encodeURIComponent(id)}`, {
+                  method: 'DELETE',
+                  headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
+                })
+                if (!res.ok) {
+                  const data = await res.json().catch(() => ({}))
+                  alert(data.error || 'No se pudo eliminar la publicación.')
+                }
               }}
               onEditPost={handleEditPost}
               onDeleteComment={async (postId: string, commentId: string) => {
-                const postRef = doc(db, 'posts', postId)
-                const updatedComentarios = post.comentarios.filter(c => c.id !== commentId)
-                await updateDoc(postRef, {
-                  comentarios: updatedComentarios
-                })
+                // Comentario heredado (array del post): solo lo modera el autor del post.
+                if (post.comentarios.some(c => c.id === commentId)) {
+                  await updateDoc(doc(db, 'posts', postId), {
+                    comentarios: post.comentarios.filter(c => c.id !== commentId)
+                  })
+                  return
+                }
+                await deleteDoc(doc(db, 'posts', postId, 'comments', commentId))
               }}
               onEditComment={async (postId: string, commentId: string, newContent: string) => {
-                const postRef = doc(db, 'posts', postId)
-                const updatedComentarios = post.comentarios.map(c =>
-                  c.id === commentId ? { ...c, contenido: newContent } : c
-                )
-                await updateDoc(postRef, {
-                  comentarios: updatedComentarios
+                if (post.comentarios.some(c => c.id === commentId)) {
+                  await updateDoc(doc(db, 'posts', postId), {
+                    comentarios: post.comentarios.map(c =>
+                      c.id === commentId ? { ...c, contenido: newContent } : c
+                    )
+                  })
+                  return
+                }
+                await updateDoc(doc(db, 'posts', postId, 'comments', commentId), {
+                  contenido: newContent,
+                  edited_at: serverTimestamp(),
                 })
               }}
             />
           ))}
-          {hasMore && pageLimit < 50 && (
-            <div className="flex justify-center mt-10">
-              <button 
-                onClick={handleLoadMore}
-                className="bg-transparent text-primary border-3 border-primary font-label font-bold px-10 py-3 uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-comic-sm hover:-translate-y-1"
+          {postsLoaded && (page > 0 || hasNextPage) && (
+            <nav aria-label="Páginas del foro" className="flex items-center justify-center gap-3 mt-10">
+              <button
+                type="button"
+                onClick={() => goToPage(page - 1)}
+                disabled={page === 0 || loadingPage}
+                className="inline-flex items-center gap-1 font-label font-bold text-xs uppercase tracking-widest text-secondary bg-white border-2 border-secondary px-4 py-2 shadow-comic-sm transition-all hover:-translate-y-0.5 hover:text-primary disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:text-secondary"
               >
-                Cargar Más Publicaciones
+                <ChevronLeft className="w-4 h-4" aria-hidden /> Anterior
               </button>
-            </div>
+              <span aria-live="polite" className="font-display text-xl text-secondary tracking-wider min-w-[110px] text-center">
+                {loadingPage ? 'CARGANDO…' : `PÁGINA ${page + 1}`}
+              </span>
+              <button
+                type="button"
+                onClick={() => goToPage(page + 1)}
+                disabled={!hasNextPage || loadingPage}
+                className="inline-flex items-center gap-1 font-label font-bold text-xs uppercase tracking-widest text-white bg-primary border-2 border-secondary px-4 py-2 shadow-comic-sm transition-all hover:-translate-y-0.5 hover:bg-red-dark disabled:opacity-40 disabled:hover:translate-y-0"
+              >
+                Siguiente <ChevronRight className="w-4 h-4" aria-hidden />
+              </button>
+            </nav>
           )}
-          {pageLimit >= 50 && hasMore && (
-            <div className="flex justify-center mt-10 p-6 bg-white border-3 border-secondary shadow-comic-sm text-center">
-              <p className="font-label font-bold text-sm text-secondary uppercase tracking-widest">
-                Has alcanzado el límite (10 páginas).<br/> <a href="/foro" className="text-primary underline mt-2 inline-block">Refrescar Publicaciones Nuevas</a>
-              </p>
-            </div>
+          {page > 0 && (
+            <p className="mt-3 text-center font-body text-xs text-gray-500">
+              Las publicaciones nuevas aparecen en la <button type="button" onClick={() => goToPage(0)} className="text-primary font-bold underline">página 1</button>.
+            </p>
           )}
         </div>
       </section>

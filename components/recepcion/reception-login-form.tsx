@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/store'
-import { auth } from '@/lib/firebase'
-import { signInWithEmailAndPassword } from 'firebase/auth'
+import { signInWithOptionalTotp, promptTotpCode } from '@/lib/mfa-client'
+import { ensureMfaVerified } from '@/lib/mfa-email-client'
 import { 
   ShieldCheck, 
   Mail, 
@@ -16,7 +16,7 @@ import {
   ArrowLeft 
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getRateLimitStatus, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
+import { getRateLimitStatus, formatTimeLeft } from '@/lib/rate-limit-client'
 
 export function ReceptionLoginForm({ onSuccessAction }: { onSuccessAction: () => void }) {
   const [email, setEmail] = useState('')
@@ -55,7 +55,7 @@ export function ReceptionLoginForm({ onSuccessAction }: { onSuccessAction: () =>
 
     // 2. Cargar estado de rate limit
     const checkStatus = async () => {
-      const status = await getRateLimitStatus()
+      const status = await getRateLimitStatus('panel')
       setRemainingAttempts(status.remaining)
       if (!status.success) {
         setIsBlocked(true)
@@ -75,7 +75,10 @@ export function ReceptionLoginForm({ onSuccessAction }: { onSuccessAction: () =>
 
     try {
       // 1. Autenticar con Firebase (client-side)
-      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      // F1-13: si la cuenta tiene verificación en dos pasos, se pide el código TOTP.
+      const userCredential = await signInWithOptionalTotp(email, password, promptTotpCode)
+      // Código por correo si la cuenta activó la verificación en dos pasos.
+      await ensureMfaVerified()
 
       // 2. Obtener el ID Token y enviarlo al servidor
       const idToken = await userCredential.user.getIdToken()
@@ -117,8 +120,6 @@ export function ReceptionLoginForm({ onSuccessAction }: { onSuccessAction: () =>
         avatar: 'fitman',
       })
 
-      // EXITO: Limpiar historial de bloqueos
-      await clearRateLimit()
 
       // Limpiar la URL (quitar la ?key= de la barra de direcciones)
       if (typeof window !== 'undefined') {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { isReceptionEmailAllowed } from '@/lib/auth-helpers';
 
 /**
  * Endpoint interno para verificar si una cookie de sesión es válida.
@@ -7,6 +8,9 @@ import { getAdminAuth } from '@/lib/firebase-admin';
  * 
  * GET /api/auth/verify?role=admin   → verifica fitmania_session + claim admin
  * GET /api/auth/verify?role=recepcion → verifica fitmania_reception_session + email autorizado
+ *
+ * Siempre responde 200 con `{ valid }` (salvo rol desconocido): "sin sesión" es el
+ * estado normal antes del login, y un 401/403 aparecía como error en la consola.
  */
 export async function GET(request: Request) {
   try {
@@ -26,7 +30,7 @@ export async function GET(request: Request) {
     const token = cookies[cookieName];
 
     if (!token) {
-      return NextResponse.json({ valid: false, reason: 'No session cookie found' }, { status: 401 });
+      return NextResponse.json({ valid: false, reason: 'No session cookie found' }, { status: 200 });
     }
 
     const adminAuth = getAdminAuth();
@@ -37,19 +41,18 @@ export async function GET(request: Request) {
     // Verificaciones específicas por rol
     if (role === 'admin') {
       if (!decodedToken.admin) {
-        return NextResponse.json({ valid: false, reason: 'No admin claim' }, { status: 403 });
+        return NextResponse.json({ valid: false, reason: 'No admin claim' }, { status: 200 });
       }
       return NextResponse.json({ valid: true, uid: decodedToken.uid, role: 'admin' }, { status: 200 });
     }
 
     if (role === 'recepcion') {
-      const authorizedEmail = process.env.RECEPTION_AUTHORIZED_EMAIL;
-      if (!authorizedEmail || decodedToken.email?.toLowerCase() !== authorizedEmail.toLowerCase()) {
-        return NextResponse.json({ valid: false, reason: 'Email not authorized for reception' }, { status: 403 });
+      if (!isReceptionEmailAllowed(decodedToken.email)) {
+        return NextResponse.json({ valid: false, reason: 'Email not authorized for reception' }, { status: 200 });
       }
       // T-16: el claim se gestiona centralmente y se valida en cada verificación.
       if (decodedToken.receptionist !== true) {
-        return NextResponse.json({ valid: false, reason: 'No receptionist claim' }, { status: 403 });
+        return NextResponse.json({ valid: false, reason: 'No receptionist claim' }, { status: 200 });
       }
       return NextResponse.json({ valid: true, uid: decodedToken.uid, role: 'recepcion' }, { status: 200 });
     }
@@ -58,6 +61,6 @@ export async function GET(request: Request) {
 
   } catch (error: any) {
     // Token inválido, expirado o malformado
-    return NextResponse.json({ valid: false, reason: 'Invalid or expired token' }, { status: 401 });
+    return NextResponse.json({ valid: false, reason: 'Invalid or expired token' }, { status: 200 });
   }
 }

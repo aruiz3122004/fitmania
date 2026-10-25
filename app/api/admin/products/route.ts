@@ -2,6 +2,28 @@ import { NextResponse } from 'next/server';
 import { getAdminFirestore } from '@/lib/firebase-admin';
 import { verifyAdminRequest } from '@/lib/auth-helpers';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { ValidationError, parseDocId, parseProductCreate, parseProductUpdate } from '@/lib/admin-validation';
+
+/** Respuesta de error sin filtrar detalles internos (F1-03). */
+function errorResponse(error: unknown, context: string) {
+  if (error instanceof ValidationError) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  console.error(`Error en ${context}:`, error);
+  return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
+}
+
+/** Slug estable para el ID del producto: minúsculas, sin tildes ni símbolos. */
+function slugify(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 100);
+}
 
 export async function GET(request: Request) {
   const isAdmin = await verifyAdminRequest(request);
@@ -12,8 +34,8 @@ export async function GET(request: Request) {
     const snapshot = await db.collection('products').orderBy('created_at', 'desc').get();
     const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     return NextResponse.json(products);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return errorResponse(error, 'GET /api/admin/products');
   }
 }
 
@@ -22,29 +44,38 @@ export async function POST(request: Request) {
   if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   try {
-    const data = await request.json();
+    const body = await request.json();
+    // F1-04: solo campos conocidos y tipados (antes `...data` sin filtrar).
+    const data = parseProductCreate(body);
     const db = getAdminFirestore();
-    
-    // Si no viene ID, usamos uno autogenerado o el nombre slugificado
-    const id = data.id || data.nombre.toLowerCase().replace(/\s+/g, '-');
-    
-    await db.collection('products').doc(id).set({
-      ...data,
-      created_at: new Date(),
-    });
+
+    const id = body?.id ? parseDocId(body.id) : slugify(String(data.nombre));
+    if (!id) return NextResponse.json({ error: 'No se pudo generar un ID para el producto.' }, { status: 400 });
+
+    const docRef = db.collection('products').doc(id);
+    // `create` falla si ya existe: evita sobrescribir otro producto con el mismo nombre.
+    try {
+      await docRef.create({ ...data, created_at: new Date() });
+    } catch (err: any) {
+      if (err?.code === 6 /* ALREADY_EXISTS */) {
+        return NextResponse.json({ error: `Ya existe un producto con el ID "${id}".` }, { status: 409 });
+      }
+      throw err;
+    }
 
     await recordAuditLog({
       action: 'CREATE_PRODUCT',
       category: 'ADMIN_ACTION',
-      details: `Producto creado: ${data.nombre} | ID Asignado: ${id}`,
+      details: `Producto creado: ${data.nombre} | ID Asignado: ${id} | Stock: ${data.stock ?? 0}`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: id,
       request,
     });
-    
+
     return NextResponse.json({ success: true, id });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return errorResponse(error, 'POST /api/admin/products');
   }
 }
 
@@ -53,24 +84,52 @@ export async function PATCH(request: Request) {
   if (!isAdmin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
 
   try {
-    const { id, ...updates } = await request.json();
-    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+    const body = await request.json();
+    const id = parseDocId(body?.id);
+    const updates = parseProductUpdate(body);
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No hay campos válidos para actualizar.' }, { status: 400 });
+    }
 
     const db = getAdminFirestore();
-    await db.collection('products').doc(id).update(updates);
+    const docRef = db.collection('products').doc(id);
+    const before = await docRef.get();
+    if (!before.exists) return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
 
+    await docRef.update(updates);
+
+    // F2-25: todo cambio de stock queda como movimiento de inventario con su actor.
+    const previousStock = Number(before.data()?.stock) || 0;
+    if (updates.stock !== undefined && updates.stock !== previousStock) {
+      await db.collection('inventory_movements').add({
+        productId: id,
+        productName: before.data()?.nombre || id,
+        type: 'manual_adjustment',
+        before: previousStock,
+        after: updates.stock,
+        delta: Number(updates.stock) - previousStock,
+        actorEmail: isAdmin.email || null,
+        actorUid: isAdmin.uid,
+        createdAt: new Date(),
+      });
+    }
+
+    const stockChange = updates.stock !== undefined ? ` | Stock: ${before.data()?.stock} → ${updates.stock}` : '';
     await recordAuditLog({
       action: 'UPDATE_PRODUCT',
       category: 'ADMIN_ACTION',
-      details: `Producto actualizado. ID: ${id} | Campos: ${Object.keys(updates).join(', ')}`,
+      details: `Producto actualizado. ID: ${id} | Campos: ${Object.keys(updates).join(', ')}${stockChange}`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: id,
+      before: before.data(),
+      after: updates,
       request,
     });
-    
+
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return errorResponse(error, 'PATCH /api/admin/products');
   }
 }
 
@@ -80,10 +139,10 @@ export async function DELETE(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+    const id = parseDocId(searchParams.get('id'));
 
     const db = getAdminFirestore();
+    const deleted = (await db.collection('products').doc(id).get()).data() || null;
     await db.collection('products').doc(id).delete();
 
     await recordAuditLog({
@@ -91,12 +150,14 @@ export async function DELETE(request: Request) {
       category: 'ADMIN_ACTION',
       details: `Producto eliminado permanentemente. ID de stock borrado: ${id}`,
       adminEmail: isAdmin.email,
+      actorUid: isAdmin.uid,
       targetId: id,
+      before: deleted,
       request,
     });
-    
+
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return errorResponse(error, 'DELETE /api/admin/products');
   }
 }

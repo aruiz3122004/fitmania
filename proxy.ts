@@ -1,0 +1,425 @@
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { Redis } from '@upstash/redis';
+import { getClientIp } from '@/lib/client-ip';
+import {
+  GATE_COOKIE,
+  type GateScope,
+  createGateToken,
+  gateCookieOptions,
+  getGateSecret,
+  timingSafeEqualStrings,
+  verifyGateToken,
+} from '@/lib/gate-token';
+import { IS_SANDBOX, SANDBOX_URL } from '@/lib/sandbox';
+
+// Inicializar Upstash Redis de forma directa para control granular
+let redis: Redis | null = null;
+try {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (url && token) {
+    redis = new Redis({ url, token });
+  }
+} catch (error) {
+  console.error('Error al inicializar Upstash Redis:', error);
+}
+
+// F1-10: contadores separados por grupo. Antes el login de socios y el de los paneles
+// compartían el contador por IP: con el WiFi del gimnasio (NAT, una sola IP pública)
+// los socios podían bloquear al administrador.
+//  - panel:  login de admin/recepción (pocos usuarios, límite estricto, fail-closed).
+//  - public: intentos de login/registro de socios (límite holgado por la IP compartida).
+// El pago ya no se cuenta aquí: tiene límite por usuario en el servidor.
+type AttemptGroup = 'panel' | 'public';
+const MAX_ATTEMPTS: Record<AttemptGroup, number> = { panel: 15, public: 60 };
+
+// Aviso único por instancia si el rate limiting queda apagado (auditoría A-1).
+// Sin Upstash el sistema es fail-open: se salta TODO el bloqueo sin avisar.
+let warnedNoRedis = false;
+
+// Penalizaciones progresivas basadas en niveles de castigo (1m, 5m, 15m, 30m, 45m, 1h)
+function getLockoutTime(level: number): number {
+  switch (level) {
+    case 1: return 60;        // 1 minuto
+    case 2: return 300;       // 5 minutos
+    case 3: return 900;       // 15 minutos
+    case 4: return 1800;      // 30 minutos
+    case 5: return 2700;      // 45 minutos
+    default: return 3600;     // 1 hora máximo para niveles consecuentes
+  }
+}
+
+// -------------------------------------------------------
+// NONCE + CSP (T-17)
+// -------------------------------------------------------
+// CSP restrictiva basada en NONCE por request. El nonce se genera con Web Crypto
+// (disponible en el runtime de Node del proxy) y se propaga:
+//   1. En la RESPUESTA (para que el navegador aplique la política).
+//   2. En la REQUEST (para que Next.js lo añada a sus propios <script> en el SSR).
+// Nota: el nonce exige renderizado dinámico (ver `export const dynamic` en el
+// layout raíz); las páginas estáticas no reciben nonce en build.
+function generateNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function buildCsp(nonce: string): string {
+  const isProd = process.env.NODE_ENV === 'production';
+
+  // Producción: 'nonce' + 'strict-dynamic' (sin 'unsafe-inline' ni 'unsafe-eval').
+  // Desarrollo: Next/webpack requieren 'unsafe-eval' e inline para el HMR.
+  const scriptSrc = isProd
+    ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' https://*.firebaseapp.com https://apis.google.com https://www.google.com https://www.gstatic.com https://va.vercel-scripts.com`
+    : `'self' 'nonce-${nonce}' 'unsafe-eval' 'unsafe-inline' https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com`;
+
+  // Pruebas E2E locales del sandbox con los emuladores de Firebase (nunca en un despliegue).
+  const emulators = process.env.NEXT_PUBLIC_FIREBASE_EMULATORS === 'true'
+    ? ' http://127.0.0.1:9099 http://127.0.0.1:8080'
+    : '';
+
+  // style-src conserva 'unsafe-inline': la app usa atributos `style=` de React y
+  // un <style> inline; en CSP3 un nonce en style-src haría ignorar 'unsafe-inline'.
+  return `
+    default-src 'self';
+    script-src ${scriptSrc};
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    img-src 'self' blob: data: https://res.cloudinary.com https://*.googleusercontent.com https://*.firebaseapp.com;
+    connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://api.cloudinary.com https://res.cloudinary.com https://va.vercel-scripts.com${emulators};
+    frame-src 'self' https://*.firebaseapp.com https://www.google.com https://recaptcha.google.com;
+    font-src 'self' data: https://fonts.gstatic.com;
+    media-src 'self' blob: https://res.cloudinary.com;
+    worker-src 'self' blob:;
+    object-src 'none';
+    base-uri 'self';
+    frame-ancestors 'none';
+    form-action 'self';
+    ${emulators ? '' : 'upgrade-insecure-requests;'}
+  `.replace(/\s{2,}/g, ' ').trim();
+}
+
+function applySecurityHeaders(response: NextResponse, csp: string) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const headers = response.headers;
+
+  headers.set('Content-Security-Policy', csp);
+  headers.set('X-Frame-Options', 'DENY');
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // F1-16: la cámara solo la usa el escáner QR de recepción (mismo origen).
+  headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=(self)');
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+
+  // El sandbox no debe aparecer en buscadores (contenido de prueba que cambia sin parar).
+  if (IS_SANDBOX) headers.set('X-Robots-Tag', 'noindex, nofollow');
+
+  if (isProd) {
+    headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+
+  return response;
+}
+
+// Deja pasar y propaga el nonce a Next.js (necesario para el SSR de páginas).
+// F1-03: ID de correlación por request. Llega a las rutas (auditoría, logs) en el
+// header `x-request-id` y se devuelve al cliente para cruzar un error con los logs.
+function withRequestId(requestHeaders: Headers): string {
+  // La firma de los webhooks de Mercado Pago incluye SU `x-request-id`: se conserva
+  // en `x-upstream-request-id` (solo la define el middleware, nunca el cliente).
+  const upstream = requestHeaders.get('x-request-id');
+  if (upstream) requestHeaders.set('x-upstream-request-id', upstream);
+  else requestHeaders.delete('x-upstream-request-id');
+  const requestId = crypto.randomUUID();
+  requestHeaders.set('x-request-id', requestId);
+  return requestId;
+}
+
+function nextWithNonce(request: NextRequest, nonce: string, csp: string) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('Content-Security-Policy', csp);
+  const requestId = withRequestId(requestHeaders);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set('x-request-id', requestId);
+  return applySecurityHeaders(response, csp);
+}
+
+// Rewrite (p. ej. a /404) propagando el nonce.
+function rewriteWithNonce(request: NextRequest, destination: URL, nonce: string, csp: string) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('Content-Security-Policy', csp);
+  withRequestId(requestHeaders);
+  const response = NextResponse.rewrite(destination, { request: { headers: requestHeaders } });
+  return applySecurityHeaders(response, csp);
+}
+
+// -------------------------------------------------------
+// PUERTA DE PANELES INTERNOS (F1-12)
+// -------------------------------------------------------
+// La cookie de puerta es un token HMAC firmado con la llave del panel (no un literal
+// `'true'`), y la mera presencia de una cookie de sesión YA NO abre la puerta: ambas
+// se podían falsificar a mano. Los logins de panel emiten el token tras verificar
+// la sesión, así que el acceso directo por rol (`enterPanel`) sigue funcionando.
+const GATE_TTL_SECONDS = 60 * 60; // 1 hora al entrar con `?key=`
+
+async function handlePanelGate(
+  request: NextRequest,
+  scope: GateScope,
+  hasSessionCookie: boolean,
+  nonce: string,
+  csp: string
+) {
+  const secret = getGateSecret(scope);
+
+  // Sin llave configurada: comportamiento anterior (solo sesión), con aviso.
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(`[SECURITY] Falta la llave de puerta del panel "${scope}" (ADMIN_GATE_KEY / RECEPTION_GATE_KEY).`);
+    }
+    return hasSessionCookie
+      ? nextWithNonce(request, nonce, csp)
+      : rewriteWithNonce(request, new URL('/404', request.url), nonce, csp);
+  }
+
+  const gateCookie = request.cookies.get(GATE_COOKIE[scope])?.value;
+  if (await verifyGateToken(scope, secret, gateCookie)) {
+    return nextWithNonce(request, nonce, csp);
+  }
+
+  const key = request.nextUrl.searchParams.get('key');
+  if (key && timingSafeEqualStrings(key, secret)) {
+    // Se quita la llave de la URL (historial del navegador, Referer, capturas) y se
+    // continúa con la cookie firmada.
+    const clean = request.nextUrl.clone();
+    clean.searchParams.delete('key');
+    const resp = applySecurityHeaders(NextResponse.redirect(clean, 303), csp);
+    resp.cookies.set(
+      GATE_COOKIE[scope],
+      await createGateToken(scope, secret, GATE_TTL_SECONDS),
+      gateCookieOptions(GATE_TTL_SECONDS)
+    );
+    return resp;
+  }
+
+  return rewriteWithNonce(request, new URL('/404', request.url), nonce, csp);
+}
+
+export default async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const nonce = generateNonce();
+  const csp = buildCsp(nonce);
+
+  // -------------------------------------------------------
+  // RATE LIMITING GLOBAL (Arquitectura Progresiva y Exacta)
+  // -------------------------------------------------------
+  if (!redis && !warnedNoRedis && process.env.NODE_ENV === 'production') {
+    warnedNoRedis = true;
+    console.warn('[SECURITY] Rate limiting DESACTIVADO: faltan UPSTASH_REDIS_REST_URL/_TOKEN. Ver auditoría A-1.');
+  }
+
+  if (redis) {
+    // IP confiable (T-11, auditoría A-1): Vercel adjunta la IP real del cliente;
+    // NO confiar en el primer valor de x-forwarded-for (header falsificable por el atacante).
+    const ip = getClientIp(request.headers);
+
+    // F1-10 (auditoría B5): se eliminó `/api/security/success`. Reiniciaba el contador
+    // SIN autenticación, así que cualquiera podía anular su propio bloqueo. El reinicio
+    // ahora lo hace el servidor tras un login de panel verificado (lib/rate-limit-server.ts).
+
+    const isPanelLogin = pathname.startsWith('/api/admin/login') || pathname.startsWith('/api/recepcion/login');
+    const isAttemptEndpoint = isPanelLogin || pathname === '/api/security/attempt';
+    const isCheckEndpoint = pathname === '/api/security/check';
+
+    if (isAttemptEndpoint || isCheckEndpoint) {
+      const group: AttemptGroup = isPanelLogin || (isCheckEndpoint && request.nextUrl.searchParams.get('group') === 'panel')
+        ? 'panel'
+        : 'public';
+      const limit = MAX_ATTEMPTS[group];
+      const attemptsKey = `fw_attempts_${group}_${ip}`;
+      const lockoutKey = `fw_lockout_${group}_${ip}`;
+      const levelKey = `fw_level_${group}_${ip}`;
+      try {
+        // A. Verificar si el usuario está bajo una condena actual
+        const lockoutTtl = await redis.ttl(lockoutKey);
+
+        if (lockoutTtl > 0) {
+          // Usuario bloqueado
+          const resp = NextResponse.json(
+            { error: 'Bloqueo de seguridad por excesos de intentos.', remaining: 0, secondsLeft: lockoutTtl },
+            { status: 429 }
+          );
+          resp.headers.set('X-RateLimit-Limit', limit.toString());
+          resp.headers.set('X-RateLimit-Remaining', '0');
+          resp.headers.set('X-RateLimit-SecondsLeft', lockoutTtl.toString());
+          return applySecurityHeaders(resp, csp);
+        }
+
+        // B. Lectura inofensiva de estado (Renderizado inicial de la página)
+        if (isCheckEndpoint) {
+          const currentAttempts = (await redis.get<number>(attemptsKey)) || 0;
+          return applySecurityHeaders(NextResponse.json({
+            success: true,
+            remaining: Math.max(0, limit - currentAttempts),
+          }), csp);
+        }
+
+        // C. Ejecutar Intento Explicito (Pulsó ENTRAR)
+        const attempts = await redis.incr(attemptsKey);
+
+        // Limpiador básico: si es primer error asilar intentos tras 1 hora si el usuario desiste
+        if (attempts === 1) await redis.expire(attemptsKey, 3600);
+
+        if (attempts > limit) {
+          // Ha superado el limite: asginar nivel de penalización
+          const level = await redis.incr(levelKey);
+          if (level === 1) await redis.expire(levelKey, 86400); // Récord base 24h
+
+          const lockoutTime = getLockoutTime(level);
+          await redis.setex(lockoutKey, lockoutTime, 'blocked'); // Activar cuenta regresiva
+          await redis.del(attemptsKey); // Resetear contador para re-evaluación posterior al castigo
+
+          // Registrar en auditoría asíncronamente
+          // B-6: usar un secreto interno propio (no reutilizar UPSTASH_REDIS_REST_TOKEN).
+          const internalSecret = process.env.INTERNAL_MIDDLEWARE_SECRET;
+          if (internalSecret) {
+            try {
+              fetch(`${request.nextUrl.origin}/api/security/log-block`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-middleware-secret': internalSecret
+                },
+                body: JSON.stringify({ ip, attempts: limit, url: pathname })
+              }).catch(() => {}); // Fire and forget
+            } catch(e) {}
+          }
+
+          const resp = NextResponse.json(
+            { error: 'Límite alcanzado, pasarela bloqueada.', remaining: 0, secondsLeft: lockoutTime },
+            { status: 429 }
+          );
+          resp.headers.set('X-RateLimit-Limit', limit.toString());
+          resp.headers.set('X-RateLimit-Remaining', '0');
+          resp.headers.set('X-RateLimit-SecondsLeft', lockoutTime.toString());
+          return applySecurityHeaders(resp, csp);
+        }
+
+        // D. Intento válido procesado (aún le quedan oportunidades)
+        const remaining = Math.max(0, limit - attempts);
+
+        if (pathname === '/api/security/attempt') {
+          // Interceptamos su llegada porque su único trabajo era alertar al middleware del click
+          return applySecurityHeaders(NextResponse.json({ success: true, remaining }), csp);
+        } else {
+          // Si es un API Route propio (login de paneles), lo dejamos pasar e inyectamos los headers
+          const response = NextResponse.next();
+          response.headers.set('X-RateLimit-Limit', limit.toString());
+          response.headers.set('X-RateLimit-Remaining', remaining.toString());
+          return applySecurityHeaders(response, csp);
+        }
+
+      } catch (e) {
+        console.error('Error procesando intentos con Redis:', e);
+        // Paneles: fail-closed (sin contador no se permite probar contraseñas de personal).
+        if (isPanelLogin) {
+          return applySecurityHeaders(
+            NextResponse.json({ error: 'Servicio de seguridad no disponible. Intenta en unos minutos.' }, { status: 503 }),
+            csp
+          );
+        }
+        // Formularios públicos: fail-open (Firebase Auth tiene su propia protección).
+        return applySecurityHeaders(NextResponse.next(), csp);
+      }
+    }
+  }
+
+  // Leer cookies de sesión
+  const adminSession = request.cookies.get('fitmania_session')?.value;
+  const receptionSession = request.cookies.get('fitmania_reception_session')?.value;
+
+  // --- PROTECCIÓN DE PÁGINAS (ADMIN Y RECEPCIÓN INVISIBLES) ---
+
+  // Normalizar el pathname para que la comparación sea robusta (sin slash final)
+  const normalizedPath = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+
+  // Sitio real: /sandbox lleva al despliegue de pruebas (lib/sandbox.ts).
+  if (!IS_SANDBOX && SANDBOX_URL && normalizedPath === '/sandbox') {
+    return applySecurityHeaders(NextResponse.redirect(`${SANDBOX_URL}/sandbox`, 307), csp);
+  }
+
+  // Sandbox: no hay registro ni login con contraseña; las cuentas temporales se crean en /sandbox.
+  if (IS_SANDBOX && (normalizedPath === '/login' || normalizedPath === '/registro')) {
+    return applySecurityHeaders(NextResponse.redirect(new URL('/sandbox', request.url), 307), csp);
+  }
+
+  if (normalizedPath === '/fitministration') {
+    return handlePanelGate(request, 'admin', !!adminSession, nonce, csp);
+  }
+
+  if (normalizedPath === '/fitception') {
+    return handlePanelGate(request, 'recepcion', !!receptionSession, nonce, csp);
+  }
+
+  // -------------------------------------------------------
+  // CSRF: verificación de origen en métodos que modifican datos
+  // -------------------------------------------------------
+  // Las APIs usan cookies de sesión: un sitio externo podría intentar enviar un
+  // formulario (p. ej. enctype=text/plain con un cuerpo que parece JSON). Si el
+  // navegador indica un Origin distinto al nuestro, se rechaza. Se exceptúan los
+  // endpoints llamados servidor a servidor (webhook de pagos y cron), que no traen
+  // Origin y se autentican con firma o secreto propios.
+  const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
+  const isServerToServer = pathname.startsWith('/api/payments/mercadopago/webhook')
+    || pathname.startsWith('/api/cron/');
+  if (pathname.startsWith('/api/') && isMutation && !isServerToServer) {
+    const origin = request.headers.get('origin');
+    // Solo desarrollo: el túnel https de pruebas de pagos (next.config allowedDevOrigins)
+    // llega con Origin del túnel, pero el servidor se ve a sí mismo como localhost.
+    const isDevTunnel = process.env.NODE_ENV !== 'production'
+      && !!origin && /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(origin);
+    if (origin && origin !== request.nextUrl.origin && !isDevTunnel) {
+      return applySecurityHeaders(NextResponse.json({ error: 'Origen no permitido' }, { status: 403 }), csp);
+    }
+  }
+
+  // -------------------------------------------------------
+  // SEGURIDAD DE APIS (Sesiones)
+  // -------------------------------------------------------
+  const isAdminApi = pathname.startsWith('/api/admin/') &&
+                     !pathname.startsWith('/api/admin/login');
+  if (isAdminApi && !adminSession) {
+    return applySecurityHeaders(NextResponse.json({ error: 'No autorizado' }, { status: 401 }), csp);
+  }
+
+  const isRecepcionApi = pathname.startsWith('/api/recepcion/') &&
+                         !pathname.startsWith('/api/recepcion/login');
+  if (isRecepcionApi && !receptionSession) {
+    return applySecurityHeaders(NextResponse.json({ error: 'No autorizado' }, { status: 401 }), csp);
+  }
+
+  // Devolver respuesta final con todas las cabeceras de seguridad aplicadas
+  return nextWithNonce(request, nonce, csp);
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Coincidir con todas las rutas excepto:
+     * - _next/static (archivos estáticos)
+     * - _next/image (optimización de imágenes)
+     * - favicon.ico (icono)
+     * - Imagenes/Public (tus carpetas de assets)
+     * - Archivos estáticos por extensión
+     *
+     * IMPORTANTE: NO excluir `api`. El middleware es quien aplica el rate limit
+     * y protege las APIs de admin/recepción, y además atiende endpoints que no
+     * existen como route handler (/api/security/attempt).
+     * Si se excluye `api`, esos endpoints devuelven el HTML del 404.
+     */
+    '/((?!_next/static|_next/image|favicon.ico|Imagenes|Public|.*\\.png$|.*\\.jpg$|.*\\.jpeg$|.*\\.gif$|.*\\.svg$|.*\\.webp$|.*\\.woff2?$|.*\\.ico$).*)',
+  ],
+};

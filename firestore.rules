@@ -2,8 +2,20 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Verificación en dos pasos por correo (opcional, lib/mfa.ts): si la cuenta la
+    // activó, la sesión (`auth_time` del token) debe estar entre las verificadas.
+    // Sin la cuenta activada no cambia nada. `mfa_state` lo escribe solo el servidor.
+    // Si el token no trae `auth_time`, las reglas no lo exigen (las APIs sí).
+    function mfaOk() {
+      let mfa = /databases/$(database)/documents/mfa_state/$(request.auth.uid);
+      return !('auth_time' in request.auth.token)
+        || !exists(mfa)
+        || get(mfa).data.get('enabled', false) != true
+        || request.auth.token.auth_time in get(mfa).data.get('sessions', []);
+    }
+
     function isSignedIn() {
-      return request.auth != null;
+      return request.auth != null && mfaOk();
     }
 
     // Validación de Role system Backend -> Frontend
@@ -11,29 +23,171 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.admin == true;
     }
 
-    function isReceptionist() {
-      return isSignedIn() && request.auth.token.receptionist == true;
+    // F1-06: publicar en el foro exige correo verificado.
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Imágenes que se muestran a otros usuarios: solo Cloudinary del proyecto o
+    // archivos propios del sitio (evita URLs de rastreo o contenido externo).
+    function safeImageUrl(v) {
+      return v == null || v == ''
+        || (v is string && v.size() <= 500
+            && v.matches('^(https://res[.]cloudinary[.]com/.*|/Imagenes/.*)$'));
+    }
+
+    // Recepción NO accede a Firestore desde el navegador: todo pasa por /api/recepcion/*
+    // (el servidor verifica el claim `receptionist` y devuelve datos mínimos).
+
+    // Campos del perfil que el propio usuario puede escribir. `plan` NUNCA está aquí:
+    // solo lo escribe el servidor (webhook de pagos / panel admin vía Admin SDK).
+    function editableProfileKeys() {
+      return ['username', 'avatar', 'photoURL', 'peso', 'altura', 'gender'];
+    }
+
+    // F3-10: peso/altura (datos de salud) solo con autorización vigente o para borrarlos.
+    function sensitiveWriteAllowed(uid) {
+      let consentPath = /databases/$(database)/documents/consents/$(uid + '_sensitive_data');
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['peso', 'altura'])
+        || (request.resource.data.get('peso', null) == null && request.resource.data.get('altura', null) == null)
+        || (exists(consentPath) && get(consentPath).data.granted == true);
     }
 
     match /users/{uid} {
-      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin() || isReceptionist());
-      allow create: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
-      // El plan solo lo activa el webhook de Stripe (Admin SDK). El propietario no puede escribirlo (T-06, auditoría C-3).
+      // F2-18: recepción ya no lee `users` directo; usa /api/recepcion/members (datos mínimos).
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      // F1-06: el perfil lo crea el servidor (/api/users/register) con el plan vacío;
+      // el cliente no puede crear su documento (cerraba B2: autoasignarse un plan).
+      allow create: if isAdmin();
       allow update: if isAdmin() || (isSignedIn() && request.auth.uid == uid
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan']));
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(editableProfileKeys())
+        && sensitiveWriteAllowed(uid)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['photoURL'])
+            || safeImageUrl(request.resource.data.photoURL)));
       allow delete: if isAdmin();
+    }
+
+    // F1-09: nombre y foto públicos de cada socio (el foro resuelve el avatar por autor).
+    // Solo los escribe el servidor (/api/me/profile, registro y migración 004).
+    match /public_profiles/{uid} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Identidad del autor en el foro: el nombre debe ser el de su perfil y solo puede
+    // marcarse "premium" si su plan está vigente (antes se podía publicar con otro
+    // nombre o con la insignia premium sin serlo).
+    function authorProfileMatches() {
+      let u = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return request.resource.data.autor_username == u.get('username', '')
+        && (request.resource.data.get('autor_is_premium', false) == false
+            || (u.get('plan', null) != null && u.plan.expira > request.time));
+    }
+
+    // Marco de color del autor (lib/plan-theme.ts): 'estandar' siempre; 'parejas' o
+    // 'dosenuno' solo si el post es premium y el plan del autor es de ese tipo
+    // (por planId o, si no tiene, por el nombre, igual que planTier()).
+    function planTierMatches() {
+      let t = request.resource.data.get('autor_plan_tier', null);
+      let p = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('plan', null);
+      let nombre = p == null ? '' : p.get('nombre', '').lower();
+      return t == null || t == 'estandar'
+        || (request.resource.data.get('autor_is_premium', false) == true && p != null
+            && ((t == 'parejas' && (p.get('planId', '') == 'parejas' || nombre.matches('.*pareja.*')))
+                || (t == 'dosenuno' && (p.get('planId', '') == 'dosenuno' || nombre.matches('.*(dos en uno|2 en 1).*')))));
+    }
+
+    // Un like válido cambia la lista SOLO en el uid de quien lo hace (agrega o quita).
+    function isOwnLikeToggle() {
+      let before = resource.data.get('likes', []).toSet();
+      let after = request.resource.data.get('likes', []).toSet();
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+        && after.difference(before).union(before.difference(after)) == [request.auth.uid].toSet();
     }
 
     match /posts/{postId} {
       allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.autor_id == request.auth.uid;
-      allow update: if isSignedIn() && (resource.data.autor_id == request.auth.uid || isAdmin());
+      allow create: if isVerified()
+        && request.resource.data.autor_id == request.auth.uid
+        && authorProfileMatches()
+        && planTierMatches()
+        && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium', 'autor_plan_tier',
+             'contenido', 'imagen_url', 'imagen_public_id', 'tipo_recurso', 'likes', 'comentarios', 'created_at'])
+        && request.resource.data.contenido is string
+        && request.resource.data.contenido.size() <= 2000
+        && safeImageUrl(request.resource.data.get('imagen_url', null))
+        && safeImageUrl(request.resource.data.get('autor_avatar', null))
+        && request.resource.data.get('tipo_recurso', 'image') in ['image', 'video']
+        && request.resource.data.get('likes', []).size() == 0
+        && request.resource.data.get('comentarios', []).size() == 0
+        // Antispam: el mismo lote debe registrar la publicación en forum_rate (máx. 3 y pausa de 5 min).
+        && getAfter(/databases/$(database)/documents/forum_rate/$(request.auth.uid)).data.last == request.time;
+      // Autor: edita su contenido y modera su post. Terceros: solo su like (los comentarios van en la subcolección).
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.autor_id == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contenido', 'likes', 'comentarios', 'autor_avatar'])
+            && safeImageUrl(request.resource.data.get('autor_avatar', null))
+            && request.resource.data.contenido is string
+            && request.resource.data.contenido.size() <= 2000)
+        || (isSignedIn() && isOwnLikeToggle());
       allow delete: if isAdmin() || (isSignedIn() && resource.data.autor_id == request.auth.uid);
     }
 
+    // F1-07: comentarios como documentos propios. El autor edita/borra el suyo; el
+    // autor del post y el admin pueden moderar (borrar) cualquiera del post.
+    match /posts/{postId}/comments/{commentId} {
+      allow read: if true;
+      allow create: if isVerified()
+        && exists(/databases/$(database)/documents/posts/$(postId))
+        && request.resource.data.autor_id == request.auth.uid
+        && authorProfileMatches()
+        && planTierMatches()
+        && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium', 'autor_plan_tier',
+             'contenido', 'created_at'])
+        && safeImageUrl(request.resource.data.get('autor_avatar', null))
+        && request.resource.data.contenido is string
+        && request.resource.data.contenido.size() > 0
+        && request.resource.data.contenido.size() <= 1000;
+      allow update: if isSignedIn()
+        && resource.data.autor_id == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contenido', 'edited_at'])
+        && request.resource.data.contenido is string
+        && request.resource.data.contenido.size() > 0
+        && request.resource.data.contenido.size() <= 1000;
+      allow delete: if isAdmin()
+        || (isSignedIn() && (resource.data.autor_id == request.auth.uid
+            || get(/databases/$(database)/documents/posts/$(postId)).data.autor_id == request.auth.uid));
+    }
+
+    // Límite de publicaciones del foro: hasta 3 seguidas; la cuarta espera 5 minutos
+    // desde la última. Se escribe en el mismo lote que el post (ver lib/forum-rate.ts).
+    // No se puede borrar ni reiniciar antes de tiempo.
+    match /forum_rate/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create: if isVerified() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['count', 'last'])
+        && request.resource.data.last == request.time
+        && request.resource.data.count == 1;
+      allow update: if isVerified() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['count', 'last'])
+        && request.resource.data.last == request.time
+        && ((request.time > resource.data.last + duration.value(5, 'm') && request.resource.data.count == 1)
+            || (resource.data.count < 3 && request.resource.data.count == resource.data.count + 1));
+      allow delete: if false;
+    }
+
+    // Buzón simulado del sandbox (lib/sandbox.ts): los correos no salen y cada visitante
+    // lee solo los suyos. En el proyecto real esta colección no existe.
+    match /sandbox_mail/{mailId} {
+      allow read: if isSignedIn() && request.auth.token.sandbox == true
+        && resource.data.to == request.auth.token.email;
+      allow write: if false;
+    }
+
     match /pqrs/{pqrsId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin() || isReceptionist());
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
+      // Se radican vía /api/pqrs (servidor: datos del token y límite anti-spam).
+      allow create: if false;
       allow update, delete: if isAdmin();
     }
 
@@ -55,9 +209,28 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.uid || isAdmin() || isReceptionist());
-      allow create: if false; // Solo el webhook de Stripe (Admin SDK) crea órdenes (T-08, auditoría M-3)
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.uid || isAdmin());
+      allow create: if false; // Solo el servidor (webhook de Mercado Pago, Admin SDK) crea órdenes (T-08, auditoría M-3)
       allow update: if isAdmin();
+    }
+
+    // Pagos de Mercado Pago (F1-18/F1-19): los crea /api/payments/checkout y los
+    // actualiza el webhook. El cliente consulta su estado vía /api/payments/status.
+    match /payments/{ref} {
+      allow read, write: if false;
+    }
+    // Verificación en dos pasos: estado, códigos de recuperación (hash) y código pendiente.
+    // Solo el servidor (/api/auth/mfa); el cliente consulta su estado por la API.
+    match /mfa_state/{uid} {
+      allow read, write: if false;
+    }
+    match /mfa_challenges/{uid} {
+      allow read, write: if false;
+    }
+
+    match /payment_events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     match /notifications/{notifId} {
@@ -66,14 +239,14 @@ service cloud.firestore {
 
     // Registro de Entradas (Historial empresarial de ingresos)
     match /entry_logs/{logId} {
-      allow read: if isAdmin() || isReceptionist();
+      allow read: if isAdmin(); // Recepción consulta vía /api/recepcion/entry-log
       allow write: if false; // Solo el Admin SDK desde el servidor puede escribir aquí.
     }
 
     // Registro de Check-ins (Historial individual para el dashboard de recepción)
     match /checkIns/{checkInId} {
-      allow read: if isAdmin() || isReceptionist();
-      allow write: if isAdmin() || isReceptionist();
+      allow read: if isAdmin(); // Recepción consulta vía /api/recepcion/members/:uid
+      allow write: if false; // F2-03: lo escribe el servidor junto con entry_logs (transacción).
     }
 
     // Auditoría de Seguridad e Inmutable
@@ -82,10 +255,17 @@ service cloud.firestore {
       allow write: if false; // Solo el Admin SDK desde el servidor puede escribir aquí.
     }
 
+    // Noticias del foro (F3-16): las administra el panel vía API; el público lee las publicadas.
+    match /news/{newsId} {
+      allow read: if resource.data.published == true;
+      allow write: if isAdmin();
+    }
+
     // Reportes de usuarios
     match /reportes/{reporteId} {
       allow read: if isAdmin();
-      allow create: if isSignedIn();
+      // Se crean vía /api/forum/reports (servidor: sin duplicados y con límite).
+      allow create: if false;
       allow update, delete: if isAdmin();
     }
   }

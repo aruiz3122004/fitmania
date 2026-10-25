@@ -2,7 +2,7 @@
 
 > **Tu Pasión. Tu Fuerza.** Plataforma web completa para el gimnasio FITMANIA: venta de planes de membresía, tienda de suplementos/snacks/ropa, foro comunitario, sistema PQRS, panel de administración y estación de recepción con control de acceso por código QR.
 
-Aplicación construida con **Next.js (App Router)** + **Firebase** + **Stripe**, desplegada en **Vercel**.
+Aplicación construida con **Next.js (App Router)** + **Firebase** + **Mercado Pago** (única pasarela), desplegada en **Vercel**.
 
 ---
 
@@ -35,7 +35,7 @@ Aplicación construida con **Next.js (App Router)** + **Firebase** + **Stripe**,
 FITMANIA es un **monolito Next.js** que combina:
 
 - **Sitio público**: home con hero, planes, productos y entrenadores; página de tienda, planes, foro, PQRS y entrenadores.
-- **Flujo comercial**: carrito de compras (zustand con persistencia en `localStorage`), checkout con **Stripe PaymentIntents** (tarjeta, moneda COP).
+- **Flujo comercial**: carrito de compras (zustand con persistencia en `localStorage`), checkout con **Mercado Pago Checkout Pro** (tarjeta, PSE, Efecty; moneda COP).
 - **Backend**: API Routes de Next.js que usan el **Firebase Admin SDK** para operaciones privilegiadas (asignar admin, estadísticas, CRUD de productos, responder PQRS, notificaciones, archivar ventas).
 - **Panel Admin**: dashboard con pestañas de resumen, usuarios, inventario, PQRS y compras, más exportación de datos y campana de notificaciones.
 - **Panel Recepción**: control de ingresos físicos escaneando el código QR del miembro (búsqueda por UID) o simulando el escaneo, con registro de *check-ins*, historial de compras y directorio de miembros activos.
@@ -50,13 +50,14 @@ La UI usa un **estilo cómic/superhéroe** (colores rojo/azul/amarillo, bordes g
 
 | Capa | Tecnología |
 |---|---|
-| Framework | Next.js **16.4.0** (App Router, React 19) |
+| Framework | Next.js **16.4.3** (App Router, React 19) |
 | Lenguaje | TypeScript 5.7 |
 | Estilos | Tailwind CSS v4 + shadcn/ui (Radix UI) + `tw-animate-css` |
 | Estado global | zustand 5 (carrito, sesión, UI) |
 | Backend/Firebase | Firebase 12 (Auth, Firestore) |
 | Admin SDK | firebase-admin 13 (autoridad para webhooks y rutas API) |
-| Pagos | Stripe 21 (`PaymentIntent`, currency `cop`) |
+| Pagos | **Mercado Pago Checkout Pro** (tarjeta, PSE, Efecty; API HTTP sin SDK) |
+| Errores | Sentry por su API HTTP (sin SDK), activo con `SENTRY_DSN` |
 | Correos | Resend (API HTTP, hasta 3 reintentos, envío en segundo plano) |
 | Imágenes | Cloudinary (subida de avatares/perfil) |
 | QR | `@yudiel/react-qr-scanner` + `react-qr-code` |
@@ -79,7 +80,6 @@ fitmania/
 │   │   ├── admin/
 │   │   │   ├── login/route.ts         # POST: crea session cookie (ID token + claim admin)
 │   │   │   ├── logout/route.ts        # POST: borra la cookie de sesión
-│   │   │   ├── stats/route.ts         # GET: total usuarios/admins/PQRS
 │   │   │   ├── users/route.ts         # GET/PATCH/DELETE: CRUD usuarios + claims (admin/receptionist)
 │   │   │   ├── products/route.ts      # GET/POST/PATCH/DELETE: CRUD productos
 │   │   │   ├── orders/route.ts        # GET: órdenes no archivadas
@@ -89,8 +89,8 @@ fitmania/
 │   │   │   ├── notifications/route.ts # GET/PATCH/DELETE: notificaciones (auto-gen planes a vencer)
 │   │   │   └── archive-sales/route.ts # POST: archivar ventas (batch update)
 │   │   ├── auth/verify/route.ts       # GET: valida session cookie (admin/recepción)
+│   │   ├── auth/mfa/route.ts          # GET/POST: verificación en dos pasos por correo (estado, enviar, verificar, recuperar)
 │   │   ├── cron/notifications/route.ts# GET: job de Vercel Cron (genera avisos de vencimiento)
-│   │   ├── diag/route.ts              # GET: diagnóstico Admin SDK (404 en producción)
 │   │   ├── recepcion/
 │   │   │   ├── login/route.ts         # POST: session cookie recepción (email + claim receptionist)
 │   │   │   ├── logout/route.ts        # POST: borra la cookie de recepción
@@ -98,9 +98,14 @@ fitmania/
 │   │   ├── security/
 │   │   │   ├── check/route.ts         # GET: estado de rate limit
 │   │   │   └── log-block/route.ts     # POST: registra bloqueos (secreto interno)
-│   │   └── stripe/
-│   │       ├── create-payment/route.ts# POST: crea PaymentIntent en COP
-│   │       └── webhook/route.ts       # POST: evento Stripe → stock, órdenes, planes, emails en 2.º plano
+│   │   ├── payments/
+│   │   │   ├── checkout/route.ts      # POST: crea payments/{ref} y la preferencia de Checkout Pro
+│   │   │   ├── status/route.ts        # GET: estado de un pago propio (concilia si sigue pendiente)
+│   │   │   └── mercadopago/webhook/route.ts # POST: aviso de Mercado Pago (firma x-signature)
+│   │   ├── me/route.ts                # GET: descarga de datos del titular (perfil, compras, intentosDePago, ingresos…); DELETE: supresión de la cuenta
+│   │   ├── me/profile/route.ts        # PATCH: nombre/avatar/foto + perfil público del foro
+│   │   ├── me/purchases/route.ts      # GET: historial de compras del usuario (pagos MP + órdenes)
+│   │   └── client-error/route.ts      # POST: errores de la UI → Sentry
 │   ├── carrito/page.tsx           # Carrito de compras
 │   ├── entrenadores/page.tsx      # Entrenadores
 │   ├── fitception/page.tsx        # Panel de recepción — oculto (QR check-in)
@@ -108,9 +113,10 @@ fitmania/
 │   ├── foro/page.tsx              # Foro con noticias + posts
 │   ├── login/page.tsx             # Inicio de sesión
 │   ├── pago/
-│   │   ├── page.tsx               # Checkout Stripe (CardElement) — /pago?concepto&monto
+│   │   ├── page.tsx               # Checkout: /pago?planId=… o el carrito → Mercado Pago
 │   │   └── resultado/page.tsx     # Resultado del pago (redirect_status)
 │   ├── perfil/page.tsx            # Perfil: avatar, datos, acompañante + botón de acceso al panel (roles)
+│   ├── compras/page.tsx           # Historial de compras: resumen, filtros y detalle de cada pago
 │   ├── planes/page.tsx            # Página de planes
 │   ├── pqrs/page.tsx              # Formulario PQRS
 │   ├── registro/page.tsx          # Registro de usuarios
@@ -145,10 +151,9 @@ fitmania/
 │   └── mail.ts                    # Plantillas + envío por Resend (API HTTP, reintentos, logs [mail])
 ├── firestore.rules                # Reglas de seguridad Firestore
 ├── firebase.json / .firebaserc    # Config Firebase (proyecto fitmania-e1748)
-├── init_products.js               # Seed de productos (raíz)
-├── verify_flow.js                 # Test de stock/orden (raíz)
 ├── vercel.json                    # Config de Vercel (cron de /api/cron/notifications)
-└── next.config.mjs                # ignoreBuildErrors, images.unoptimized
+├── proxy.ts                      # Proxy de Next 16 (antes middleware.ts): CSP con nonce, puertas, CSRF, rate limit
+└── next.config.mjs                # images.unoptimized, allowedDevOrigins (túnel de pruebas)
 ```
 
 > **Nota:** el proyecto real vive en la carpeta anidada `fitmania/fitmania/`. Este `readme.md` se encuentra en la raíz de esa carpeta (junto a `package.json`).
@@ -165,12 +170,13 @@ fitmania/
 | `/planes` | `app/planes/page.tsx` | Página de planes de membresía |
 | `/tienda` | `app/tienda/page.tsx` | Catálogo de productos (suplementos, snacks, ropa) |
 | `/carrito` | `app/carrito/page.tsx` | Carrito de compras → redirige a `/pago` |
-| `/pago` | `app/pago/page.tsx` | Checkout con tarjeta Stripe (`/pago?concepto=&monto=`) |
+| `/pago` | `app/pago/page.tsx` | Checkout con Mercado Pago (`/pago?planId=…` o el carrito) |
 | `/pago/resultado` | `app/pago/resultado/page.tsx` | Pantalla de resultado según `redirect_status` |
 | `/foro` | `app/foro/page.tsx` | Foro: noticias + posts con likes/comentarios |
 | `/pqrs` | `app/pqrs/page.tsx` | Formulario de Peticiones/Quejas/Reclamos/Sugerencias |
 | `/entrenadores` | `app/entrenadores/page.tsx` | Equipo de entrenadores |
 | `/perfil` | `app/perfil/page.tsx` | Datos del usuario, avatar, acompañante del plan + botón de acceso al panel (solo roles) |
+| `/compras` | `app/compras/page.tsx` | Historial de compras: planes y tienda (Mercado Pago y órdenes históricas), estado, reembolsos y recibo de cada pago. Lo arma `GET /api/me/purchases` con `lib/purchase-history.ts`; oculta los checkouts abandonados |
 | `/fitministration` | `app/fitministration/page.tsx` | Panel admin — **oculto** (llave `?key=` o botón por rol + login con claim `admin`) |
 | `/fitception` | `app/fitception/page.tsx` | Estación de recepción — **oculta** (llave `?key=` o botón por rol + login con email autorizado y claim) |
 
@@ -193,6 +199,16 @@ La navegación pública se define en `components/layout/topbar.tsx` (`navLinks`:
 - `signInWithEmailAndPassword` → redirige a `/`.
 - Incluye opción de recuperar contraseña (`sendPasswordResetEmail`).
 
+### Verificación en dos pasos por correo (opcional, todas las cuentas)
+Cualquier cuenta (socio, recepción o admin) puede activarla en **`/perfil` → Verificación en dos pasos**. Firebase Auth solo ofrece SMS y TOTP como segundo factor, así que el código por correo es propio (`lib/mfa.ts`, `lib/mfa-server.ts`, `/api/auth/mfa`):
+1. **Activar:** el correo debe estar verificado. Se envía un código de 6 dígitos (vence en 10 min, 5 intentos, reenvío cada 60 s) y al confirmarlo se muestran **8 códigos de recuperación** de un solo uso, por si se pierde el acceso al correo.
+2. **Iniciar sesión:** tras la contraseña se abre la ventana de verificación (`components/auth/mfa-gate.tsx`, global en el layout). El servidor marca como verificada **esa sesión** (el `auth_time` del token). Hasta 10 sesiones verificadas, para varios dispositivos.
+3. **Dónde se exige:** en las APIs del usuario (`verifyUserRequest` y las rutas de pago, foto y foro), en los logins de los paneles y en las **reglas de Firestore** (`mfaOk()`). Cerrar la ventana no la salta: sin verificar, el servidor y la base de datos niegan el acceso.
+4. **Desactivar:** desde `/perfil`, con un código enviado al correo.
+- El código **no** va en copia al admin ni en el asunto (el asunto queda en `email_events`).
+- El TOTP de Firebase que ya existía para el admin sigue funcionando: una sesión iniciada con TOTP cuenta como verificada. Con `ADMIN_REQUIRE_MFA=true` el admin necesita uno de los dos.
+- **Requisito:** dominio verificado en Resend. En modo de pruebas el código solo llega al correo dueño de la cuenta de Resend.
+
 ### Sesión y estado
 - El estado de sesión se mantiene en **dos lugares**:
   - `AuthContext` (React context) con el usuario de Firebase.
@@ -210,77 +226,34 @@ La navegación pública se define en `components/layout/topbar.tsx` (`navLinks`:
 
 ## 6. Flujo de pago (planes y tienda)
 
-FITMANIA procesa pagos con **Stripe PaymentIntents** en **COP (pesos colombianos)**, usando el `CardElement` de Stripe. Hay un único endpoint que crea el cobro y un **webhook** que ejecuta toda la lógica de negocio del lado del servidor (fuente de verdad).
+### 6.0 Mercado Pago (única pasarela, F1-18 a F1-22)
+1. `/pago?planId=…` o `/pago` con el carrito → **`POST /api/payments/checkout`** con el ID token. El servidor calcula el monto (`lib/payments/pricing.ts`), guarda `payments/{fm_uuid}` en `pending` con la foto del checkout (ítems, precios, días) y devuelve la URL de Checkout Pro.
+2. Mercado Pago avisa a **`POST /api/payments/mercadopago/webhook`**. Con `MERCADOPAGO_WEBHOOK_SECRET` se exige la firma `x-signature` (el proxy conserva el `x-request-id` original en `x-upstream-request-id`). El estado se lee siempre de la API con el access token.
+   - Solo se procesan los avisos `?type=payment`. Los `merchant_order` y los del formato antiguo IPN (`?topic=`, cuya firma no se puede verificar) reciben 200 sin procesarse; el mismo pago llega firmado como `type=payment`.
+   - La clave del webhook debe ser de **la misma aplicación del access token**. Con la de otra aplicación, la simulación del panel valida pero todos los pagos reales dan 401 "Firma inválida" (comprobado el 24-10 con Checkout Pro real).
+3. `lib/payments/fulfillment.ts` aplica el resultado en **una transacción** (decisiones en `lib/payments/transitions.ts`, con pruebas):
+   - aprobado → activa el plan (`days` del plan) o descuenta el stock, crea `orders/{ref}`, `inventory_movements` y la notificación; guarda `stockApplied`;
+   - rechazado → `rejected` y correo; un reintento dentro del mismo checkout puede aprobarse después;
+   - reembolso / contracargo → descuenta los días o repone **solo** las unidades que salieron;
+   - monto o moneda distintos → `amount_mismatch` y alerta al admin, sin efecto;
+   - sobreventa → reembolso parcial automático (F1-20).
+4. **Conciliación** (`lib/payments/reconcile.ts`): al volver a `/pago/resultado` y en el cron diario (pendientes con más de 1 h, hasta 200 por ejecución con un presupuesto de 25 s; un checkout sin pagos en Mercado Pago vence a las 24 h, y si se paga después igual se aprueba).
+   - Al volver, `/pago/resultado` consulta `GET /api/payments/status` durante unos 15 s (reintenta cada 3 s mientras siga pendiente) y muestra **pago exitoso**, **rechazado** (con "Intentar nuevamente"), **en proceso** (PSE o Efecty) o **pago no completado** si el cliente salió de Mercado Pago sin pagar (vuelve con `payment_id=null`; `lib/payments/return-state.ts`).
+   - Si Mercado Pago no responde, se informa el estado guardado y el webhook o el cron lo completan.
+   - Un checkout abandonado no cobra nada, no envía correos y no aparece en `/compras`.
+5. El admin ve los pagos pendientes, rechazados, con monto alterado, vencidos y reembolsos en la pestaña **Pagos**, y puede conciliar uno a mano.
+6. El socio ve su historial en **`/compras`** (`GET /api/me/purchases`): pagos de Mercado Pago y órdenes históricas, con estado, reembolsos, medio de pago y número de transacción.
+7. Sin `MERCADOPAGO_ACCESS_TOKEN`, el checkout responde "no disponible" (503) y `/api/health` marca `payments: false` (crítico).
 
-### 6.1 Planes (membresías)
-Definidos en `components/home/planes.tsx`:
+**Pruebas locales:** `MERCADOPAGO_PUBLIC_URL` = URL https de un túnel (`cloudflared tunnel --url http://localhost:3000`) para el retorno automático y el webhook. `MERCADOPAGO_API_URL` (solo desarrollo) apunta a un simulador de la API para probar escenarios sin navegador. Ninguna de las dos se define en Vercel.
 
-| Plan | Precio | Duración | Bono |
-|---|---|---|---|
-| Plan Estándar | $80.000 | 30 días | Básico |
-| Plan Parejas | $95.000 | 40 días | Invitado 3 veces/semana (acompañante) |
-| Plan Dos en Uno | $140.000 | 60 días | 25% OFF, seguimiento semanal |
+### 6.1 Correos del pago
+El correo de confirmación del plan o el recibo de la tienda lo envía el servidor al aprobarse el pago (nunca el cliente), **en segundo plano** con `after()` (`maxDuration = 30` en el webhook). `services/mail.ts` llama a la **API HTTP de Resend** con timeout de 15 s y **hasta 3 reintentos** con backoff (solo en `429`/`5xx`/error de red), con logs `[mail]`. Cada correo lleva una **copia oculta (BCC)** al admin, salvo los códigos de verificación en dos pasos.
 
-Al hacer clic en un plan:
-```js
-router.push(`/pago?concepto=${encodeURIComponent(plan.name)}&monto=${plan.price}`)
-```
+### 6.2 Pruebas de pago
+Con las credenciales de prueba de Mercado Pago y un **comprador de prueba** (Tus integraciones → Cuentas de prueba). El comprador no debe tener abierta la sesión del vendedor: Checkout Pro desactiva el botón de pagar sin mostrar error.
 
-### 6.2 Tienda (carrito)
-- El usuario agrega productos al carrito (zustand, clave `fitmania-cart`).
-- En `/carrito` se calcula el total y se redirige:
-  ```js
-  router.push(`/pago?concepto=Compra+Fitmania&monto=${total}`)
-  ```
-- El checkout envía `items` (id, cantidad) en el cuerpo para que Stripe los lleve como metadata.
-
-### 6.3 Creación del cobro — `POST /api/stripe/create-payment`
-```js
-const paymentIntent = await stripe.paymentIntents.create({
-  amount: Math.round(amount * 100),   // centavos
-  currency: 'cop',
-  payment_method_types: ['card'],
-  description: concept,
-  receipt_email: customerEmail,
-  metadata: { customerName, customerEmail, concept, uid, items: "id:qty,id:qty" }
-})
-```
-- Con `items` se guarda un resumen `id:cantidad,id:cantidad` (máx 500 caracteres) en metadata.
-- Devuelve `{ clientSecret }`.
-
-### 6.4 Checkout en el cliente — `app/pago/page.tsx`
-1. Carga `stripePromise = loadStripe(NEXT_PUBLIC_STRIPE_PUBLIC_KEY)`.
-2. `CheckoutForm` recibe `concepto` y `monto` desde `useSearchParams`, y el carrito desde el store.
-3. Llama a `create-payment` y con el `clientSecret` ejecuta `stripe.confirmCardPayment` con el `CardElement`.
-4. **Si triunfa** (`paymentIntent.status === 'succeeded'`):
-   - Limpia el carrito.
-   - Muestra pantalla de éxito.
-   - ⚠️ **No escribe el plan en Firestore**: la activación/renovación la hace **solo el webhook** (T-06). Antes el cliente actualizaba `users/{uid}.plan` directamente y el endpoint `/api/send-email` enviaba el correo (ambos eliminados).
-5. El correo de confirmación/recibo lo envía el **webhook** (firmado por Stripe), no el cliente: los envíos corren **en segundo plano** con `after()` (`maxDuration = 30` en la ruta) para responder rápido a Stripe, y `services/mail.ts` hace un `POST` a la **API HTTP de Resend** con timeout de 15 s (`AbortController`) + **hasta 3 reintentos** con backoff (solo en `429`/`5xx`/error de red) y logs `[mail]`. Cada correo lleva una **copia oculta (BCC)** al admin.
-
-### 6.5 Webhook de Stripe — `POST /api/stripe/webhook`
-Es el **procesador autoritativo** de pagos. Verifica la firma con `stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET)`.
-
-**Evento `payment_intent.succeeded`:**
-- **Si hay `meta.items`** (compra de tienda):
-  1. Lee cada producto de Firestore (`products/{id}`) para obtener nombre/precio.
-  2. En una **transacción**: descuenta stock (`Math.max(0, stock - cantidad)`) y, si baja de 5 unidades, crea una notificación `low_stock`. ⚠️ Firestore exige **todas las lecturas antes de todas las escrituras**, así que la transacción primero lee **todos** los productos y luego escribe (no intercalar `get`/`update` dentro del mismo `for`).
-  3. Crea la **orden** en `orders/{paymentIntent.id}` con `{ uid, customerName, customerEmail, items, total, banco, fecha, status: 'paid' }`.
-  4. Crea una notificación `purchase` para el admin.
-  5. Envía el **recibo detallado** (`sendOrderReceiptEmail`) con la lista de items.
-- **Si hay `meta.uid` y el concepto incluye "plan"/"mensualidad"**: activa el plan en `users/{uid}` (40/60/30 días según el nombre) y envía `sendPaymentSuccessEmail` con el extracto (banco, fecha, ID de transacción, total).
-- El nombre del banco se resuelve desde `BANCOS_PSE` (Bancolombia, Davivienda, Nequi, etc.), o "Tarjeta/Otro".
-
-**Evento `payment_intent.payment_failed`:** envía `sendPaymentFailedEmail` al cliente.
-
-### 6.6 Resultado del pago — `/pago/resultado`
-Página (legacy/3DS) que lee `redirect_status` y `payment_intent`:
-- `succeeded` → pantalla verde de éxito con ID de transacción.
-- `failed` → pantalla roja con enlace a `/pqrs` y botón "Intentar nuevamente".
-- `pending` → amarilla "Pago en proceso".
-
-### 6.7 Tarjeta de prueba
-Stripe en modo test: **4242 4242 4242 4242**, cualquier fecha futura y CVC cualquiera. (Comentario en código como guía de uso con Daviplata/tarjeta virtual.)
+> **Stripe se retiró (F1-23).** Stripe no ofrece cuentas a comercios de Colombia. Las órdenes antiguas de Stripe que existan en `orders` se siguen mostrando en `/compras` y en el panel.
 
 ---
 
@@ -289,7 +262,7 @@ Stripe en modo test: **4242 4242 4242 4242**, cualquier fecha futura y CVC cualq
 ### Acceso (`/fitministration`)
 El panel vive en una URL **oculta** y protegida en dos capas (`components/admin/admin-login-form.tsx`):
 
-1. **Puerta de llave**: al visitar `/fitministration` el middleware exige `?key=<ADMIN_GATE_KEY>` (o una cookie `fitmania_admin_gate` válida por 1 hora, o una sesión admin ya iniciada). Sin esto responde **404**. El formulario limpia la llave de la barra de direcciones tras entrar.
+1. **Puerta de llave**: al visitar `/fitministration` el proxy (`proxy.ts`) exige `?key=<ADMIN_GATE_KEY>` (o una cookie `fitmania_admin_gate` válida por 1 hora, o una sesión admin ya iniciada). Sin esto responde **404**. El formulario limpia la llave de la barra de direcciones tras entrar.
 2. **Login real**: `signInWithEmailAndPassword` de Firebase, y luego `POST /api/admin/login` re-verifica en el servidor que el usuario tenga el **custom claim `admin: true`** y, si está definida, que el correo coincida con `ADMIN_AUTHORIZED_EMAIL`.
 
 Si pasa ambas capas, el servidor crea una **cookie `HttpOnly`** (`fitmania_session`, 1 h) que las rutas `/api/admin/*` re-validan con `verifyAdminRequest`.
@@ -314,7 +287,7 @@ Pestañas:
 - Además lee notificaciones existentes (`low_stock`, `purchase`) y las **marca como leídas** (`PATCH`) o **limpia las leídas** (`DELETE`).
 - Al hacer clic lleva a la pestaña correspondiente (inventario/compras/PQRS).
 
-Todas las rutas admin re-validan la sesión con `verifyAdminRequest` (cookie `HttpOnly` + claim `admin`), salvo `/api/admin/planes`, que depende solo del middleware (⚠ ver `auditoría.md`, hallazgo C-4).
+Todas las rutas admin re-validan la sesión con `verifyAdminRequest` (cookie `HttpOnly` + claim `admin`). Cada acción queda en `audit_logs` con el actor (`actorUid`) y los cambios antes → después (F1-26).
 
 ---
 
@@ -323,7 +296,7 @@ Todas las rutas admin re-validan la sesión con `verifyAdminRequest` (cookie `Ht
 Estación de control de ingresos del gimnasio en `/fitception` (URL también **oculta**).
 
 ### Acceso (doble capa) — `reception-login-form.tsx`
-1. **Puerta de llave**: al visitar `/fitception` el middleware exige `?key=<RECEPTION_GATE_KEY>` (o cookie `fitmania_reception_gate` válida por 1 hora, o una sesión de recepción ya iniciada). Sin esto responde **404**.
+1. **Puerta de llave**: al visitar `/fitception` el proxy (`proxy.ts`) exige `?key=<RECEPTION_GATE_KEY>` (o cookie `fitmania_reception_gate` válida por 1 hora, o una sesión de recepción ya iniciada). Sin esto responde **404**.
 2. **Login real**: `signInWithEmailAndPassword` de Firebase, y luego `POST /api/recepcion/login` exige que el correo coincida exactamente con **`RECEPTION_AUTHORIZED_EMAIL`** (si la variable no está definida, el servidor responde 500) **y** que la cuenta tenga el claim `receptionist: true` (T-16: ya no se auto-otorga; se gestiona con `manage-claims.js` o el panel admin).
 3. **Acceso directo (1 clic)**: las cuentas con rol ven un botón en el **menú de su cuenta** y en **`/perfil`** (`lib/panel-access.ts`, `enterPanel`). Reutiliza la sesión de Firebase ya activa enviando el ID token fresco a `POST /api/recepcion/login`, que crea la cookie y redirige al panel (sin llave ni contraseña).
 
@@ -391,7 +364,10 @@ Proyecto Firebase: **`fitmania-e1748`** (`.firebaserc`).
 |---|---|---|---|
 | `users` | `{uid}` (UID de Auth) | `username`, `email`, `gender`, `avatar`, `photoURL`, `peso`, `altura`, `plan` (`{nombre, precio, dias_total, inicio, expira, acompanante?}`) | Usuario (create/update de sí mismo), Admin, Webhook |
 | `products` | `{id}` (slug: `creatina`, `proteina`, …) | `nombre`, `precio`, `categoria`, `imagen_url`, `descripcion`, `stock`, `colores`, `tallas`, `badge`, `created_at` | Solo Admin (webhook descuenta stock) |
-| `orders` | `{paymentIntent.id}` | `uid`, `customerName`, `customerEmail`, `items[]` (`{id, nombre, precio, cantidad}`), `total`, `banco`, `fecha`, `status`, `archived?` | Solo webhook/Admin SDK |
+| `orders` | `{ref}` de Mercado Pago (`fm_…`), `{paymentIntent.id}` de Stripe o automático (mostrador) | `uid`, `customerName`, `customerEmail`, `type`, `concepto`, `items[]` (`{id, nombre, precio, cantidad}`), `total`, `banco` (medio de pago, sin datos de tarjeta), `gateway`, `paymentId`, `fecha`, `status`, `refund?`, `amountRefunded?`, `archived?` | Solo webhook/Admin SDK |
+| `payments` | `{ref}` (`fm_uuid`) | `uid`, `customerName`, `customerEmail`, `type`, `planId`, `concept`, `amount`, `dias`, `items[]`, `status` (`pending`, `approved`, `rejected`, `expired`, `refunded`, `charged_back`, `amount_mismatch`), `mpPaymentId`, `method`, `stockApplied?`, `createdAt`, `approvedAt` | Solo servidor (reglas: sin lectura ni escritura desde el cliente) |
+| `payment_events` | `mp_{id}_{estado}` | bitácora de cada estado recibido de Mercado Pago | Solo servidor; lectura admin |
+| `public_profiles` | `{uid}` | `username`, `photoURL`, `avatar` (lo que se ve en el foro) | Solo servidor (`PATCH /api/me/profile`); lectura pública |
 | `posts` | `{auto}` | `autor_id`, `autor_username`, `autor_avatar`, `contenido`, `imagen_url`, `likes[]`, `comentarios[]`, `created_at` | Usuario autenticado |
 | `pqrs` | `{auto}` | `tipo`, `mensaje`, `userId`, `userName`, `userEmail`, `fecha`, `hora`, `createdAt`, `status`, `respuesta_admin?`, `fecha_respuesta?` | Usuario (create) / Admin (update) |
 | `notifications` | `{auto}` o `plan5_{uid}_{fecha}` | `tipo` (`low_stock`, `purchase`, `plan_expiry`), `mensaje`, `leido`, `fecha`, + ids (`id_producto`, `id_orden`, `uid`) | Admin SDK (webhook + auto-gen) |
@@ -424,7 +400,7 @@ Firebase Storage **no se usa** y su configuración fue eliminada (`storage.rules
 
 ## 14. Variables de entorno
 
-Archivo: **`.env.local`** en `fitmania/fitmania/` (¡nunca subir a Git!). Nombres usados por el código:
+Archivo: **`.env.local`** en `fitmania/fitmania/` (¡nunca subir a Git!). La plantilla comentada, con dónde se consigue cada valor, está en **`.env.example`**. Staging y respaldos: `docs/staging-y-respaldos.md`. Nombres usados por el código:
 
 ```env
 # Firebase (cliente - browser)
@@ -439,11 +415,6 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
 FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=            # con saltos de línea; el código limpia comillas y \n
-
-# Stripe
-NEXT_PUBLIC_STRIPE_PUBLIC_KEY=
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=           # secreto del endpoint del Dashboard de Stripe (NO el de la CLI `stripe listen`, que solo sirve en local)
 
 # Correos (Resend - https://resend.com/api-keys)
 RESEND_API_KEY=                  # obligatorio; sin él no se envía ningún correo
@@ -464,7 +435,7 @@ RECEPTION_AUTHORIZED_EMAIL=      # obligatorio para /fitception
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 
-# Secreto interno del middleware (protege /api/security/log-block; NO reusar el token de Upstash)
+# Secreto interno del proxy (protege /api/security/log-block; NO reusar el token de Upstash)
 INTERNAL_MIDDLEWARE_SECRET=
 
 # Secreto del cron de Vercel (protege /api/cron/notifications; Vercel lo envía como Bearer)
@@ -473,11 +444,20 @@ CRON_SECRET=
 # Cloudinary
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=
+
+# Mercado Pago (Tus integraciones → credenciales y Webhooks)
+MERCADOPAGO_ACCESS_TOKEN=        # CRÍTICA. De prueba o de producción (ambos empiezan por APP_USR-)
+MERCADOPAGO_WEBHOOK_SECRET=      # CRÍTICA. Clave del webhook (evento "Pagos") de la MISMA aplicación del access token; sin ella no se verifica la firma
+MERCADOPAGO_PUBLIC_URL=          # SOLO desarrollo: URL https del túnel. No definir en Vercel
+MERCADOPAGO_API_URL=             # SOLO desarrollo: simulador de la API. No definir en Vercel
+
+# Sentry (opcional; sin DSN no se envía nada)
+SENTRY_DSN=
 ```
 
 La PRIVATE_KEY suele traer `\n` literales: `lib/firebase-admin.ts` los convierte en saltos reales y quita comillas para evitar el error *"Invalid PEM formatted message"*.
 
-> **Variables obsoletas (eliminar):** `GMAIL_USER`, `GMAIL_APP_PASSWORD` (reemplazadas por Resend) y `STRIPE_WEBHOOK_SECRET_PRODUCTION` (el código solo lee `STRIPE_WEBHOOK_SECRET`). En Vercel deben replicarse **todas** las de este bloque (más `UPSTASH_*` si se usa el rate limiting). Tras editar variables en Vercel hay que **re-desplegar** (los cambios no aplican a deploys existentes).
+> **Variables obsoletas (eliminar):** `GMAIL_USER`, `GMAIL_APP_PASSWORD` (reemplazadas por Resend) y todas las de Stripe (`NEXT_PUBLIC_STRIPE_PUBLIC_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET_PRODUCTION`): la pasarela se retiró. En Vercel deben replicarse **todas** las de este bloque (más `UPSTASH_*` si se usa el rate limiting). Tras editar variables en Vercel hay que **re-desplegar** (los cambios no aplican a deploys existentes).
 
 ---
 
@@ -485,14 +465,14 @@ La PRIVATE_KEY suele traer `\n` literales: `lib/firebase-admin.ts` los convierte
 
 | Script | Qué hace |
 |---|---|
-| `init_products.js` (raíz) | Pobla la colección `products` con los 12 productos base (suplementos, snacks, ropa) leyendo credenciales de `.env.local`. |
+| `init_products.js` (raíz, solo local, no versionado) | Pobla la colección `products` con los 12 productos base (suplementos, snacks, ropa) leyendo credenciales de `.env.local`. |
 | `scripts/grant-admin.js` | **Bootstrap del panel admin**: asigna el custom claim `admin:true` a un email/UID (`node scripts/grant-admin.js <email>`). Se usa una sola vez para habilitar el primer login de `/fitministration`. Fusiona con los claims existentes. |
 | `scripts/manage-claims.js` | **Gestión de roles**: otorga/retira `admin` y `receptionist` (`node scripts/manage-claims.js <email\|uid> <admin\|receptionist> <on\|off>`). Al retirar un rol revoca los refresh tokens (invalida sesiones). Fusión de claims. |
-| `scripts/simulate_sale.js` | Simula una venta completa con el Admin SDK: usuario+producto, descuenta stock, crea orden y notificaciones y activa un plan. ⚠️ **Tiene ruta fija** al JSON de la cuenta de servicio (`C:\Users\...\fitmania-e1748-firebase-adminsdk-*.json`) — ajustarla o migrarla a `.env.local`. |
-| `verify_flow.js` (raíz) | Prueba el flujo de compra masiva + alerta de stock bajo (compra 14 unidades de `creatina`, genera orden y notificación `low_stock`). |
+| `scripts/simulate_sale.js` (solo local, no versionado) | Simula una venta completa con el Admin SDK: usuario+producto, descuenta stock, crea orden y notificaciones y activa un plan. ⚠️ **Tiene ruta fija** al JSON de la cuenta de servicio (`C:\Users\...\fitmania-e1748-firebase-adminsdk-*.json`) — ajustarla o migrarla a `.env.local`. |
 | `scripts/verify-mail.mjs` | Diagnóstico de Resend. Sin flags: valida `RESEND_API_KEY` y lista dominios (no envía). Con `--send [--to=<correo>]`: envía un correo de prueba. |
 | `scripts/check-product.mjs` | Lista productos con su `precio`/`stock` (diagnóstico de los campos `precio` vs `price`). |
 | `scripts/check-orders.mjs` | Lista las últimas órdenes y el stock actual (verificación post-compra). |
+| `scripts/clean-test-data.mjs` | Borra datos de prueba antes de la salida. Sin flags solo muestra qué borraría. `--scope=fake` (órdenes `sim_*`, `pi_mock_*`, `pi_lowstock_*`) o `--scope=prelaunch` (todo lo transaccional); borrar exige `--apply --project=<id de .env.local>`. |
 
 > ⚠️ **La carpeta `scripts/` está en `.gitignore`**, por lo que estos scripts **no se versionan** (son herramientas locales de bootstrap/diagnóstico). Si se necesita reproducir la app desde cero, hay que recrearlos.
 
@@ -527,12 +507,7 @@ Scripts de `package.json`:
 | Start (producción) | `npm run start` |
 | Lint | `npm run lint` |
 
-> **Webhook local (obligatorio para probar compras)**: Stripe **no puede** enviar webhooks a `localhost`, así que en desarrollo hay que reenviarlos con la **Stripe CLI** (no viene instalada; en Windows: `winget install --id Stripe.StripeCli -e`). Con la CLI ya no hace falta `stripe login`: basta exportar `STRIPE_API_KEY` con tu `sk_test_...`.
-> ```
-> stripe listen --print-secret  # opcional: imprime el whsec que debes poner en STRIPE_WEBHOOK_SECRET
-> stripe listen --events payment_intent.succeeded,payment_intent.payment_failed --forward-to localhost:3000/api/stripe/webhook
-> ```
-> Sin este túnel, el pago se completa en Stripe pero **no se crea la orden ni se envía el correo** (el webhook nunca llega). El secreto de la CLI (`whsec_...`) es **solo local**; en Vercel debe ir el del endpoint del Dashboard.
+> **Webhook local de Mercado Pago:** Mercado Pago no puede avisar a `localhost`. Sin túnel, el pago se confirma al volver a `/pago/resultado` (o en el cron). Para probar el webhook: `cloudflared tunnel --url http://localhost:3000` y poner esa URL https en `MERCADOPAGO_PUBLIC_URL` (solo `.env.local`).
 
 ---
 
@@ -540,34 +515,30 @@ Scripts de `package.json`:
 
 ### Configuración de Next.js (`next.config.mjs`)
 ```js
-{ typescript: { ignoreBuildErrors: true }, images: { unoptimized: true } }
+{ poweredByHeader: false, allowedDevOrigins: ['*.trycloudflare.com'], images: { unoptimized: true } }
 ```
-- Los errores de TS **no bloquean** el build.
+- Los errores de TS **sí bloquean** el build (`ignoreBuildErrors` ya no está).
 - Las imágenes se sirven sin optimización (necesario para las rutas locales de `public/Imagenes/...`).
 
-### Flujo doble de confirmación de pago
-El pago se confirma **dos veces**:
-1. Cliente: `confirmCardPayment` para dar respuesta inmediata en la UI (solo para conceptos de plan).
-2. Servidor: **webhook Stripe** (`payment_intent.succeeded`) como **única fuente de verdad** — descuenta stock, crea la orden y activa/renueva el plan de forma idempotente.
-
-> El cliente **ya no escribe** el campo `plan` en Firestore (T-06): solo el webhook (Admin SDK) lo hace.
+### Confirmación del pago
+La única fuente de verdad es el servidor: el webhook de Mercado Pago, el regreso a `/pago/resultado` y el cron consultan el pago a la API de Mercado Pago y lo aplican en una transacción idempotente (§6). El cliente **no escribe** el campo `plan` en Firestore (T-06).
 
 ### Seguridad del admin
-- Acceso en dos capas: **puerta de llave** (`?key=ADMIN_GATE_KEY` en el middleware) + **login Firebase** que exige el custom claim `admin:true` (y `ADMIN_AUTHORIZED_EMAIL` si está definida).
+- Acceso en dos capas: **puerta de llave** (`?key=ADMIN_GATE_KEY` en el proxy) + **login Firebase** que exige el custom claim `admin:true` (y `ADMIN_AUTHORIZED_EMAIL` si está definida).
 - El **botón de acceso directo** (`lib/panel-access.ts`, menú de cuenta + `/perfil`) no agrega confianza nueva: reutiliza el ID token de la sesión ya activa y el servidor **re-valida el claim** en `POST /api/admin/login` antes de crear la cookie.
 - El claim `admin:true` se asigna con `node scripts/grant-admin.js <email>` o `node scripts/manage-claims.js <email> admin on`.
-- La sesión usa **session cookies de Firebase** (`createSessionCookie` + `verifySessionCookie(..., checkRevoked)`) → revocables (T-15). La cookie es `HttpOnly` `fitmania_session` (1 h).
+- La sesión usa **session cookies de Firebase** (`createSessionCookie` + `verifySessionCookie(..., checkRevoked)`) → revocables (T-15). La cookie es `HttpOnly` `fitmania_session` (1 h). Las APIs del admin **solo** aceptan esa cookie (se quitó la vía `Authorization: Bearer`, que no revisaba revocación ni la verificación en dos pasos).
 - **Todas** las rutas `/api/admin/*` re-validan la sesión con `verifyAdminRequest` (incluida `/api/admin/planes`, T-05).
 - Las reglas de Firestore bloquean cualquier intento de escritura no admin en `products`, `orders` y `notifications`.
 
 ### Seguridad de recepción
-- Doble capa: **puerta de llave** (`?key=RECEPTION_GATE_KEY` en el middleware) + **login Firebase** que exige que el correo coincida con `RECEPTION_AUTHORIZED_EMAIL` **y** que la cuenta tenga el claim `receptionist:true`.
+- Doble capa: **puerta de llave** (`?key=RECEPTION_GATE_KEY` en el proxy) + **login Firebase** que exige que el correo coincida con `RECEPTION_AUTHORIZED_EMAIL` **y** que la cuenta tenga el claim `receptionist:true`.
 - El **botón de acceso directo** (`lib/panel-access.ts`, menú de cuenta + `/perfil`) no agrega confianza nueva: reutiliza el ID token de la sesión ya activa y el servidor **re-valida el claim y el correo** en `POST /api/recepcion/login` antes de crear la cookie.
 - El claim `receptionist` **ya no se auto-otorga** en el login (T-16): se gestiona centralmente (panel admin o `node scripts/manage-claims.js <email> receptionist on`). Al retirarlo se revocan las sesiones del usuario.
 - La sesión vive en la cookie `HttpOnly` `fitmania_reception_session` (session cookie de Firebase, 1 h, revocable).
 
 ### Cabeceras de seguridad y CSP (T-17)
-- `middleware.ts` aplica **CSP con nonce por request**, más `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` y HSTS (solo producción).
+- `proxy.ts` aplica **CSP con nonce por request**, más `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` y HSTS (solo producción).
 - En **producción** `script-src` usa `'self' 'nonce-…' 'strict-dynamic'` (sin `'unsafe-inline'`/`'unsafe-eval'`); en **desarrollo** se mantienen `'unsafe-eval'`/`'unsafe-inline'` para el HMR. `style-src` conserva `'unsafe-inline'` (la UI usa estilos inline).
 - El nonce exige **renderizado dinámico**: `app/layout.tsx` exporta `dynamic = 'force-dynamic'`, por lo que todas las rutas son `ƒ` (server-rendered on demand).
 
@@ -576,9 +547,12 @@ El pago se confirma **dos veces**:
 - La ruta exige `Authorization: Bearer $CRON_SECRET` (401 si falta). El `GET /api/admin/notifications` del panel es **solo lectura**.
 
 ### Despliegue
-- La app vive desplegada en **Vercel** (`.vercel`).
+- La app vive desplegada en **Vercel** (`.vercel`, proyecto `fitmania`): producción en **https://fitmania-seven.vercel.app**. Cada push a `main` despliega solo y cada PR genera un preview.
 - Firebase (Auth + Firestore y sus reglas) en el proyecto **`fitmania-e1748`**.
 - Para nuevos entornos, configurar las variables de §14 en el dashboard de Vercel.
+- **Orden obligatorio:** primero el código (merge a `main`) y, apenas quede *Ready*, `npx firebase deploy --only firestore:rules,firestore:indexes --project fitmania-e1748`. Las reglas actuales cierran escrituras que usaba el código anterior.
+- Después del deploy, ejecutar las migraciones pendientes en el panel admin → Sistema (primero "Simular").
+- **Estado al 24-10-2026:** la rama `fix/fase1-criticos` está en el **PR #1** (CI en verde), con el deploy previsto para el 25-10. Producción ya tiene todas las variables críticas; las recomendadas que faltan y el paso a paso están en `plan-24-10-2026.md` §4 y en `docs/checklist-salida.md`.
 
 ### Archivos auxiliares
 - `deep_diag.js`, `fix_env.js`, `tmp_check_key.js`, `tmp_fix_key.js`: utilidades de diagnóstico temporales en la raíz (no forman parte del flujo de la app).
@@ -588,6 +562,16 @@ El pago se confirma **dos veces**:
 ## 18. Pruebas
 
 Todo se puede probar en local (`npm run dev` → `http://localhost:3000`). Mantén la terminal del servidor a la vista: los logs de correo (`[mail]`, `[webhook]`) salen ahí.
+
+### Pruebas automáticas (también corren en el CI)
+
+| Comando | Qué cubre | Requisitos |
+|---|---|---|
+| `npm test` | 90 pruebas de lógica pura: transiciones de pago, planes, pase QR, verificación en dos pasos, marco por plan, cola sin conexión, límite del foro, datos del sandbox | Ninguno |
+| `npm run test:rules` | 19 pruebas de `firestore.rules` en el emulador (proyecto `demo-`, nunca el real) | Java 21 |
+| `npm run test:e2e` | 9 pruebas de navegador en escritorio y móvil: preguntas frecuentes, avisos legales, paneles ocultos, CSP | `npm run build` antes; en local `PW_CHANNEL=msedge` usa el Edge instalado |
+| `npm run test:e2e:sandbox` | 4 pruebas del modo sandbox de punta a punta (entrar, comprar con la pasarela simulada, abrir los paneles, salir y borrar) contra los emuladores de Firebase | Java 21; compila aparte en `.next-sandbox` |
+| `npm run lint` · `npm run typecheck` | Estilo y tipos | Ninguno |
 
 ### Acceso directo por rol (botón, sin llave)
 1. Login en `/login` con la cuenta admin → el menú de cuenta y `/perfil` muestran el botón rojo **"Panel de Administración"**. Clic → llegas a `/fitministration` ya dentro (sin `?key=` ni contraseña).
@@ -606,15 +590,15 @@ Todo se puede probar en local (`npm run dev` → `http://localhost:3000`). Mant�
 > ⚠️ **Modo test de Resend (sin dominio verificado):** el servidor **solo entrega a `andreselgameroscuro@gmail.com`** (dueño de la cuenta). Enviar a cualquier otro correo responde **403** (definitivo, sin reintentos) y la UI **no falla**: en PQRS el ticket ya quedó resuelto en Firestore y en compras la orden ya quedó creada. Además, al usar `onboarding@resend.dev`, Gmail suele mandarlo a **Spam**. Para enviar a clientes y llegar a Inbox → verificar dominio (SPF/DKIM/DMARC) y cambiar `MAIL_FROM`.
 
 ### Pago completo + correo (avanzado)
-Requiere **Stripe CLI** (no viene instalada; `winget install --id Stripe.StripeCli -e`):
-1. Exporta la key de test en la sesión: `$env:STRIPE_API_KEY = "sk_test_..."` (evita `stripe login`).
-2. `stripe listen --print-secret` para ver el `whsec_...` y ponlo como `STRIPE_WEBHOOK_SECRET` en `.env.local` (reinicia el dev). Ese secreto es **el mismo** que ya usa la CLI.
-3. Arranca el túnel (déjalo corriendo):
-   `stripe listen --events payment_intent.succeeded,payment_intent.payment_failed --forward-to localhost:3000/api/stripe/webhook`
-4. Compra en `/pago` con la tarjeta de prueba `4242 4242 4242 4242`. En **modo test de Resend**, inicia sesión como `andreselgameroscuro@gmail.com` para que el recibo salga.
-5. Verifica: orden creada y **stock descontado** en Firestore, `[mail] Enviado...` en la terminal, evento `--> payment_intent.succeeded` / `<-- [200] POST` en el listener, y el registro en el panel de Resend.
-6. Para inspeccionar Firestore: `node scripts/check-orders.mjs` (últimas órdenes y stock).
-7. Si editas `.env.local`, **reinicia** `npm run dev` para recargar variables.
+1. Credenciales de **prueba** de Mercado Pago en `.env.local` y un túnel (`MERCADOPAGO_PUBLIC_URL`, ver §16) con el webhook configurado en *Tus integraciones → Webhooks* (evento *Pagos*, clave de la misma aplicación).
+2. Compra en `/pago` con el **comprador de prueba** (sin la sesión del vendedor abierta).
+3. Verifica: `[mp-webhook] … approved` en la terminal, orden y stock en Firestore, `[mail] Enviado...` y el pago en la pestaña **Pagos** del admin.
+4. Para inspeccionar Firestore: `node scripts/check-orders.mjs` (últimas órdenes y stock).
+
+---
+
+### Modo sandbox
+Copia del sitio para que cualquiera pruebe todo (socio, recepción y administración) con datos de ejemplo, sin tocar la aplicación real. Es otro despliegue del mismo código conectado a otro proyecto de Firebase; cada visitante recibe una cuenta temporal de 2 horas que se borra al salir. Configuración paso a paso en [`docs/sandbox.md`](docs/sandbox.md).
 
 ---
 
@@ -625,17 +609,17 @@ Puntos asumidos conscientemente o pendientes de cerrar. **Ninguno bloquea el fun
 | # | Deuda | Impacto | Acción sugerida |
 |---|---|---|---|
 | 1 | **Resend en modo test** — sin dominio verificado solo entrega a `andreselgameroscuro@gmail.com` y suele caer en Spam | 🔴 Alto | Verificar dominio (SPF/DKIM/DMARC) y cambiar `MAIL_FROM` a `no-reply@tudominio`. Ver §18. |
-| 2 | **Stripe en modo test** (`sk_test_...`) | 🔴 Alto | Para cobros reales: `sk_live_...`, endpoint en el Dashboard y `STRIPE_WEBHOOK_SECRET` de producción. `NEXT_PUBLIC_STRIPE_PUBLIC_KEY` debe ser del mismo modo. |
-| 3 | **Idempotencia del webhook de productos**: la orden sí (id = `paymentIntent.id`), pero el **stock no** — un reintento de Stripe descuenta dos veces | 🔴 Alto | Marcar eventos procesados (`events/{event.id}` o flag en la orden) antes de aplicar escrituras de stock. El ramal de planes ya es idempotente (T-09). |
+| 2 | ~~Stripe en modo test~~ — **cerrado**: Stripe se retiró (F1-23) | ✅ | — |
+| 3 | ~~Webhook de Stripe con lógica duplicada~~ — **cerrado**: Mercado Pago es la única pasarela | ✅ | — |
 | 4 | **Campo `precio` vs `price`**: productos usan `precio`, planes usan `price`; `create-payment` lee `precio ?? price` como parche | 🟡 Medio | Unificar a un único nombre de campo en productos y planes (migración + código). |
-| 5 | **`typescript.ignoreBuildErrors: true`** — los errores de TS no bloquean el build | 🟡 Medio | `npx tsc --noEmit` ya pasa limpio → activar `false` en un cambio aparte. |
+| 5 | ~~ESLint no está instalado~~ — **cerrado**: `eslint.config.mjs` (Next 16) y lint + build en la CI. Quedan ~250 avisos (`any`, reglas del React Compiler) | 🟢 Bajo | Bajar los avisos de a poco; no rompen la CI. |
 | 6 | **`force-dynamic` global + CSP con nonce** → todas las rutas son dinámicas (ƒ), sin caché/ISR | 🟡 Medio | El nonce obliga a SSR; evaluar ISR/caché si se prioriza rendimiento sobre la CSP estricta. |
 | 7 | **Imágenes sin optimizar** (`images.unoptimized: true`) | 🟢 Bajo | Necesario hoy por las rutas locales de `public/Imagenes/...`; migrar a Cloudinary/optimizador para rendimiento. |
 | 8 | **Carpeta `scripts/` sin versionar** (`.gitignore`) — bootstrap y diagnóstico no están en el repo | 🟡 Medio | Versionar los scripts no sensibles (`grant-admin`, `manage-claims`, `verify-mail`, `check-*`) o documentarlos para recrearlos. |
 | 9 | **`scripts/simulate_sale.js` con ruta fija** al JSON de la cuenta de servicio | 🟢 Bajo | Migrarlo a leer credenciales de `.env.local` (como el resto). |
-| 10 | **Vulnerabilidades npm no críticas** (13: 9 moderadas, 4 altas) en la cadena `@grpc/grpc-js` del SDK cliente de Firebase | 🟢 Bajo | Único fix es un downgrade a `firebase@9.14.0` (no aceptable). CI (`.github/workflows/security-audit.yml`) falla solo ante **críticas**. Revisar en cada actualización de Firebase. |
+| 10 | **9 vulnerabilidades moderadas** (cadena de `firebase-admin` y `exceljs`); 0 altas y 0 críticas tras Next 16.4.3 | 🟢 Bajo | Requieren versiones mayores (`firebase-admin` 14, `exceljs` 3.4 → revisar compatibilidad). La CI falla ante **altas**. |
 | 11 | **Rotación de credenciales no realizada** (decisión D-1): la contención fue purgar el historial de git (T-03) | 🟡 Medio | Si el repo estuvo público, quien lo clonó conserva copias. Ante actividad rara (Stripe/Gmail) → rotar esa clave puntual. |
-| 12 | **`STRIPE_WEBHOOK_SECRET` local vs producción**: el de la CLI solo vale en local | 🟡 Medio | En Vercel debe ser el secreto del endpoint del Dashboard (no el de `stripe listen`). |
+| 12 | ~~`STRIPE_WEBHOOK_SECRET` local vs producción~~ — **cerrado** (Stripe retirado) | ✅ | — |
 | 13 | **Datos de prueba en Firestore** — órdenes `sim_*`, `pi_mock_*`, `pi_lowstock_*` de pruebas | 🟢 Bajo | Limpiar colecciones de prueba antes de salir a producción real. |
 | 14 | **Archivos auxiliares de diagnóstico** en la raíz (`deep_diag.js`, `fix_env.js`, `tmp_check_key.js`, `tmp_fix_key.js`), gitignored | 🟢 Bajo | Eliminarlos cuando ya no se usen. |
 

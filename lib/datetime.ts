@@ -34,3 +34,13 @@ export function formatInAppTz(
 ): string {
   return new Intl.DateTimeFormat(locale, { timeZone: APP_TIME_ZONE, ...options }).format(date);
 }
+
+/** Hora (00–23) en la zona de la app, como texto de 2 dígitos. Clave de franja horaria. */
+export function getHourKeyInAppTz(date: Date = new Date()): string {
+  const hour = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIME_ZONE,
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).format(date);
+  return hour.padStart(2, '0');
+}

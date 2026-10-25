@@ -4,14 +4,17 @@ import Link from 'next/link'
 import { ChangeEvent, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore, useUIStore } from '@/lib/store'
-import { LogOut, Settings, UserCircle, ShieldCheck, QrCode, Loader2 } from 'lucide-react'
+import { LogOut, Settings, UserCircle, ShieldCheck, QrCode, Loader2, Receipt, FlaskConical } from 'lucide-react'
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
 import { FitAvatar } from '@/components/ui/fit-avatar'
-import { auth, db } from '@/lib/firebase'
+import { PLAN_FRAMES, planTier } from '@/lib/plan-theme'
+import { auth } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
-import { doc, updateDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore'
+import { saveMyProfile } from '@/lib/author-profiles'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import { usePanelAccess, enterPanel } from '@/lib/panel-access'
+import { IS_SANDBOX, sandboxEntryHref } from '@/lib/sandbox'
+import { exitSandbox } from '@/lib/sandbox-client'
 
 export function UserDropdown() {
   const router = useRouter()
@@ -39,53 +42,12 @@ export function UserDropdown() {
 
   const handleClose = () => setUserDropdownOpen(false)
 
+  // F1-09: una sola escritura (users + perfil público en el servidor). El foro
+  // resuelve la foto por autor, así que ya no se reescriben los posts.
   const updateUserProfile = async (updates: { avatar?: string; photoURL?: string }) => {
     if (!user?.uid) return
-    await updateDoc(doc(db, 'users', user.uid), updates)
-
-    if (updates.photoURL) {
-      const postsRef = collection(db, 'posts')
-      const querySnapshot = await getDocs(postsRef)
-
-      if (!querySnapshot.empty) {
-        const batch = writeBatch(db)
-        querySnapshot.forEach((docSnap) => {
-          const postData = docSnap.data()
-          let needsUpdate = false
-          const postUpdate: any = {}
-
-          // Actualizar avatar del autor del post
-          if (postData.autor_id === user.uid) {
-            postUpdate.autor_avatar = updates.photoURL
-            needsUpdate = true
-          }
-
-          // Actualizar avatares en los comentarios
-          if (Array.isArray(postData.comentarios)) {
-            const updatedComentarios = postData.comentarios.map((comment: any) => {
-              if (comment.autor_username === user.username) {
-                return { ...comment, autor_avatar: updates.photoURL }
-              }
-              return comment
-            })
-
-            // Verificar si algún comentario cambió
-            const changed = JSON.stringify(updatedComentarios) !== JSON.stringify(postData.comentarios)
-            if (changed) {
-              postUpdate.comentarios = updatedComentarios
-              needsUpdate = true
-            }
-          }
-
-          if (needsUpdate) {
-            batch.update(docSnap.ref, postUpdate)
-          }
-        })
-        await batch.commit()
-      }
-    }
-
-    updateUser(updates)
+    const photoURL = await saveMyProfile(updates)
+    updateUser({ ...updates, ...(photoURL ? { photoURL } : {}) })
   }
 
   const handleAvatarSelect = async (avatarId: string) => {
@@ -94,7 +56,7 @@ export function UserDropdown() {
     if (!avatarUrl) return
     setIsSavingAvatar(true)
     try {
-      await updateUserProfile({ avatar: avatarId, photoURL: avatarUrl })
+      await updateUserProfile({ avatar: avatarId })
     } finally {
       setIsSavingAvatar(false)
     }
@@ -105,7 +67,7 @@ export function UserDropdown() {
     if (!file || !user?.uid || isSavingAvatar) return
     setIsSavingAvatar(true)
     try {
-      const resultado = await uploadToCloudinary(file)
+      const resultado = await uploadToCloudinary(file, 'avatar')
       await updateUserProfile({ photoURL: resultado.url })
     } catch (err) {
       console.error("Error al subir imagen:", err)
@@ -134,6 +96,15 @@ export function UserDropdown() {
             Inicia sesion para acceder a todas las funciones
           </p>
           <div className="flex flex-col gap-2">
+            {IS_SANDBOX ? (
+              <Link
+                href="/sandbox"
+                onClick={handleClose}
+                className="inline-flex items-center justify-center gap-2 font-label font-bold text-sm text-secondary bg-lime-300 text-center py-2 px-4 border-2 border-secondary shadow-comic-sm"
+              >
+                <FlaskConical className="w-4 h-4" aria-hidden /> ENTRAR AL SANDBOX
+              </Link>
+            ) : (<>
             <Link
               href="/login"
               onClick={handleClose}
@@ -148,6 +119,15 @@ export function UserDropdown() {
             >
               REGISTRARSE
             </Link>
+            {sandboxEntryHref() && (
+              <a
+                href={sandboxEntryHref()!}
+                className="inline-flex items-center justify-center gap-2 font-label font-bold text-sm text-secondary bg-lime-300 text-center py-2 px-4 border-2 border-secondary shadow-comic-sm transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[5px_5px_0_var(--navy)]"
+              >
+                <FlaskConical className="w-4 h-4" aria-hidden /> MODO SANDBOX
+              </a>
+            )}
+            </>)}
           </div>
         </div>
       </div>
@@ -155,7 +135,10 @@ export function UserDropdown() {
   }
 
   const daysRemaining = getDaysRemaining()
-  const isPremium = !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
+  // En el sandbox el visitante lleva siempre el marco de "Explorador".
+  const isPremium = IS_SANDBOX || !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
+  const tier = IS_SANDBOX ? 'sandbox' : planTier(user?.plan)
+  const frame = PLAN_FRAMES[tier]
 
   return (
     <div className="fixed inset-x-4 sm:absolute sm:inset-auto sm:right-0 top-[76px] sm:top-full mt-2 w-auto sm:w-[320px] max-w-[400px] z-50">
@@ -164,10 +147,10 @@ export function UserDropdown() {
         <div
           className="absolute inset-0 rounded-sm"
           style={{
-            background: 'linear-gradient(45deg, #ef4444, #ffffff, #3b82f6, #ef4444, #ffffff, #3b82f6)',
+            background: frame.gradient,
             backgroundSize: '400% 400%',
             animation: 'premium-gradient-spin 4s linear infinite',
-            boxShadow: '0 0 20px rgba(59,130,246,0.4), 0 0 40px rgba(220,38,38,0.2)',
+            boxShadow: frame.glow,
           }}
         />
       )}
@@ -175,7 +158,7 @@ export function UserDropdown() {
       <div
         className={`relative shadow-comic ${isPremium ? 'm-[4px]' : 'bg-white border-3 border-secondary'}`}
         style={isPremium ? {
-          background: 'linear-gradient(135deg, #abd4f0ff 0%, #ffffff 50%, #e97373ff 100%)',
+          background: frame.panel,
         } : {}}
       >
         <div className="p-5 border-b-2 border-gray-200">
@@ -188,6 +171,7 @@ export function UserDropdown() {
               borderColor="border-secondary"
               bgColor="bg-primary"
               isPremium={isPremium}
+              tier={tier}
               fallback={<UserCircle className="w-12 h-12 text-gray-400" />}
             />
             <div className="flex-1 min-w-0 pt-1">
@@ -197,11 +181,19 @@ export function UserDropdown() {
               <p className="font-label text-xs sm:text-sm text-gray-400 truncate mb-2">
                 {user?.email}
               </p>
-              {isPremium && daysRemaining !== null && (
-                <div className="bg-blue-100 border-2 border-blue-400 px-3 py-1.5 inline-flex items-center gap-2 rounded-lg shadow-[3px_3px_0_0_rgba(59,130,246,0.3)]">
-                  <span className="text-sm">⭐</span>
-                  <span className="font-label text-[10px] font-black text-blue-700 uppercase tracking-widest">
-                    <span className="sm:inline hidden">PREMIUM · </span>{daysRemaining} DIAS
+              {IS_SANDBOX && (
+                <div className={`border-2 px-3 py-1.5 inline-flex items-center gap-2 rounded-lg ${frame.badge}`}>
+                  <span className="text-sm" aria-hidden="true">{frame.icon}</span>
+                  <span className="font-label text-[10px] font-black uppercase tracking-widest">
+                    {frame.label} · Sandbox{daysRemaining ? ` · ${daysRemaining} días` : ''}
+                  </span>
+                </div>
+              )}
+              {!IS_SANDBOX && isPremium && daysRemaining !== null && (
+                <div className={`border-2 px-3 py-1.5 inline-flex items-center gap-2 rounded-lg ${frame.badge}`}>
+                  <span className="text-sm" aria-hidden="true">{frame.icon}</span>
+                  <span className="font-label text-[10px] font-black uppercase tracking-widest">
+                    <span className="sm:inline hidden">{frame.label} · </span>{daysRemaining} DIAS
                   </span>
                 </div>
               )}
@@ -295,8 +287,22 @@ export function UserDropdown() {
             <Settings className="w-5 h-5 text-zinc-600" />
             <span className="hidden sm:inline font-label text-sm text-gray-700">Configuracion</span>
           </Link>
+          <Link
+            href="/compras"
+            onClick={handleClose}
+            title="Mis compras"
+            className="flex-1 flex items-center justify-center sm:justify-start gap-3 px-3 py-3 sm:py-2 bg-white sm:bg-transparent border-2 sm:border-0 border-black sm:rounded rounded-xl hover:bg-gray-100 transition-all active:translate-y-1"
+          >
+            <Receipt className="w-5 h-5 text-zinc-600" />
+            <span className="hidden sm:inline font-label text-sm text-gray-700">Mis compras</span>
+          </Link>
           <button
             onClick={async () => {
+              // Sandbox: cerrar sesión es salir del laboratorio y borrar la cuenta temporal.
+              if (IS_SANDBOX) {
+                if (window.confirm('¿Salir del sandbox? Se borran tu cuenta temporal y todo lo que hiciste.')) await exitSandbox()
+                return
+              }
               await signOut(auth)
               logout()
               handleClose()
@@ -305,7 +311,7 @@ export function UserDropdown() {
             className="flex-1 flex items-center justify-center sm:justify-start gap-3 px-3 py-3 sm:py-2 bg-red-50 sm:bg-transparent border-2 sm:border-0 border-primary sm:rounded rounded-xl hover:bg-red-light transition-all active:translate-y-1"
           >
             <LogOut className="w-5 h-5 text-primary" />
-            <span className="hidden sm:inline font-label text-sm text-primary">Cerrar Sesion</span>
+            <span className="hidden sm:inline font-label text-sm text-primary">{IS_SANDBOX ? 'Salir del sandbox' : 'Cerrar Sesion'}</span>
           </button>
         </div>
       </div>

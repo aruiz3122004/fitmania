@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { CalendarDays, Download, FileJson, FileSpreadsheet, ChevronLeft, ChevronRight, Clock, Mail, UserCircle, ShieldCheck, ShieldOff, Loader2 } from 'lucide-react'
+import { CalendarDays, FileJson, FileSpreadsheet, ChevronLeft, ChevronRight, Clock, Mail, UserCircle, ShieldCheck, ShieldOff, Loader2 } from 'lucide-react'
 import { DayPicker } from 'react-day-picker'
 import { es } from 'date-fns/locale'
 
@@ -16,11 +16,8 @@ interface EntryLog {
   date: string
 }
 
-interface EntryHistoryTabProps {
-  // No props needed currently
-}
 
-export default function EntryHistoryTab({}: EntryHistoryTabProps) {
+export default function EntryHistoryTab() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [entries, setEntries] = useState<EntryLog[]>([])
   const [loading, setLoading] = useState(false)

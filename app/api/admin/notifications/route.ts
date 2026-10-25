@@ -17,7 +17,9 @@ export async function GET(request: Request) {
     return NextResponse.json(notifications);
   } catch (error: any) {
     console.error('Error in notifications GET:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/admin/notifications]', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }
 
@@ -28,14 +30,16 @@ export async function PATCH(request: Request) {
 
   try {
     const { id } = await request.json();
-    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+    if (typeof id !== 'string' || !id || id.includes('/')) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
 
     const db = getAdminFirestore();
     await db.collection('notifications').doc(id).update({ leido: true });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/admin/notifications]', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }
 
@@ -47,12 +51,15 @@ export async function DELETE(request: Request) {
   try {
     const db = getAdminFirestore();
     const snapshot = await db.collection('notifications').where('leido', '==', true).get();
-    const batch = db.batch();
-    snapshot.docs.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
+    // BulkWriter: sin el límite de 500 operaciones de un batch.
+    const writer = db.bulkWriter();
+    snapshot.docs.forEach(doc => writer.delete(doc.ref));
+    await writer.close();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // F1-03: el detalle queda en logs; el cliente recibe un mensaje genérico.
+    console.error('[/api/admin/notifications]', error);
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 });
   }
 }

@@ -2,6 +2,7 @@
 
 import { isDefaultAvatarUrl } from '@/lib/avatar-utils'
 import { UserCircle } from 'lucide-react'
+import { PLAN_FRAMES, type FrameKey } from '@/lib/plan-theme'
 
 interface FitAvatarProps {
   src?: string | null
@@ -15,6 +16,8 @@ interface FitAvatarProps {
   fallback?: React.ReactNode
   className?: string
   isPremium?: boolean
+  /** Color del marco premium según el plan (por defecto, el clásico). */
+  tier?: FrameKey
 }
 
 /**
@@ -22,7 +25,7 @@ interface FitAvatarProps {
  * - Default avatars: Scaled up to overflow the circle
  * - Custom photos: Normal circular crop
  * - No photo: Fallback icon
- * - Premium users: Animated gradient border (red/white/blue)
+ * - Premium users: Animated gradient border (color según el plan: ver lib/plan-theme.ts)
  */
 export function FitAvatar({
   src,
@@ -36,6 +39,7 @@ export function FitAvatar({
   fallback,
   className = '',
   isPremium = false,
+  tier = 'estandar',
 }: FitAvatarProps) {
   const isDefault = src ? isDefaultAvatarUrl(src) : false
   const effectiveBgColor = isPremium && bgColor === 'bg-primary' ? 'bg-[#1e40af]' : bgColor
@@ -114,10 +118,10 @@ export function FitAvatar({
         <div
           className="absolute inset-0 rounded-full"
           style={{
-            background: 'linear-gradient(45deg, #ef4444, #ffffff, #3b82f6, #ef4444, #ffffff, #3b82f6)',
+            background: PLAN_FRAMES[tier].gradient,
             backgroundSize: '400% 400%',
             animation: 'premium-gradient-spin 3s linear infinite',
-            boxShadow: '0 0 12px rgba(220,38,38,0.4), 0 0 24px rgba(59,130,246,0.3)',
+            boxShadow: PLAN_FRAMES[tier].glow,
           }}
         />
         {/* Inner dark ring for comic effect */}

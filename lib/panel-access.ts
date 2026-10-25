@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { onIdTokenChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
-import { clearRateLimit } from '@/lib/rate-limit-client'
+import { ensureMfaVerified } from '@/lib/mfa-email-client'
 
 export type PanelRole = 'admin' | 'recepcion' | null
 
@@ -60,6 +60,7 @@ export async function enterPanel(role: Exclude<PanelRole, null>): Promise<void> 
     throw new Error('No hay una sesión activa. Inicia sesión de nuevo.')
   }
 
+  await ensureMfaVerified()
   const idToken = await user.getIdToken(true)
   const endpoint = role === 'admin' ? '/api/admin/login' : '/api/recepcion/login'
 
@@ -74,9 +75,7 @@ export async function enterPanel(role: Exclude<PanelRole, null>): Promise<void> 
     throw new Error(data.error || 'No autorizado para acceder a este panel.')
   }
 
-  // Limpiar el histórico de intentos del rate limit (acceso legítimo).
-  await clearRateLimit()
-
-  // Navegación completa para que el middleware evalúe la nueva cookie de sesión.
+  // Navegación completa para que el middleware evalúe la nueva cookie de puerta firmada
+  // (la emite el endpoint de login junto con la sesión).
   window.location.href = PANEL_BY_ROLE[role].path
 }

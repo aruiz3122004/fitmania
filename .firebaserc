@@ -1,6 +1,8 @@
 {
   "projects": {
-    "fitmania": "fitmania-e1748"
+    "fitmania": "fitmania-e1748",
+    "staging": "fitmania-staging",
+    "sandbox": "fitmania-sandbox"
   },
   "targets": {},
   "etags": {}

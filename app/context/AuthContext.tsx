@@ -4,9 +4,10 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import type { User } from 'firebase/auth'
 import { auth, db } from '@/lib/firebase'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, onSnapshot } from 'firebase/firestore'
 import { getAvatarUrlById } from '@/lib/avatar-utils'
 import { useAuthStore } from '@/lib/store'
+import { MFA_VERIFIED_EVENT } from '@/lib/mfa-email-client'
 
 interface AuthContextType {
   user: User | null
@@ -22,56 +23,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const setEnrichedUser = useAuthStore((s) => s.setUser)
+  // Con la verificación en dos pasos activa, las reglas niegan el perfil hasta que la
+  // sesión ingresa el código: al completarla se vuelve a suscribir.
+  const [mfaEpoch, setMfaEpoch] = useState(0)
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+    const onVerified = () => setMfaEpoch((n) => n + 1)
+    window.addEventListener(MFA_VERIFIED_EVENT, onVerified)
+    return () => window.removeEventListener(MFA_VERIFIED_EVENT, onVerified)
+  }, [])
+
+  useEffect(() => {
+    let unsubProfile: (() => void) | null = null
+
+    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser)
       setLoading(false)
+      unsubProfile?.()
+      unsubProfile = null
 
       if (!firebaseUser) {
         setEnrichedUser(null)
         return
       }
 
-      try {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid))
-        const raw = userDoc.data()
-        const avatarId = raw?.avatar || 'fitman'
-        const resolvedUrl = getAvatarUrlById(avatarId)
-        const photoURL = resolvedUrl || raw?.photoURL || getAvatarUrlById('fitman')
+      // F2-17: el perfil se lee de Firestore en tiempo real (no de localStorage), así
+      // una renovación confirmada por el webhook se refleja sin recargar.
+      unsubProfile = onSnapshot(
+        doc(db, 'users', firebaseUser.uid),
+        (userDoc) => {
+          const raw = userDoc.data()
+          const avatarId = raw?.avatar || 'fitman'
+          // `photoURL` manda: lo escriben tanto la foto subida como el selector de avatares.
+          // Antes ganaba el avatar predeterminado y la foto subida nunca se veía.
+          const photoURL = raw?.photoURL || getAvatarUrlById(avatarId) || getAvatarUrlById('fitman')
 
-        setEnrichedUser({
-          uid: firebaseUser.uid,
-          username: raw?.username || firebaseUser.email?.split('@')[0] || 'Usuario',
-          email: firebaseUser.email || raw?.email || '',
-          gender: raw?.gender,
-          avatar: avatarId,
-          photoURL: photoURL,
-          peso: raw?.peso,
-          altura: raw?.altura,
-          plan: raw?.plan
-            ? {
-                ...raw.plan,
-                inicio: raw.plan.inicio?.toDate?.() || new Date(raw.plan.inicio),
-                expira: raw.plan.expira?.toDate?.() || new Date(raw.plan.expira),
-              }
-            : null,
-        })
-      } catch (error) {
-        console.error('Error al cargar perfil desde Firestore:', error)
-        setEnrichedUser({
-          uid: firebaseUser.uid,
-          username: firebaseUser.email?.split('@')[0] || 'Usuario',
-          email: firebaseUser.email || '',
-          avatar: 'fitman',
-          photoURL: getAvatarUrlById('fitman'),
-          plan: null,
-        })
-      }
+          setEnrichedUser({
+            uid: firebaseUser.uid,
+            username: raw?.username || firebaseUser.email?.split('@')[0] || 'Usuario',
+            email: firebaseUser.email || raw?.email || '',
+            gender: raw?.gender,
+            avatar: avatarId,
+            photoURL: photoURL,
+            peso: raw?.peso,
+            altura: raw?.altura,
+            plan: raw?.plan
+              ? {
+                  ...raw.plan,
+                  inicio: raw.plan.inicio?.toDate?.() || new Date(raw.plan.inicio),
+                  expira: raw.plan.expira?.toDate?.() || new Date(raw.plan.expira),
+                }
+              : null,
+          })
+        },
+        (error) => {
+          console.error('Error al cargar perfil desde Firestore:', error)
+          setEnrichedUser({
+            uid: firebaseUser.uid,
+            username: firebaseUser.email?.split('@')[0] || 'Usuario',
+            email: firebaseUser.email || '',
+            avatar: 'fitman',
+            photoURL: getAvatarUrlById('fitman'),
+            plan: null,
+          })
+        }
+      )
     })
 
-    return () => unsub()
-  }, [setEnrichedUser])
+    return () => {
+      unsubProfile?.()
+      unsub()
+    }
+  }, [setEnrichedUser, mfaEpoch])
 
   return (
     <AuthContext.Provider value={{ user, loading }}>

@@ -29,7 +29,8 @@ tmp/
 test-ratelimit.js
 
 # Simulation Scripts and Keys
-scripts/
+# scripts/ se versiona (roles, diagnósticos); este escribe ventas falsas en la base real.
+scripts/simulate_sale.js
 scratch/
 *.json
 !package.json
@@ -37,6 +38,7 @@ scratch/
 !tsconfig.json
 !components.json
 !firebase.json
+!firestore.indexes.json
 !vercel.json
 
 # Firebase Admin SDK specific
@@ -55,3 +57,11 @@ scratch/
 *.fitmania_security.md
 *.fitmania_flow.md
 *.fitmania_flow.md
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright-report-sandbox/
+/.next-sandbox/
+/.next-sandbox-dev/
+/blob-report/

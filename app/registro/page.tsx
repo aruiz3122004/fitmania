@@ -6,10 +6,9 @@ import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { useAuthStore } from '@/lib/store'
-import { auth, db } from '@/lib/firebase'
-import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
-import { doc, setDoc } from 'firebase/firestore'
+import { auth } from '@/lib/firebase'
+import { avatarOptions } from '@/lib/avatar-utils'
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth'
 import { 
   Mail, 
   Lock, 
@@ -25,11 +24,14 @@ import {
 } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { cn } from '@/lib/utils'
-import { getRateLimitStatus, consumeRateLimitAttempt, clearRateLimit, formatTimeLeft } from '@/lib/rate-limit-client'
+import { getRateLimitStatus, consumeRateLimitAttempt, formatTimeLeft } from '@/lib/rate-limit-client'
 
 export default function RegistroPage() {
   const router = useRouter()
   const { setUser } = useAuthStore()
+  // F3-10: autorización de tratamiento (obligatoria) y de datos sensibles (opcional y separada).
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [sensitiveConsent, setSensitiveConsent] = useState(false)
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -88,8 +90,15 @@ export default function RegistroPage() {
       return
     }
 
-    if (formData.password.length < 6) {
-      setError('La contrasena debe tener al menos 6 caracteres')
+    if (!acceptedTerms) {
+      setError('Debes aceptar los términos y la política de tratamiento de datos para crear tu cuenta.')
+      return
+    }
+
+    // Contraseña mínima: 8 caracteres con letras y números (configurar la misma
+    // política en Firebase Auth → Configuración → Política de contraseñas).
+    if (formData.password.length < 8 || !/[A-Za-z]/.test(formData.password) || !/[0-9]/.test(formData.password)) {
+      setError('La contraseña debe tener al menos 8 caracteres e incluir letras y números')
       return
     }
 
@@ -109,35 +118,52 @@ export default function RegistroPage() {
       }
 
       const credentials = await createUserWithEmailAndPassword(auth, formData.email, formData.password)
-      const avatarUrl = getAvatarUrlById(formData.avatar) || '/Imagenes/Avatares/Fitman.jpeg'
-      const userData = {
-        uid: credentials.user.uid,
-        username: formData.username,
-        email: formData.email,
-        gender: formData.gender,
-        avatar: formData.avatar,
-        photoURL: avatarUrl,
-        peso: formData.peso ? parseFloat(formData.peso) : undefined,
-        altura: formData.altura ? parseFloat(formData.altura) : undefined,
-        plan: null,
+
+      // F1-06: el perfil lo crea el servidor (uid/correo desde el token, plan vacío).
+      const idToken = await credentials.user.getIdToken()
+      const res = await fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({
+          username: formData.username,
+          gender: formData.gender,
+          avatar: formData.avatar,
+          peso: sensitiveConsent ? formData.peso || null : null,
+          altura: sensitiveConsent ? formData.altura || null : null,
+          acceptedTerms,
+          sensitiveConsent,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // Sin perfil la cuenta queda inservible: se elimina para que pueda reintentar.
+        await credentials.user.delete().catch(() => {})
+        throw new Error(data.error || 'No se pudo crear tu perfil. Intenta de nuevo.')
       }
 
-      await setDoc(doc(db, 'users', credentials.user.uid), {
-        ...userData,
-        createdAt: new Date(),
+      // Verificación de correo: requerida para pagar y publicar en el foro.
+      await sendEmailVerification(credentials.user).catch((e) =>
+        console.error('No se pudo enviar el correo de verificación:', e)
+      )
+
+      setUser({
+        ...data.profile,
+        peso: data.profile.peso ?? undefined,
+        altura: data.profile.altura ?? undefined,
+        photoURL: data.profile.photoURL ?? undefined,
+        plan: null,
       })
 
-      setUser(userData)
-      
-      // EXITO: Limpiamos por completo el historial de fallos y rate limit
-      await clearRateLimit()
-      
       router.push('/')
     } catch (err: any) {
       if (err?.code === 'auth/email-already-in-use') {
         setError('Este correo ya esta registrado.')
       } else {
-        setError(err.message || 'Error al crear la cuenta. Intenta de nuevo.')
+        // Los errores de Firebase traen códigos internos: se muestran mensajes propios.
+        if (err?.code === 'auth/weak-password') setError('La contraseña es muy débil. Usa al menos 8 caracteres con letras y números.')
+        else if (err?.code === 'auth/invalid-email') setError('El correo no es válido.')
+        else if (err?.code === 'auth/too-many-requests') setError('Demasiados intentos. Espera unos minutos.')
+        else setError(err?.message && !String(err.message).startsWith('Firebase') ? err.message : 'Error al crear la cuenta. Intenta de nuevo.')
       }
     } finally {
       setLoading(false)
@@ -333,7 +359,24 @@ export default function RegistroPage() {
                 </div>
               </div>
 
-              <div className={cn("grid grid-cols-2 gap-4 mb-4 transition-opacity", isBlocked && "opacity-50 pointer-events-none")}>
+              {/* F3-10: los datos de salud solo se piden con autorización expresa y separada. */}
+              <label className={cn("flex items-start gap-3 mb-3 cursor-pointer", isBlocked && "opacity-50 pointer-events-none")}>
+                <input
+                  type="checkbox"
+                  checked={sensitiveConsent}
+                  onChange={(e) => {
+                    setSensitiveConsent(e.target.checked)
+                    if (!e.target.checked) setFormData({ ...formData, peso: '', altura: '' })
+                  }}
+                  className="mt-1 w-4 h-4 accent-primary"
+                />
+                <span className="font-body text-xs text-gray-600">
+                  <strong>Opcional:</strong> autorizo el tratamiento de mi peso y altura (datos sensibles) para personalizar mi
+                  seguimiento. No es obligatorio y puedo revocarlo desde mi perfil.
+                </span>
+              </label>
+
+              <div className={cn("grid grid-cols-2 gap-4 mb-4 transition-opacity", (isBlocked || !sensitiveConsent) && "opacity-50 pointer-events-none")}>
                 {/* Weight */}
                 <div>
                   <label className="font-label font-bold text-xs text-secondary uppercase tracking-wider block mb-2 px-1">
@@ -397,6 +440,22 @@ export default function RegistroPage() {
                   ))}
                 </div>
               </div>
+
+              <label className="flex items-start gap-3 mb-6 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-1 w-4 h-4 accent-primary"
+                  required
+                />
+                <span className="font-body text-xs text-gray-600">
+                  Acepto los{' '}
+                  <Link href="/legal/terminos" target="_blank" className="underline font-bold">términos y condiciones</Link>{' '}
+                  y autorizo el tratamiento de mis datos personales según la{' '}
+                  <Link href="/legal/privacidad" target="_blank" className="underline font-bold">política de tratamiento de datos</Link>.
+                </span>
+              </label>
 
               {/* Submit */}
               <button
