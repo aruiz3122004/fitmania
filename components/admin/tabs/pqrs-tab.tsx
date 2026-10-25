@@ -63,7 +63,7 @@ export function PqrsTab({ pqrsList, setPqrsList }: {
                   </span>
                 </div>
                 <p className="text-xs text-zinc-500 font-bold mb-4 uppercase tracking-tighter italic">{pqrs.tipo} - {pqrs.fecha} {pqrs.hora}</p>
-                <p className="text-sm font-medium text-zinc-800 bg-zinc-50 p-4 border-2 border-dashed border-zinc-200 rounded-xl mb-4 leading-relaxed">"{pqrs.mensaje}"</p>
+                <p className="text-sm font-medium text-zinc-800 bg-zinc-50 p-4 border-2 border-dashed border-zinc-200 rounded-xl mb-4 leading-relaxed">&ldquo;{pqrs.mensaje}&rdquo;</p>
 
                 {pqrs.estado !== 'resuelto' ? (
                   isReplying === pqrs.id ? (
@@ -85,7 +85,7 @@ export function PqrsTab({ pqrsList, setPqrsList }: {
                 ) : (
                   <div className="bg-green-50 p-4 border-2 border-green-200 rounded-xl">
                     <p className="text-[10px] font-black text-green-700 uppercase mb-2">✓ Respuesta enviada:</p>
-                    <p className="text-xs text-green-800 font-medium italic">"{pqrs.respuesta_admin}"</p>
+                    <p className="text-xs text-green-800 font-medium italic">&ldquo;{pqrs.respuesta_admin}&rdquo;</p>
                   </div>
                 )}
               </div>

@@ -3,8 +3,6 @@ import type { Firestore } from 'firebase-admin/firestore';
 import { getAdminFirestore, getAdminMessaging } from '@/lib/firebase-admin';
 import { isWithinCommercialHours } from '@/lib/commercial-hours';
 
-export { isWithinCommercialHours };
-
 /**
  * Notificaciones push (F3-13 / F3-14 / F3-15) con Firebase Cloud Messaging.
  *

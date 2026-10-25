@@ -22,7 +22,7 @@ export function Topbar() {
   const cartCount = useCartStore((state) =>
     state.items.reduce((count, item) => count + item.cantidad, 0),
   )
-  const { user, isAuthenticated, setUser } = useAuthStore()
+  const { user, isAuthenticated } = useAuthStore()
   const { isMobileMenuOpen, setMobileMenuOpen, isUserDropdownOpen, setUserDropdownOpen } = useUIStore()
   const [scrolled, setScrolled] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)

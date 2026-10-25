@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 import React, { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { toast, Toaster } from 'sonner';
 import { useAuthStore } from '@/lib/store';
 import { ConfirmModal } from '@/components/ui/comic-modal';
@@ -31,14 +31,10 @@ import { XCircle } from 'lucide-react';
 // la carga de datos compartidos, el encabezado y el modal de confirmación.
 export default function AdminPage() {
   const [visualState, setVisualState] = useState<'login' | 'unauthorized' | 'dashboard'>('login');
-  const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
-  const [adminSessionValid, setAdminSessionValid] = useState(false);
 
   // Datos
-  const [stats, setStats] = useState<any>(null);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
 
   // F3-08: notificaciones en tiempo real (stock bajo, conteos, cierres de caja, compras).
@@ -72,10 +68,8 @@ export default function AdminPage() {
         const res = await fetch('/api/auth/verify?role=admin');
         const { valid } = res.ok ? await res.json() : { valid: false };
         if (valid) {
-          setAdminSessionValid(true);
           // Si la cookie es válida, verificar también el estado de Firebase
           const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-            setUser(currentUser);
             if (currentUser) {
               const decodedResult = await currentUser.getIdTokenResult();
               if (decodedResult.claims.admin === true) {
@@ -111,7 +105,6 @@ export default function AdminPage() {
 
   // El login ahora no recibe token — la cookie HttpOnly ya fue establecida por el servidor
   const handleAdminLoginSuccess = async () => {
-    setAdminSessionValid(true);
     const currentUser = auth.currentUser;
     if (currentUser) {
       const decodedResult = await currentUser.getIdTokenResult();
@@ -126,11 +119,10 @@ export default function AdminPage() {
 
   const refreshAllData = async () => {
     // Las cookies HttpOnly se envían automáticamente por el navegador — no se necesita el Bearer token manualmente
-    setConnectionError(null);
-
     const handleFetchError = (err: any) => {
       console.error('Error fetching admin data:', err);
-      setConnectionError('Error de conexión con el Servidor / Base de Datos. Verifica las variables de entorno en Vercel.');
+      // Antes el mensaje se guardaba en un estado que nunca se mostraba.
+      toast.error('Error de conexión con el servidor. Algunos datos del panel no se cargaron.');
     };
 
     // F2-20: solo lo que necesita el resumen. Las notificaciones llegan en tiempo real
@@ -168,7 +160,6 @@ export default function AdminPage() {
   useEffect(() => {
     if (visualState !== 'dashboard') return;
     if (activeTab === 'audit') loadAuditLogs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, visualState]);
 
   const handleLogout = async () => {

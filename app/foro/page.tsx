@@ -925,7 +925,6 @@ export default function ForoPage() {
       }
     })
     return () => unsubscribe()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const posts: ForumPost[] = [

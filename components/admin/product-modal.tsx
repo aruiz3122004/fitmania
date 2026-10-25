@@ -11,11 +11,9 @@ import {
   Pill, 
   Cookie, 
   Shirt,
-  Plus,
   Trash2,
   Image as ImageIcon,
   Save,
-  PlusCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';

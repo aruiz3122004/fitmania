@@ -59,7 +59,6 @@ export function PushSettings() {
       }
     })
     return () => unsub()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const enable = async () => {
