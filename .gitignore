@@ -29,7 +29,8 @@ tmp/
 test-ratelimit.js
 
 # Simulation Scripts and Keys
-scripts/
+# scripts/ se versiona (roles, diagnósticos); este escribe ventas falsas en la base real.
+scripts/simulate_sale.js
 scratch/
 *.json
 !package.json
