@@ -1,5 +1,6 @@
 import { Instagram, Facebook, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
+import { LEGAL_ENTITY, OPENING_HOURS, PROJECT_NOTICE } from '@/lib/legal'
 
 export function Footer() {
   return (
@@ -35,7 +36,9 @@ export function Footer() {
             Cra. 54 # 66-12, Nte. Centro Histórico<br />Barranquilla, Atlantico, Colombia
           </p>
           <p className="font-body text-[0.9rem] text-white/90 leading-relaxed">
-            Lun - Sab: 5:00 AM - 10:00 PM<br />Dom: 7:00 AM - 4:00 PM
+            {OPENING_HOURS.map((h) => (
+              <span key={h.corto} className="block">{h.corto}: {h.horas}</span>
+            ))}
           </p>
         </div>
 
@@ -45,10 +48,10 @@ export function Footer() {
             CONTACTO
           </h4>
           <p className="font-body text-[0.9rem] text-white/90 mb-3">
-            +57 300 123 4567
+            {LEGAL_ENTITY.telefono}
           </p>
-          <p className="font-body text-[0.9rem] text-white/90">
-            info@fitmania.com
+          <p className="font-body text-[0.9rem] text-white/90 break-all">
+            {LEGAL_ENTITY.correoDatos}
           </p>
         </div>
 
@@ -97,9 +100,13 @@ export function Footer() {
           <Link href="/legal/terminos">Términos y condiciones</Link>
           <Link href="/legal/cookies">Cookies</Link>
           <Link href="/pqrs">PQRS</Link>
+          <Link href="/preguntas-frecuentes">Preguntas frecuentes</Link>
         </nav>
         <p className="font-label text-[0.8rem] text-white/80 tracking-[1px]">
           &copy; 2026 FITMANIA. Todos los derechos reservados. Tu Pasion. Tu Fuerza.
+        </p>
+        <p className="max-w-[760px] mx-auto mt-3 font-body text-[0.72rem] text-white/75 leading-relaxed">
+          {PROJECT_NOTICE.fictional} {PROJECT_NOTICE.ai}
         </p>
       </div>
     </footer>

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { LegalPage } from '@/components/legal/legal-page'
-import { LEGAL_ENTITY } from '@/lib/legal'
+import { LEGAL_ENTITY, PROJECT_NOTICE } from '@/lib/legal'
 
 export const metadata: Metadata = {
   title: 'Términos y condiciones',
@@ -14,6 +14,16 @@ export default function TerminosPage() {
     <LegalPage title="Términos y condiciones">
       <p>Estos términos regulan el uso de la plataforma de {e.nombre} ({e.razonSocial}, NIT {e.nit}) y la compra de
         membresías y productos. Al crear una cuenta o comprar, declaras haberlos leído y aceptado (Ley 527 de 1999).</p>
+
+      <h2>Aviso: proyecto demostrativo y contenido asistido por IA</h2>
+      <ul>
+        <li>{PROJECT_NOTICE.fictional}</li>
+        <li>Por eso, {e.nombre} no vende membresías ni productos reales. Ningún pago de este sitio constituye una compra ni
+          genera obligaciones comerciales, y no se debe usar con datos de pago reales.</li>
+        <li>{PROJECT_NOTICE.ai} Ese contenido puede contener errores. No reemplaza la asesoría médica, nutricional, legal ni
+          profesional.</li>
+        <li>Los nombres y perfiles de entrenadores, testimonios y noticias del gimnasio son ilustrativos.</li>
+      </ul>
 
       <h2>1. Cuenta</h2>
       <ul>
@@ -32,7 +42,7 @@ export default function TerminosPage() {
       <h2>3. Compras y pagos</h2>
       <ul>
         <li>Los precios se expresan en pesos colombianos (COP) e incluyen los impuestos aplicables.</li>
-        <li>El pago se procesa a través de una pasarela certificada; {e.nombre} no almacena datos de tarjetas.</li>
+        <li>El pago se procesa en Mercado Pago (tarjeta, PSE, Efecty o saldo); {e.nombre} no recibe ni almacena datos de tarjetas ni de cuentas.</li>
         <li>Recibirás la confirmación y el soporte de pago en tu correo.</li>
       </ul>
 

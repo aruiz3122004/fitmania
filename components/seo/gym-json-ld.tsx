@@ -1,4 +1,4 @@
-import { LEGAL_ENTITY } from '@/lib/legal'
+import { IS_FICTIONAL, LEGAL_ENTITY, OPENING_HOURS } from '@/lib/legal'
 import { SITE_URL } from '@/lib/site'
 
 /**
@@ -6,7 +6,8 @@ import { SITE_URL } from '@/lib/site'
  * panel del negocio en búsquedas como "gimnasio en Barranquilla". Los campos que
  * siguen con "[...]" en lib/legal.ts (pendientes de completar) se omiten.
  */
-const filled = (v: string) => (v && !v.includes('[') ? v : undefined)
+// Datos ficticios (proyecto de portafolio): no se publican como datos reales de un negocio.
+const filled = (v: string) => (!IS_FICTIONAL && v && !v.includes('[') ? v : undefined)
 
 export function GymJsonLd() {
   const data = {
@@ -25,11 +26,13 @@ export function GymJsonLd() {
       addressRegion: 'Atlántico',
       addressCountry: 'CO',
     },
-    // TODO: confirmar el horario real de la sede.
-    openingHoursSpecification: [
-      { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], opens: '05:00', closes: '22:00' },
-      { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Saturday'], opens: '07:00', closes: '14:00' },
-    ],
+    // Antes decía sábados 7–14 h, distinto del pie de página: ahora ambos leen OPENING_HOURS.
+    openingHoursSpecification: OPENING_HOURS.map((h) => ({
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: h.schemaDays,
+      opens: h.opens,
+      closes: h.closes,
+    })),
   }
   return (
     <script
