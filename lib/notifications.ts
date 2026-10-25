@@ -27,7 +27,13 @@ export async function generatePlanExpiryNotifications(
   const now = new Date();
   const dateKey = getDateKeyInAppTz(now);
 
-  const usersSnapshot = await db.collection('users').where('plan', '!=', null).get();
+  // Solo los planes que vencen en los próximos 5 días (antes: todos los usuarios con plan).
+  // Un plan congelado tiene `expira` = momento del congelamiento, así que queda fuera.
+  const usersSnapshot = await db
+    .collection('users')
+    .where('plan.expira', '>=', now)
+    .where('plan.expira', '<=', new Date(now.getTime() + 5 * 86_400_000))
+    .get();
 
   // F2-23: sin N+1 ni límite de 500. Antes se hacía un `get()` por socio para ver si
   // el aviso ya existía y todo iba en un único batch (falla con >500 escrituras).
@@ -50,7 +56,7 @@ export async function generatePlanExpiryNotifications(
   for (const doc of usersSnapshot.docs) {
     const userData = doc.data();
     const plan = userData.plan;
-    if (!plan || !plan.expira) continue;
+    if (!plan || !plan.expira || plan.frozen) continue;
 
     evaluated++;
 

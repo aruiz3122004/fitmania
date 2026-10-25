@@ -363,7 +363,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 3px solid var(--line);
     <!-- 7 -->
     <section id="escala">
       <h2><span class="q">¿Cómo escalará la aplicación?</span>Escalabilidad</h2>
-      <p class="answer">Para una sede la capacidad sobra. Vercel y Firestore escalan solos, y el trabajo caro (reportes, conciliación) ya está acotado. Los límites reales están en el costo por lectura, en tres consultas que leen colecciones completas y en el cron que corre una vez al día con el plan gratuito.</p>
+      <p class="answer">Para una sede la capacidad sobra. Vercel y Firestore escalan solos, y el trabajo caro (reportes, conciliación, avisos) ya está acotado. Los límites reales están en el costo por lectura, en la lista de usuarios del admin, que lee la colección completa, y en el cron que corre una vez al día con el plan gratuito.</p>
 
       <h3>Carga estimada para una sede (500 socios, 100 ingresos al día)</h3>
       <div class="panel" style="box-shadow:6px 6px 0 var(--yellow)">
@@ -377,8 +377,8 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 3px solid var(--line);
       <div class="tbl"><table>
         <thead><tr><th>Punto</th><th>Hoy</th><th>Se nota a partir de</th><th>Solución prevista</th></tr></thead>
         <tbody>
-          <tr><td>Lista de usuarios del admin</td><td>Lee toda la colección <code>users</code></td><td class="num">~5.000 socios</td><td>Paginación por cursor y búsqueda por prefijo</td></tr>
-          <tr><td>Avisos de vencimiento</td><td><code>users where plan != null</code></td><td class="num">~10.000 socios</td><td>Consultar por rango de <code>plan.expira</code> con índice</td></tr>
+          <tr><td>Lista de usuarios del admin</td><td>Lee toda la colección <code>users</code>; la tabla muestra 50 por vez</td><td class="num">~5.000 socios</td><td>Paginación por cursor y búsqueda por prefijo</td></tr>
+          <tr><td>Avisos de vencimiento</td><td>Rango de <code>plan.expira</code> (próximos 5 días)</td><td class="num">Resuelto</td><td>Solo lee los planes que vencen pronto</td></tr>
           <tr><td>Conciliación de pagos</td><td>200 por corrida, 25 s de presupuesto</td><td class="num">&gt;200 pendientes/día</td><td>Cron cada hora (Vercel Pro); los sobrantes quedan en <code>deferred</code></td></tr>
           <tr><td>Catálogo público</td><td>Caché en memoria de 60 s</td><td class="num">Tráfico alto</td><td>Ya está cubierto; si no basta, ISR por etiqueta</td></tr>
           <tr><td>Escaneo en hora pico</td><td>1 transacción por ingreso</td><td class="num">&gt;1 escritura/s en un mismo día</td><td>Repartir <code>daily_stats</code> en contadores fragmentados</td></tr>
