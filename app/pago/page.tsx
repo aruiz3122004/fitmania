@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 export const dynamic = 'force-dynamic'
 
 import { Topbar } from '@/components/layout/topbar'
+import { ComicLoader } from '@/components/ui/comic-loader'
 import { Footer } from '@/components/layout/footer'
 import { useAuthStore, useCartStore } from '@/lib/store'
 import { auth, db } from '@/lib/firebase'
@@ -127,8 +128,9 @@ function PagoContent() {
 
   if (loading) {
      return (
-       <main className="min-h-screen bg-muted flex items-center justify-center">
-         <Loader2 className="w-12 h-12 text-primary animate-spin" />
+       <main>
+         <Topbar />
+         <ComicLoader label="Preparando tu pago" belowTopbar />
        </main>
      )
   }

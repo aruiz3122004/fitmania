@@ -9,6 +9,7 @@ import { EmailVerificationBanner } from '@/components/auth/email-verification-ba
 import { useAuthorAvatars } from '@/lib/author-profiles'
 import { useAuthStore } from '@/lib/store'
 import { FitAvatar } from '@/components/ui/fit-avatar'
+import { PostSkeleton } from '@/components/ui/comic-skeleton'
 import { planTier, PLAN_TIERS, type PlanTier } from '@/lib/plan-theme'
 import { auth, db } from '@/lib/firebase'
 import {
@@ -891,6 +892,7 @@ export default function ForoPage() {
   const [cursor, setCursor] = useState<QueryDocumentSnapshot<DocumentData> | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [postsLoaded, setPostsLoaded] = useState(false)
   const olderLoadedRef = useRef(0)
 
   const toForumPost = (docItem: QueryDocumentSnapshot<DocumentData>): ForumPost => {
@@ -934,6 +936,7 @@ export default function ForoPage() {
     const unsubscribe = onSnapshot(query(ref, ...constraints, limit(PAGE_SIZE + 1)), (snapshot) => {
       const docs = snapshot.docs.slice(0, PAGE_SIZE)
       setLivePosts(docs.map(toForumPost))
+      setPostsLoaded(true)
       // El cursor de la primera página solo aplica si aún no se cargaron páginas antiguas.
       if (olderLoadedRef.current === 0) {
         setHasMore(snapshot.docs.length > PAGE_SIZE)
@@ -1046,6 +1049,19 @@ export default function ForoPage() {
           <EmailVerificationBanner />
           <NewsSlider />
           <CreatePostForm onPublish={handlePublish} />
+          {!postsLoaded && (
+            <div aria-busy="true">
+              <span role="status" className="sr-only">Cargando publicaciones</span>
+              <PostSkeleton />
+              <PostSkeleton />
+            </div>
+          )}
+          {postsLoaded && posts.length === 0 && (
+            <div className="bg-white border-3 border-dashed border-secondary p-10 text-center mb-6">
+              <p className="font-display text-2xl text-secondary tracking-wider mb-2">¡EL FORO ESTÁ EN CALMA!</p>
+              <p className="font-body text-sm text-gray-600">No hay publicaciones de los últimos 30 días. Sé el primero en contar cómo va tu entreno.</p>
+            </div>
+          )}
           {posts.map((post) => (
             <PostCard
               key={post.id}

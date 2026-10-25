@@ -3,7 +3,8 @@
 import { useState, useEffect, JSXElementConstructor, Key, ReactElement, ReactNode, ReactPortal } from 'react'
 import { useRouter } from 'next/navigation'
 import { SectionHeader } from '@/components/ui/section-header'
-import { Clock, Users, Star, Coffee, ArrowRight, Loader2 } from 'lucide-react'
+import { Clock, Users, Star, Coffee, ArrowRight } from 'lucide-react'
+import { PlanesSkeleton } from '@/components/ui/comic-skeleton'
 import { db } from '@/lib/firebase'
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore'
 
@@ -44,13 +45,7 @@ export function Planes({ initialPlanes }: { initialPlanes?: any[] | null } = {})
     router.push(`/pago?planId=${plan.id}`)
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20 bg-muted">
-        <Loader2 className="w-10 h-10 text-primary animate-spin" />
-      </div>
-    )
-  }
+  if (loading) return <PlanesSkeleton />
 
   return (
     <section id="planes" className="bg-muted relative overflow-hidden py-20">

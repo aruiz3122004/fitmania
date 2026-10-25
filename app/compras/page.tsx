@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Footer } from '@/components/layout/footer'
 import { SectionHeader } from '@/components/ui/section-header'
+import { Skeleton } from '@/components/ui/comic-skeleton'
 import { auth } from '@/lib/firebase'
 import { useAuthStore, useUIStore } from '@/lib/store'
 import type { PurchaseEntry, PurchaseStatus, PurchaseSummary } from '@/lib/purchase-history'
@@ -111,13 +112,13 @@ export default function ComprasPage() {
           {estado === 'cargando' && (
             <div className="space-y-4" aria-busy="true" aria-label="Cargando historial">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="bg-white border-3 border-secondary shadow-comic p-5 flex items-center gap-4 animate-pulse">
-                  <div className="w-12 h-12 rounded-2xl bg-gray-200 shrink-0" />
+                <div key={i} className="bg-white border-3 border-secondary shadow-comic p-5 flex items-center gap-4">
+                  <Skeleton className="w-12 h-12 rounded-2xl shrink-0" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-gray-200 w-1/2" />
-                    <div className="h-3 bg-gray-100 w-1/3" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-3 w-1/3" />
                   </div>
-                  <div className="h-6 w-24 bg-gray-200" />
+                  <Skeleton className="h-6 w-24" />
                 </div>
               ))}
             </div>

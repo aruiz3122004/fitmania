@@ -13,11 +13,16 @@ import { cacheMembers, cachedMembers, enqueueOfflineEntry, pendingOfflineEntries
 import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList, Package } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
-import EntryHistoryTab from '@/components/recepcion/entry-history-tab'
-import InventoryTab from '@/components/recepcion/inventory-tab'
-import CashTab from '@/components/recepcion/cash-tab'
 import { ManualEntryForm } from '@/components/recepcion/manual-entry-form'
 import { MembersDirectory } from '@/components/recepcion/members-directory'
+import { ListSkeleton } from '@/components/ui/comic-skeleton'
+
+// Pestañas secundarias de recepción: se descargan al abrirlas (el escáner va primero).
+const tabLoading = () => <ListSkeleton rows={3} label="Cargando la pestaña" />
+const EntryHistoryTab = dynamic(() => import('@/components/recepcion/entry-history-tab'), { loading: tabLoading })
+const InventoryTab = dynamic(() => import('@/components/recepcion/inventory-tab'), { loading: tabLoading })
+const CashTab = dynamic(() => import('@/components/recepcion/cash-tab'), { loading: tabLoading })
+
 
 // El lector (barcode-detector/zxing-wasm) descarga su .wasm de jsDelivr por defecto,
 // y la CSP no permite ese origen: se sirve una copia propia desde /vendor/zxing/

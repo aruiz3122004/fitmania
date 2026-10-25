@@ -180,3 +180,41 @@
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
 }
+
+/* Pantallas de carga y skeletons (components/ui/comic-loader.tsx y comic-skeleton.tsx) */
+@keyframes fm-shimmer {
+  0% { background-position: -200% 0, 0 0; }
+  100% { background-position: 200% 0, 0 0; }
+}
+@keyframes fm-burst {
+  0%, 100% { transform: rotate(-4deg) scale(1); }
+  50% { transform: rotate(3deg) scale(1.06); }
+}
+@keyframes fm-lift {
+  0%, 100% { transform: translateY(6px) rotate(-8deg); }
+  50% { transform: translateY(-14px) rotate(8deg); }
+}
+@keyframes fm-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 40px 0; }
+}
+@keyframes fm-word {
+  0%, 100% { opacity: 0; transform: translateY(8px) scale(0.9); }
+  10%, 30% { opacity: 1; transform: translateY(0) scale(1); }
+  40% { opacity: 0; transform: translateY(-8px) scale(1.05); }
+}
+.fm-skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: #e5e7eb;
+  background-image:
+    linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.75) 50%, transparent 80%),
+    radial-gradient(circle, rgba(26, 26, 46, 0.12) 1px, transparent 1.2px);
+  background-size: 200% 100%, 8px 8px;
+  animation: fm-shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-skeleton, .fm-burst, .fm-lift, .fm-stripes, .fm-word { animation: none !important; }
+  .fm-word { opacity: 0 !important; }
+  .fm-word:first-child { opacity: 1 !important; }
+}

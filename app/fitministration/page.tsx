@@ -13,19 +13,25 @@ import { Sidebar } from '@/components/admin/sidebar';
 import { AdminLoginForm } from '@/components/admin/admin-login-form';
 import { AdminHeader } from '@/components/admin/admin-header';
 import { AdminGlobalStyles } from '@/components/admin/admin-global-styles';
-import { AuditLogsTab } from '@/components/admin/audit-logs-tab';
-import { AttendanceTab } from '@/components/admin/attendance-tab';
-import { SystemTab } from '@/components/admin/system-tab';
-import { CommunityTab } from '@/components/admin/community-tab';
-import { PaymentsTab } from '@/components/admin/payments-tab';
 import { OverviewTab } from '@/components/admin/tabs/overview-tab';
-import { UsersTab } from '@/components/admin/tabs/users-tab';
-import { InventoryTab } from '@/components/admin/tabs/inventory-tab';
-import { PqrsTab } from '@/components/admin/tabs/pqrs-tab';
-import { PlanesTab } from '@/components/admin/tabs/planes-tab';
-import { OrdersTab } from '@/components/admin/tabs/orders-tab';
 import type { ConfirmState } from '@/components/admin/tabs/types';
+import nextDynamic from 'next/dynamic';
+import { ListSkeleton } from '@/components/ui/comic-skeleton';
 import { XCircle } from 'lucide-react';
+
+// Cada pestaña se descarga al abrirla por primera vez (el resumen va en el paquete inicial).
+const tabLoading = () => <ListSkeleton rows={4} label="Cargando la pestaña" />;
+const AuditLogsTab = nextDynamic(() => import('@/components/admin/audit-logs-tab').then((m) => m.AuditLogsTab), { loading: tabLoading });
+const AttendanceTab = nextDynamic(() => import('@/components/admin/attendance-tab').then((m) => m.AttendanceTab), { loading: tabLoading });
+const SystemTab = nextDynamic(() => import('@/components/admin/system-tab').then((m) => m.SystemTab), { loading: tabLoading });
+const CommunityTab = nextDynamic(() => import('@/components/admin/community-tab').then((m) => m.CommunityTab), { loading: tabLoading });
+const PaymentsTab = nextDynamic(() => import('@/components/admin/payments-tab').then((m) => m.PaymentsTab), { loading: tabLoading });
+const UsersTab = nextDynamic(() => import('@/components/admin/tabs/users-tab').then((m) => m.UsersTab), { loading: tabLoading });
+const InventoryTab = nextDynamic(() => import('@/components/admin/tabs/inventory-tab').then((m) => m.InventoryTab), { loading: tabLoading });
+const PqrsTab = nextDynamic(() => import('@/components/admin/tabs/pqrs-tab').then((m) => m.PqrsTab), { loading: tabLoading });
+const PlanesTab = nextDynamic(() => import('@/components/admin/tabs/planes-tab').then((m) => m.PlanesTab), { loading: tabLoading });
+const OrdersTab = nextDynamic(() => import('@/components/admin/tabs/orders-tab').then((m) => m.OrdersTab), { loading: tabLoading });
+
 
 // F3-21: cada pestaña vive en components/admin/tabs/*; aquí quedan la sesión,
 // la carga de datos compartidos, el encabezado y el modal de confirmación.

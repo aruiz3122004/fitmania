@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { SectionHeader } from '@/components/ui/section-header'
+import { ProductosSkeleton } from '@/components/ui/comic-skeleton'
 import { useCartStore, type CartItem } from '@/lib/store'
 import { 
   Pill, 
@@ -14,7 +15,6 @@ import {
   Heart, 
   Zap, 
   Award,
-  Loader2,
   AlertCircle
 } from 'lucide-react'
 import { db } from '@/lib/firebase'
@@ -228,14 +228,7 @@ export function Productos({ initialProducts }: { initialProducts?: Product[] | n
     return () => unsubscribe();
   }, [initialProducts]);
 
-  if (loading) {
-    return (
-      <div className="py-20 flex flex-col items-center justify-center space-y-4">
-        <Loader2 className="w-12 h-12 text-primary animate-spin" />
-        <p className="font-display text-2xl text-secondary tracking-widest italic animate-pulse">CARGANDO Battle Shop...</p>
-      </div>
-    );
-  }
+  if (loading) return <ProductosSkeleton />;
 
   if (error) {
     return (
