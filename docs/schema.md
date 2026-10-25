@@ -12,7 +12,10 @@ Documento de referencia (F2-16). Toda colección nueva o cambio de campos se doc
 | `users/{uid}` | Servidor (alta, plan, acompañante); el dueño solo `username, avatar, photoURL, peso, altura, gender` | Dueño, admin | El plan solo lo escribe el servidor |
 | `planes/{id}` | Admin (vía API) | Público | `days` define la duración (B3) |
 | `products/{id}` | Admin (vía API), webhook (stock) | Público | ID = slug del nombre |
-| `orders/{paymentIntentId}` | Webhook | Dueño, admin | ID determinista = idempotencia |
+| `orders/{ref}` | Webhook de Mercado Pago | Dueño, admin | ID = referencia del pago (`fm_…`) = idempotencia. Órdenes antiguas de Stripe usan el `paymentIntentId` |
+| `payments/{ref}` | Servidor (checkout, webhook, cron) | — (vía API) | Intento de pago con la foto del checkout |
+| `mfa_state/{uid}` | Servidor (`/api/auth/mfa`) | — (las reglas lo leen con `get()`) | Verificación en dos pasos: `enabled`, `sessions` (`auth_time` verificados), `recoveryHashes` |
+| `mfa_challenges/{uid}` | Servidor | — | Código pendiente (hash con sal), vence en 10 min, 5 intentos |
 | `posts/{id}` | Autor (crear/editar), terceros (solo su like), admin | Público | Exige correo verificado |
 | `posts/{id}/comments/{id}` | Autor del comentario; borra también el autor del post o el admin | Público | F1-07 |
 | `pqrs/{id}` | Dueño (crear), admin (responder) | Dueño, admin | |

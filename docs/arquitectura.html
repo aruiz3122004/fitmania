@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Arquitectura FITMANIA</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Epilogue:wght@600;800&family=Plus+Jakarta+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: columna de lectura con índice lateral fijo en escritorio; bloques "panel de cómic" solo para diagramas y avisos. */
+:root {
+  --bg: #f6f5f1;
+  --surface: #ffffff;
+  --ink: #1a1a2e;
+  --muted: #5b5d72;
+  --line: #1a1a2e;
+  --hair: #d9d8e2;
+  --red: #dc2626;
+  --yellow: #facc15;
+  --blue: #1e40af;
+  --ok: #15803d;
+  --warn: #b45309;
+  --crit: #b91c1c;
+  --chip-bg: #eeedf3;
+  --code-bg: #efeef4;
+  --f-display: "Bangers", "Impact", "Arial Black", sans-serif;
+  --f-head: "Epilogue", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12121f; --surface: #1b1b2d; --ink: #ecebf5; --muted: #a3a4bb; --line: #ecebf5; --hair: #33344d;
+    --red: #f05252; --yellow: #facc15; --blue: #7ea2ff; --ok: #4ade80; --warn: #fbbf24; --crit: #f87171;
+    --chip-bg: #26273d; --code-bg: #24253a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12121f; --surface: #1b1b2d; --ink: #ecebf5; --muted: #a3a4bb; --line: #ecebf5; --hair: #33344d;
+  --red: #f05252; --yellow: #facc15; --blue: #7ea2ff; --ok: #4ade80; --warn: #fbbf24; --crit: #f87171;
+  --chip-bg: #26273d; --code-bg: #24253a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 15.5px/1.65 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+a { color: var(--blue); }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+code, .mono { font-family: var(--f-mono); font-size: .86em; }
+code { background: var(--code-bg); padding: .08em .35em; border-radius: 3px; overflow-wrap: anywhere; }
+
+.shell { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; padding-block: 40px 80px; }
+@media (max-width: 900px) { .shell { grid-template-columns: minmax(0, 1fr); gap: 24px; } nav.toc { position: static !important; } }
+
+nav.toc { position: sticky; top: 24px; align-self: start; font-size: 13.5px; }
+nav.toc .brand { font-family: var(--f-display); font-size: 30px; letter-spacing: .04em; color: var(--red); line-height: 1; }
+nav.toc .brand span { color: var(--ink); }
+nav.toc ol { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 2px; counter-reset: s; }
+nav.toc li { counter-increment: s; }
+nav.toc a { display: flex; gap: 8px; color: var(--muted); text-decoration: none; padding: 4px 0; }
+nav.toc a::before { content: counter(s, decimal-leading-zero); font-family: var(--f-mono); font-size: 11px; color: var(--red); padding-top: 3px; }
+nav.toc a:hover { color: var(--ink); }
+@media (max-width: 900px) { nav.toc ol { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); } }
+
+main { min-width: 0; }
+header.hero { border-bottom: 3px solid var(--line); padding-bottom: 28px; margin-bottom: 8px; }
+.eyebrow { font: 600 12px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
+h1 { font-family: var(--f-display); font-weight: 400; font-size: clamp(44px, 7vw, 76px); line-height: .95; letter-spacing: .02em; margin: 12px 0 14px; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--red); }
+.lede { font-size: 18px; max-width: 64ch; color: var(--ink); margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; font: 12.5px/1.4 var(--f-mono); color: var(--muted); }
+
+section { padding-top: 44px; scroll-margin-top: 16px; }
+h2 { font: 800 clamp(24px, 3.2vw, 32px)/1.15 var(--f-head); margin: 0 0 6px; text-wrap: balance; }
+h2 .q { display: block; font: 600 12px/1.4 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--red); margin-bottom: 8px; }
+h3 { font: 800 18px/1.3 var(--f-head); margin: 28px 0 8px; text-wrap: balance; }
+p { margin: 0 0 12px; max-width: 70ch; }
+.answer { font-size: 17px; max-width: 66ch; border-left: 4px solid var(--yellow); padding-left: 14px; margin: 10px 0 18px; }
+ul.tight { margin: 0 0 12px; padding-left: 20px; max-width: 70ch; } ul.tight li { margin: 3px 0; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0; border: 2px solid var(--line); margin-top: 24px; background: var(--surface); }
+.stats div { padding: 14px 16px; border-right: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+.stats b { display: block; font: 400 34px/1 var(--f-display); letter-spacing: .03em; font-variant-numeric: tabular-nums; }
+.stats span { font-size: 12.5px; color: var(--muted); }
+
+/* Panel de cómic: solo diagramas */
+.panel { background: var(--surface); border: 3px solid var(--line); box-shadow: 6px 6px 0 var(--red); padding: 18px; margin: 18px 0 8px; overflow-x: auto; }
+.panel-cap { font: 12px/1.5 var(--f-mono); color: var(--muted); margin: 10px 0 0; }
+
+.layers { display: grid; grid-template-columns: repeat(4, minmax(170px, 1fr)); gap: 14px; min-width: 760px; }
+.layer h4 { margin: 0 0 8px; font: 600 11px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
+.box { border: 2px solid var(--line); padding: 8px 10px; margin-bottom: 8px; font-size: 13px; line-height: 1.4; background: var(--bg); }
+.box b { display: block; font-family: var(--f-head); font-size: 13.5px; }
+.box small { color: var(--muted); }
+.box.hot { background: var(--yellow); color: #1a1a2e; border-color: #1a1a2e; }
+.box.hot small { color: #3d3d55; }
+.arrowrow { display: grid; grid-template-columns: repeat(4, minmax(170px, 1fr)); gap: 14px; min-width: 760px; margin-top: 4px; font: 11.5px/1.3 var(--f-mono); color: var(--muted); }
+
+.seq { counter-reset: st; list-style: none; padding: 0; margin: 0; display: grid; gap: 0; min-width: 0; }
+.seq li { counter-increment: st; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--hair); }
+.seq li:last-child { border-bottom: 0; }
+.seq li::before { content: counter(st); font: 400 22px/34px var(--f-display); text-align: center; width: 34px; height: 34px; background: var(--ink); color: var(--bg); }
+.seq .who { font: 600 11px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--blue); margin-bottom: 4px; display: block; }
+
+.tbl { overflow-x: auto; margin: 12px 0 18px; border: 1px solid var(--hair); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; line-height: 1.45; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--hair); }
+th { font: 600 11px/1.3 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--chip-bg); white-space: nowrap; }
+td:first-child { white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.pill { display: inline-block; font: 600 10.5px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; padding: 4px 7px; border: 1.5px solid currentColor; white-space: nowrap; }
+.p-crit { color: var(--crit); } .p-warn { color: var(--warn); } .p-ok { color: var(--ok); } .p-info { color: var(--blue); }
+
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+@media (max-width: 700px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.note { border: 2px solid var(--line); padding: 14px 16px; background: var(--surface); }
+.note h4 { margin: 0 0 6px; font: 800 15px/1.3 var(--f-head); }
+.note p, .note ul { font-size: 14px; margin-bottom: 0; }
+
+.check { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 0; border: 2px solid var(--line); background: var(--surface); }
+.check li { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 14px; border-bottom: 1px solid var(--hair); font-size: 14px; }
+.check li:last-child { border-bottom: 0; }
+.check .who { font: 11.5px/1.4 var(--f-mono); color: var(--muted); text-align: right; white-space: nowrap; }
+.check b { font-family: var(--f-head); }
+@media (max-width: 640px) { .check li { grid-template-columns: minmax(0, 1fr); gap: 4px; } .check .who { text-align: left; } }
+
+.bar { display: grid; grid-template-columns: 150px minmax(0, 1fr) 82px; gap: 10px; align-items: center; font-size: 13px; margin: 6px 0; }
+.bar .track { height: 14px; background: var(--chip-bg); border: 1px solid var(--hair); position: relative; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--red); }
+.bar .v { font: 12px var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .bar { grid-template-columns: minmax(0, 1fr) 70px; } .bar .track { grid-column: 1 / -1; grid-row: 2; } }
+
+footer { margin-top: 56px; padding-top: 18px; border-top: 3px solid var(--line); font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="toc" aria-label="Contenido">
+    <div class="brand">FIT<span>MANIA</span></div>
+    <ol>
+      <li><a href="#vista">Vista general</a></li>
+      <li><a href="#backend">Backend</a></li>
+      <li><a href="#pagos">Pagos</a></li>
+      <li><a href="#datos">Datos del usuario</a></li>
+      <li><a href="#seguridad">Seguridad</a></li>
+      <li><a href="#recepcion">Recepción y plan B</a></li>
+      <li><a href="#escala">Escalabilidad</a></li>
+      <li><a href="#operacion">Operación</a></li>
+      <li><a href="#calidad">Calidad y CI</a></li>
+      <li><a href="#decisiones">Decisiones</a></li>
+      <li><a href="#imprescindibles">Antes de producción</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <div class="eyebrow">Mapa de arquitectura · rama fix/fase1-criticos · 25-10-2026</div>
+      <h1>Cómo está hecho <em>FITMANIA</em></h1>
+      <p class="lede">Sistema de gestión para un gimnasio de Barranquilla: venta de planes y productos, control de ingresos con pase QR, panel de administración, recepción con punto de venta, foro y PQRS. Este documento explica cómo está construido, cómo trata los datos de las personas y hasta dónde puede crecer sin rediseñarse.</p>
+      <div class="meta">
+        <span>Next.js 16.4.3 · React 19.2</span>
+        <span>Firebase Auth + Firestore</span>
+        <span>Mercado Pago Checkout Pro</span>
+        <span>Vercel · Upstash · Resend · Cloudinary</span>
+      </div>
+      <div class="stats" role="list">
+        <div role="listitem"><b>54</b><span>rutas de API</span></div>
+        <div role="listitem"><b>20</b><span>colecciones con reglas explícitas</span></div>
+        <div role="listitem"><b>77</b><span>pruebas unitarias</span></div>
+        <div role="listitem"><b>16</b><span>pruebas de reglas (emulador)</span></div>
+        <div role="listitem"><b>1</b><span>pasarela de pago</span></div>
+        <div role="listitem"><b>ene 2027</b><span>salida prevista</span></div>
+      </div>
+    </header>
+
+    <!-- 1 -->
+    <section id="vista">
+      <h2><span class="q">¿Qué piezas hay y cómo se conectan?</span>Vista general</h2>
+      <p class="answer">Es un monolito modular: una sola aplicación Next.js sirve las páginas y la API. Firebase guarda los datos y autentica, y los servicios externos se llaman por HTTP desde el servidor. No hay servidores propios que mantener.</p>
+      <div class="panel" role="img" aria-label="Diagrama de capas: clientes, borde, aplicación y servicios">
+        <div class="layers">
+          <div class="layer">
+            <h4>Clientes</h4>
+            <div class="box"><b>Socio (web / PWA)</b><small>planes, tienda, perfil, pase QR, foro, PQRS</small></div>
+            <div class="box"><b>Recepción /fitception</b><small>escáner QR, POS, cierre de caja, cola offline</small></div>
+            <div class="box"><b>Admin /fitministration</b><small>usuarios, planes, inventario, pagos, reportes, auditoría</small></div>
+            <div class="box"><b>Planilla en papel</b><small>/planilla-ingresos, contingencia sin internet</small></div>
+          </div>
+          <div class="layer">
+            <h4>Borde · proxy.ts</h4>
+            <div class="box hot"><b>Proxy de Next 16</b><small>CSP con nonce, cabeceras de seguridad, control de Origin (CSRF)</small></div>
+            <div class="box"><b>Puertas de paneles</b><small>cookie HMAC antes de mostrar /fitministration y /fitception</small></div>
+            <div class="box"><b>Límite de peticiones</b><small>Upstash Redis, por IP y por usuario</small></div>
+          </div>
+          <div class="layer">
+            <h4>Aplicación · Vercel</h4>
+            <div class="box"><b>Páginas (App Router)</b><small>render dinámico, sin caché de datos privados</small></div>
+            <div class="box hot"><b>Route handlers /api</b><small>admin · recepción · me · payments · auth · forum · cron</small></div>
+            <div class="box"><b>lib/ (dominio)</b><small>payments, plan-math, attendance, retention, mfa, access-token</small></div>
+            <div class="box"><b>Cron diario 12:00 UTC</b><small>avisos, conciliación de pagos, retención</small></div>
+          </div>
+          <div class="layer">
+            <h4>Datos y servicios</h4>
+            <div class="box hot"><b>Firestore</b><small>fuente única de verdad, reglas por colección</small></div>
+            <div class="box"><b>Firebase Auth</b><small>correo/contraseña, TOTP, sesiones revocables</small></div>
+            <div class="box"><b>Mercado Pago</b><small>Checkout Pro, webhook firmado</small></div>
+            <div class="box"><b>Resend · FCM · Cloudinary · Sentry</b><small>correo, push, imágenes, errores</small></div>
+          </div>
+        </div>
+        <div class="arrowrow"><span>HTTPS + ID token de Firebase</span><span>reescribe y filtra antes de llegar a la app</span><span>Admin SDK (salta reglas, valida en código)</span><span>SDK cliente pasa por las reglas</span></div>
+      </div>
+      <p class="panel-cap">El navegador lee directamente de Firestore lo que las reglas permiten (perfil propio, catálogo, foro). Todo lo que mueve dinero, planes o stock pasa por la API, que usa el Admin SDK.</p>
+    </section>
+
+    <!-- 2 -->
+    <section id="backend">
+      <h2><span class="q">¿Cómo está estructurado el backend?</span>Backend</h2>
+      <p class="answer">Tres capas dentro del mismo despliegue. El borde (<code>proxy.ts</code>) filtra. Los route handlers autentican y validan. La lógica de negocio vive en <code>lib/</code> como funciones puras o transaccionales que se prueban sin red.</p>
+
+      <h3>Rutas por dominio y quién puede llamarlas</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Dominio</th><th>Rutas</th><th>Autenticación</th><th>Qué hace</th></tr></thead>
+        <tbody>
+          <tr><td><code>/api/admin/*</code></td><td class="num">22</td><td>Cookie de sesión admin (1 h, revocable) + claim <code>admin</code></td><td>Usuarios, congelar planes, planes, productos e importación, inventario, pagos, órdenes, reportes, exportes, noticias, PQRS, logs, migraciones, retención</td></tr>
+          <tr><td><code>/api/recepcion/*</code></td><td class="num">9</td><td>Cookie de recepción (12 h) + claim <code>reception</code></td><td>Escaneo QR, registro de ingresos, búsqueda de socios, POS, inventario, cierre de caja</td></tr>
+          <tr><td><code>/api/me/*</code></td><td class="num">7</td><td>ID token + verificación en dos pasos si está activa</td><td>Perfil, compras, pase QR firmado, consentimientos, push, acompañante, descarga y borrado de datos</td></tr>
+          <tr><td><code>/api/payments/*</code></td><td class="num">3</td><td>ID token (checkout, estado) · firma HMAC (webhook)</td><td>Crear cobro, consultar resultado, recibir avisos de Mercado Pago</td></tr>
+          <tr><td><code>/api/auth/*</code></td><td class="num">2</td><td>ID token sin exigir MFA (es el paso que la completa)</td><td>Código por correo, activar o desactivar MFA, códigos de recuperación, verificación de correo</td></tr>
+          <tr><td>Foro, PQRS, subidas</td><td class="num">4</td><td>ID token + MFA</td><td>Editar o borrar posts, reportes, PQRS, firma de subida a Cloudinary</td></tr>
+          <tr><td>Sistema</td><td class="num">7</td><td>Público con límites · <code>CRON_SECRET</code></td><td>Salud, errores del cliente, noticias públicas, cron, registro, chequeo y bitácora de bloqueos de seguridad</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Recorrido de una petición</h3>
+      <ol class="seq">
+        <li><div><span class="who">proxy.ts</span>Genera el nonce de la CSP, rechaza un <code>Origin</code> ajeno en métodos que escriben y aplica el límite de peticiones. Si la ruta es un panel, exige la cookie de puerta firmada con HMAC.</div></li>
+        <li><div><span class="who">route handler</span>Verifica el token con <code>verifyUserRequest</code> o <code>verifyAdminRequest</code> (<code>lib/auth-helpers.ts</code>). Las cookies de sesión se comprueban con <code>checkRevoked</code>, así que cerrar sesión o quitar un rol tiene efecto inmediato.</div></li>
+        <li><div><span class="who">validación</span>Los datos de entrada se validan y se normalizan en el servidor (<code>lib/admin-validation.ts</code>). Los precios, los días de plan y el stock siempre se leen de la base de datos, nunca del navegador.</div></li>
+        <li><div><span class="who">lib/</span>La regla de negocio corre dentro de una transacción de Firestore cuando toca más de un documento: ingreso + estadística diaria, pago + plan + stock + orden, venta POS + inventario.</div></li>
+        <li><div><span class="who">auditoría</span>Las acciones sensibles escriben en <code>audit_logs</code> con actor, IP y diferencias antes/después (<code>lib/audit-diff.ts</code>). El cliente no puede escribir en esa colección.</div></li>
+      </ol>
+
+      <h3>Organización del código</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Carpeta</th><th>Contenido</th></tr></thead>
+        <tbody>
+          <tr><td><code>app/</code></td><td>Páginas públicas, paneles ocultos y <code>app/api</code>. Render dinámico global: nada privado queda en caché.</td></tr>
+          <tr><td><code>lib/payments/</code></td><td><code>pricing</code> (foto de precios), <code>mercadopago</code> (HTTP sin SDK), <code>transitions</code> (máquina de estados), <code>fulfillment</code> (entrega idempotente), <code>reconcile</code> (conciliación), <code>return-state</code></td></tr>
+          <tr><td><code>lib/</code></td><td>Dominio: planes, asistencia, retención, migraciones, pase QR Ed25519, MFA, auditoría, límites, horario comercial</td></tr>
+          <tr><td><code>services/</code></td><td>Correo (Resend con reintentos) y Cloudinary</td></tr>
+          <tr><td><code>components/</code></td><td>UI por área: admin, recepción, perfil, auth, pwa, legal</td></tr>
+          <tr><td><code>tests/</code></td><td>Pruebas unitarias (<code>node --test</code>) y <code>tests/rules</code> contra el emulador</td></tr>
+          <tr><td><code>docs/</code></td><td>Esquema, servicios, runbook, checklist de salida y este mapa</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 3 -->
+    <section id="pagos">
+      <h2><span class="q">¿Cómo se garantiza que no se cobre sin entregar?</span>Pagos con Mercado Pago</h2>
+      <p class="answer">El servidor fija el precio antes de cobrar y guarda una foto de la compra. Solo entrega cuando Mercado Pago confirma, y la entrega es una transacción idempotente: aunque lleguen cinco avisos del mismo pago, el plan se activa una vez.</p>
+      <div class="panel">
+        <ol class="seq">
+          <li><div><span class="who">Socio → /api/payments/checkout</span>Envía qué quiere comprar, nunca el monto. El servidor calcula el total con los precios de Firestore y crea <code>payments/fm_&lt;uuid&gt;</code> en estado <code>pending</code>, con productos, precios y días.</div></li>
+          <li><div><span class="who">Servidor → Mercado Pago</span>Crea la preferencia con <code>external_reference</code> = la referencia propia. Si Mercado Pago no responde en 15 s, no se cobra nada y el carrito sigue intacto.</div></li>
+          <li><div><span class="who">Socio ↔ Checkout Pro</span>Paga con tarjeta, PSE, Efecty o saldo. FITMANIA nunca ve datos de tarjeta ni de cuenta.</div></li>
+          <li><div><span class="who">Mercado Pago → webhook</span>Se verifica la firma <code>x-signature</code> (HMAC). Luego el servidor consulta el pago a la API de Mercado Pago: un aviso falso no puede aprobar nada.</div></li>
+          <li><div><span class="who">transitions.ts → fulfillment.ts</span>Decide la transición (aprobado, rechazado, monto alterado, sobreventa) y, si corresponde, activa el plan, descuenta stock, crea la orden y avisa al admin en una sola transacción.</div></li>
+          <li><div><span class="who">Red de seguridad</span>Si el aviso se pierde, el regreso a <code>/pago/resultado</code> consulta el pago, y el cron diario concilia los pendientes de más de 1 h. Un checkout abandonado vence a las 24 h.</div></li>
+        </ol>
+      </div>
+      <div class="grid2" style="margin-top:18px">
+        <div class="note"><h4>Casos anómalos cubiertos</h4><ul class="tight"><li>Monto distinto al calculado: queda <code>en revisión</code>, no entrega y alerta al admin.</li><li>Sobreventa: reembolso automático de lo faltante y alerta.</li><li>Pago tardío sobre un checkout vencido: se aprueba igual.</li></ul></div>
+        <div class="note"><h4>Por qué no hay SDK</h4><p>Mercado Pago se consume por HTTP con <code>fetch</code> y tiempos límite. Son menos dependencias que auditar, y las respuestas se prueban con datos fijos en <code>tests/mercadopago.test.mts</code>.</p></div>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section id="datos">
+      <h2><span class="q">¿Cómo se maneja la información del usuario?</span>Datos del usuario</h2>
+      <p class="answer">Solo se guarda lo que la persona hace a propósito: cuenta, compras, ingresos, foro, PQRS y autorizaciones. No se guarda historial de navegación. Cada colección tiene dueño, reglas de acceso y un plazo de conservación, y la persona puede descargar o borrar sus datos desde su perfil.</p>
+
+      <h3>Colecciones principales</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Colección</th><th>Contiene</th><th>Lee</th><th>Escribe</th><th>Conservación</th></tr></thead>
+        <tbody>
+          <tr><td><code>users/{uid}</code></td><td>Perfil, plan vigente, congelamiento</td><td>Dueño, admin</td><td>Dueño (campos limitados), servidor</td><td>Mientras exista la cuenta</td></tr>
+          <tr><td><code>public_profiles</code></td><td>Nombre y foto para el foro</td><td>Público</td><td>Servidor</td><td>Con la cuenta</td></tr>
+          <tr><td><code>payments/{ref}</code></td><td>Foto de la compra y estado</td><td>Solo servidor</td><td>Solo servidor</td><td>10 años</td></tr>
+          <tr><td><code>orders</code></td><td>Comprobante de compra aprobada</td><td>Dueño, admin</td><td>Solo servidor</td><td>10 años (contable)</td></tr>
+          <tr><td><code>entry_logs</code></td><td>Ingresos al gimnasio</td><td>Admin, recepción</td><td>Solo servidor</td><td>Anonimizados a los 24 meses</td></tr>
+          <tr><td><code>consents</code></td><td>Autorización Ley 1581: fecha, versión, IP</td><td>Servidor</td><td>Servidor</td><td>Prueba legal</td></tr>
+          <tr><td><code>audit_logs</code></td><td>Acciones de admin y recepción</td><td>Admin</td><td>Solo servidor</td><td>5 años</td></tr>
+          <tr><td><code>email_events</code></td><td>Envíos de correo (sin contenido sensible)</td><td>Servidor</td><td>Servidor</td><td>12 meses</td></tr>
+          <tr><td><code>notifications</code></td><td>Avisos internos</td><td>Admin</td><td>Servidor</td><td>Leídas: 90 días</td></tr>
+          <tr><td><code>mfa_state</code> · <code>mfa_challenges</code></td><td>Hashes de códigos, sesiones verificadas</td><td>Nadie desde el cliente</td><td>Solo servidor</td><td>Se borran al desactivar o eliminar la cuenta</td></tr>
+        </tbody>
+      </table></div>
+
+      <div class="grid2">
+        <div class="note"><h4>Lo que FITMANIA nunca tiene</h4><ul class="tight"><li>Números de tarjeta, CVV o claves de PSE: quedan en Mercado Pago (PCI DSS).</li><li>Contraseñas: las maneja Firebase Auth.</li><li>Códigos MFA en claro: se guarda sha256 con sal y se borran al usarse.</li></ul></div>
+        <div class="note"><h4>Derechos del titular</h4><ul class="tight"><li><b>Descargar</b>: JSON con cuenta, compras, intentos de pago, ingresos, PQRS, foro y autorizaciones.</li><li><b>Eliminar</b>: <code>lib/account-deletion.ts</code> borra perfil, MFA, publicaciones, comentarios y likes del foro y la cuenta de Auth, y anonimiza ingresos y PQRS. Las órdenes se conservan por obligación contable.</li><li><b>Consentimiento</b>: versionado con <code>LEGAL_VERSION</code>.</li></ul></div>
+      </div>
+
+      <h3>Verificación en dos pasos por correo</h3>
+      <p>Es opcional y sirve para socios, recepción y admin. Firebase solo ofrece SMS o TOTP, así que el factor por correo es propio. Se valida en cuatro lugares: la ventana global del cliente, cada ruta de API (<code>isMfaSatisfied</code>), los logins de los paneles y las reglas de Firestore (<code>mfaOk()</code>). Así, aunque alguien robe la contraseña y use el SDK directamente, no puede leer ni escribir datos.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Parámetro</th><th>Valor</th><th>Por qué</th></tr></thead>
+        <tbody>
+          <tr><td>Código</td><td class="num">6 dígitos, 10 min</td><td>Corto de escribir, vence rápido</td></tr>
+          <tr><td>Intentos por código</td><td class="num">5</td><td>Al quinto fallo se invalida</td></tr>
+          <tr><td>Reenvío</td><td class="num">60 s · 5 cada 15 min</td><td>Evita abusar del correo</td></tr>
+          <tr><td>Sesión verificada</td><td>Por <code>auth_time</code> del token</td><td>Un nuevo inicio de sesión pide código otra vez</td></tr>
+          <tr><td>Recuperación</td><td class="num">8 códigos de un uso</td><td>Para cuando se pierde el acceso al correo</td></tr>
+          <tr><td>Copia al admin</td><td>Desactivada</td><td>El correo del código no lleva BCC</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 5 -->
+    <section id="seguridad">
+      <h2><span class="q">¿Qué pasa si falla una capa de seguridad?</span>Seguridad por capas</h2>
+      <p class="answer">Ninguna protección depende de una sola capa. Si el cliente se salta la interfaz, lo detienen la API y las reglas. Si alguien encuentra la URL de un panel, lo detienen la puerta HMAC, la cookie de sesión y el rol.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Amenaza</th><th>Primera barrera</th><th>Segunda barrera</th><th>Estado</th></tr></thead>
+        <tbody>
+          <tr><td>Socio se asigna un plan gratis</td><td>Reglas: <code>plan</code> no editable</td><td>Planes solo se activan en <code>fulfillment</code></td><td><span class="pill p-ok">probado</span></td></tr>
+          <tr><td>Monto manipulado en el navegador</td><td>Precio calculado en servidor</td><td>Comparación con lo cobrado</td><td><span class="pill p-ok">probado</span></td></tr>
+          <tr><td>Aviso de pago falso</td><td>Firma HMAC del webhook</td><td>Consulta directa a Mercado Pago</td><td><span class="pill p-ok">probado</span></td></tr>
+          <tr><td>Contraseña robada</td><td>MFA opcional por correo o TOTP</td><td><code>mfaOk()</code> en reglas</td><td><span class="pill p-ok">probado</span></td></tr>
+          <tr><td>Acceso a paneles ocultos</td><td>Cookie de puerta HMAC</td><td>Sesión revocable + claim</td><td><span class="pill p-ok">activo</span></td></tr>
+          <tr><td>XSS e inyección de scripts</td><td>CSP con nonce</td><td>Fotos solo de Cloudinary o del sitio</td><td><span class="pill p-ok">activo</span></td></tr>
+          <tr><td>CSRF</td><td>Control de <code>Origin</code> en el proxy</td><td>Cookies <code>SameSite</code></td><td><span class="pill p-ok">activo</span></td></tr>
+          <tr><td>Fuerza bruta y abuso</td><td>Upstash por IP y usuario</td><td>Bloqueos de Firebase Auth</td><td><span class="pill p-ok">activo</span></td></tr>
+          <tr><td>Pase QR copiado o falsificado</td><td>Firma Ed25519, 5 min / 24 h</td><td>Validación de plan en el escaneo</td><td><span class="pill p-warn">falta activar firma obligatoria</span></td></tr>
+          <tr><td>Bots contra Firestore</td><td>Reglas</td><td>App Check (reCAPTCHA Enterprise)</td><td><span class="pill p-warn">recomendado</span></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 6 -->
+    <section id="recepcion">
+      <h2><span class="q">¿Qué pasa si se cae el internet en la recepción?</span>Recepción y plan B</h2>
+      <p class="answer">La recepción sigue funcionando. El pase QR firmado se verifica con la llave pública sin red, los ingresos se encolan en el dispositivo y se envían al volver la conexión, sin duplicados. Si no hay equipo, existe una planilla en papel con el mismo formato.</p>
+      <div class="grid2">
+        <div class="note"><h4>Cola offline</h4><p>Cada ingreso guarda un <code>clientId</code> único. Al sincronizar, el servidor ignora los repetidos. <b>Riesgo</b>: la cola vive en <code>localStorage</code>; si alguien borra los datos del navegador antes de sincronizar, esos ingresos se pierden. Hay que entrenar a recepción para no hacerlo y revisar el contador de pendientes.</p></div>
+        <div class="note"><h4>Ingresos y estadísticas</h4><p>El ingreso y su suma en <code>daily_stats</code> se escriben en la misma transacción. Los reportes leen agregados, no miles de registros.</p></div>
+        <div class="note"><h4>Punto de venta</h4><p>Efectivo, datáfono o transferencia. El stock se valida dentro de la transacción, así que no se puede vender lo que no hay. El cierre de caja queda en <code>cash_closures</code>.</p></div>
+        <div class="note"><h4>PWA</h4><p>El service worker cachea solo recursos estáticos. Nunca cachea <code>/api</code>, los paneles ni <code>/pago</code>, para que nadie vea datos viejos o ajenos.</p></div>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section id="escala">
+      <h2><span class="q">¿Cómo escalará la aplicación?</span>Escalabilidad</h2>
+      <p class="answer">Para una sede la capacidad sobra. Vercel y Firestore escalan solos, y el trabajo caro (reportes, conciliación) ya está acotado. Los límites reales están en el costo por lectura, en tres consultas que leen colecciones completas y en el cron que corre una vez al día con el plan gratuito.</p>
+
+      <h3>Carga estimada para una sede (500 socios, 100 ingresos al día)</h3>
+      <div class="panel" style="box-shadow:6px 6px 0 var(--yellow)">
+        <div class="bar"><span>Lecturas / día</span><div class="track"><div class="fill" style="width:16%"></div></div><span class="v">~8.000</span></div>
+        <div class="bar"><span>Escrituras / día</span><div class="track"><div class="fill" style="width:5%"></div></div><span class="v">~1.000</span></div>
+        <div class="bar"><span>Borrados / día</span><div class="track"><div class="fill" style="width:1%"></div></div><span class="v">&lt; 200</span></div>
+        <p class="panel-cap">Escala: cuota gratuita diaria de Firestore (50.000 lecturas, 20.000 escrituras y 20.000 borrados). Cada barra muestra el uso estimado frente a su propia cuota. La regla <code>mfaOk()</code> suma cerca de una lectura por evaluación autenticada.</p>
+      </div>
+
+      <h3>Cuellos de botella y cuándo atacarlos</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Punto</th><th>Hoy</th><th>Se nota a partir de</th><th>Solución prevista</th></tr></thead>
+        <tbody>
+          <tr><td>Lista de usuarios del admin</td><td>Lee toda la colección <code>users</code></td><td class="num">~5.000 socios</td><td>Paginación por cursor y búsqueda por prefijo</td></tr>
+          <tr><td>Avisos de vencimiento</td><td><code>users where plan != null</code></td><td class="num">~10.000 socios</td><td>Consultar por rango de <code>plan.expira</code> con índice</td></tr>
+          <tr><td>Conciliación de pagos</td><td>200 por corrida, 25 s de presupuesto</td><td class="num">&gt;200 pendientes/día</td><td>Cron cada hora (Vercel Pro); los sobrantes quedan en <code>deferred</code></td></tr>
+          <tr><td>Catálogo público</td><td>Caché en memoria de 60 s</td><td class="num">Tráfico alto</td><td>Ya está cubierto; si no basta, ISR por etiqueta</td></tr>
+          <tr><td>Escaneo en hora pico</td><td>1 transacción por ingreso</td><td class="num">&gt;1 escritura/s en un mismo día</td><td>Repartir <code>daily_stats</code> en contadores fragmentados</td></tr>
+          <tr><td>Correo</td><td>Resend, 2 intentos</td><td class="num">Plan gratuito: 100/día</td><td>Plan pago con dominio propio</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Etapas de crecimiento</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Etapa</th><th>Qué cambia</th></tr></thead>
+        <tbody>
+          <tr><td>1 sede, hasta 2.000 socios</td><td>Nada estructural. Vercel Pro y Firebase Blaze por uso comercial y respaldos.</td></tr>
+          <tr><td>Hasta 10.000 socios</td><td>Paginar la lista de usuarios y los avisos. Agregar índices compuestos. Cron cada hora.</td></tr>
+          <tr><td>Varias sedes</td><td>Campo <code>sedeId</code> en ingresos, ventas y caja; claims de recepción por sede; reportes por sede. El modelo actual lo admite sin migrar datos viejos (se asumen de la sede 1).</td></tr>
+          <tr><td>Integraciones</td><td>Facturación electrónica DIAN por un proveedor autorizado, conectado al mismo punto donde hoy se crea la orden.</td></tr>
+        </tbody>
+      </table></div>
+      <p>La prueba de carga <code>tools/load-test.js</code> (k6, 50 usuarios, 30 ingresos en 15 min, objetivo p95 &lt; 800 ms) debe correr contra un entorno de pruebas, que hoy no existe.</p>
+    </section>
+
+    <!-- 8 -->
+    <section id="operacion">
+      <h2><span class="q">¿Cómo se sabe que está funcionando?</span>Operación y observabilidad</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Señal</th><th>Dónde</th><th>Uso</th></tr></thead>
+        <tbody>
+          <tr><td>Salud</td><td><code>/api/health</code></td><td>Comprueba Firestore, variables críticas, Mercado Pago, límite de peticiones, correo y la última corrida del cron. Pensado para un monitor externo cada 5 min.</td></tr>
+          <tr><td>Errores</td><td>Sentry por HTTP</td><td>Sin datos personales ni parámetros de URL. Falta configurar el DSN.</td></tr>
+          <tr><td>Cron</td><td><code>system/cron</code></td><td>Resumen de la última corrida: avisos enviados, pagos conciliados, retención.</td></tr>
+          <tr><td>Auditoría</td><td>Panel admin → Logs</td><td>Quién cambió qué, con IP y diferencias.</td></tr>
+          <tr><td>Pagos</td><td>Panel admin → Pagos</td><td>Pendientes, rechazados, vencidos, en revisión, reembolsados; conciliación manual.</td></tr>
+          <tr><td>Procedimientos</td><td><code>docs/runbook.md</code></td><td>Qué hacer si cae Mercado Pago, el correo o internet; rotación de credenciales.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 9 -->
+    <section id="calidad">
+      <h2><span class="q">¿Cómo se evita romper algo al cambiar el código?</span>Calidad y CI</h2>
+      <p class="answer">Cada push corre en GitHub Actions: tipos, pruebas unitarias, lint, pruebas de reglas en el emulador, build de producción y auditoría de dependencias. Si un paso falla, no se fusiona.</p>
+      <ol class="seq">
+        <li><div><span class="who">tsc --noEmit</span>Tipos estrictos en todo el proyecto.</div></li>
+        <li><div><span class="who">npm test</span>77 pruebas de lógica pura: transiciones de pago, cálculo de planes, pase QR, MFA, historial de compras, horario comercial.</div></li>
+        <li><div><span class="who">npm run lint</span>ESLint 9 con la configuración de Next 16. Hoy tiene 0 errores y 231 avisos, que son deuda de estilo.</div></li>
+        <li><div><span class="who">npm run test:rules</span>16 pruebas de <code>firestore.rules</code> con el emulador (Java 21): perfil, plan, foto, MFA, órdenes, pagos, foro.</div></li>
+        <li><div><span class="who">next build</span>Build de producción con variables de ejemplo.</div></li>
+        <li><div><span class="who">npm audit</span>Sin vulnerabilidades altas o críticas.</div></li>
+      </ol>
+      <p style="margin-top:12px">Además se hizo una prueba E2E del flujo MFA contra el servidor local (19 de 19), con un usuario temporal que se borró al final. No hay todavía pruebas E2E de navegador (Playwright) en CI. Es lo siguiente que conviene sumar, empezando por login, compra en sandbox y escaneo.</p>
+    </section>
+
+    <!-- 10 -->
+    <section id="decisiones">
+      <h2><span class="q">¿Por qué se eligió así?</span>Decisiones de arquitectura</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Decisión</th><th>Alternativa descartada</th><th>Motivo</th></tr></thead>
+        <tbody>
+          <tr><td>Monolito Next.js</td><td>Microservicios</td><td>Un equipo pequeño y una sede. Un solo despliegue, tipos compartidos, sin red interna que asegurar.</td></tr>
+          <tr><td>Firestore</td><td>PostgreSQL gestionado</td><td>Reglas por documento para lecturas directas del cliente, transacciones suficientes, sin servidor que operar. A cambio, los reportes usan agregados.</td></tr>
+          <tr><td>Solo Mercado Pago</td><td>Mercado Pago + Stripe</td><td>Stripe no ofrece PSE ni Efecty en Colombia y duplicaba la lógica de entrega. Se retiró el 25-10-2026.</td></tr>
+          <tr><td>MFA por correo propio</td><td>SMS de Firebase</td><td>Todos tienen correo, el SMS cuesta por mensaje y es vulnerable a SIM swapping. TOTP sigue disponible.</td></tr>
+          <tr><td>Pase QR Ed25519</td><td>QR con el uid</td><td>No se puede falsificar ni reutilizar después de vencer, y se verifica sin internet.</td></tr>
+          <tr><td>Paneles en rutas ocultas con puerta HMAC</td><td>Subdominio aparte</td><td>Reduce la superficie visible sin otro despliegue. La seguridad real está en la sesión y el rol.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 11 -->
+    <section id="imprescindibles">
+      <h2><span class="q">¿Qué falta sí o sí para salir?</span>Imprescindibles antes de producción</h2>
+      <p class="answer">El código está listo para una salida controlada. Lo que falta es sobre todo configuración, contratos y operación. Los puntos marcados como bloqueantes impiden abrir al público.</p>
+      <ul class="check">
+        <li><span class="pill p-crit">bloquea</span><div><b>Fusionar la rama a main y desplegar</b>. Main va 49 commits atrás. Desplegar <code>firestore.rules</code> y correr las migraciones 004 y 005.</div><span class="who">dev</span></li>
+        <li><span class="pill p-crit">bloquea</span><div><b>Credenciales de producción de Mercado Pago</b>: Access Token y secreto del webhook de la aplicación productiva, con la cuenta del negocio verificada.</div><span class="who">negocio + dev</span></li>
+        <li><span class="pill p-crit">bloquea</span><div><b>Dominio verificado en Resend</b>. En modo de prueba solo llega correo al dueño de la cuenta, y ahora también lo necesitan los códigos MFA.</div><span class="who">dev</span></li>
+        <li><span class="pill p-crit">bloquea</span><div><b>Respaldos</b>: Firebase Blaze con PITR y exportación programada de Firestore a Cloud Storage. Probar una restauración.</div><span class="who">dev</span></li>
+        <li><span class="pill p-crit">bloquea</span><div><b>Planes comerciales</b>: Vercel Pro (Hobby prohíbe uso comercial y limita el cron a 1 por día).</div><span class="who">negocio</span></li>
+        <li><span class="pill p-crit">bloquea</span><div><b>Datos legales reales</b> en <code>lib/legal.ts</code> (razón social, NIT, correo de habeas data, teléfono) y en <code>components/layout/footer.tsx</code>. Subir <code>LEGAL_VERSION</code>.</div><span class="who">negocio</span></li>
+        <li><span class="pill p-crit">bloquea</span><div><b>Facturación electrónica DIAN</b> con un proveedor autorizado, o confirmación del contador de que aplica otro régimen.</div><span class="who">negocio</span></li>
+        <li><span class="pill p-crit">bloquea</span><div><b>Rotar credenciales</b> que pasaron por el entorno de desarrollo: Firebase Admin, Upstash, Resend, Cloudinary, secretos de puerta y de cron.</div><span class="who">dev</span></li>
+        <li><span class="pill p-warn">alta</span><div><b>Entorno de pruebas (staging)</b>. Hoy todo usa el proyecto <code>fitmania-e1748</code>. Crear un proyecto Firebase y un despliegue de Vercel aparte para probar pagos sandbox, migraciones y carga sin tocar datos reales.</div><span class="who">dev</span></li>
+        <li><span class="pill p-warn">alta</span><div><b>Pase QR firmado obligatorio</b>: generar las llaves Ed25519 y activar <code>QR_REQUIRE_SIGNED=true</code>.</div><span class="who">dev</span></li>
+        <li><span class="pill p-warn">alta</span><div><b>Monitor externo y Sentry</b>: un monitor de <code>/api/health</code> cada 5 min y el DSN de Sentry con alertas por correo.</div><span class="who">dev</span></li>
+        <li><span class="pill p-warn">alta</span><div><b>Limpiar datos de prueba</b>: usuarios, pagos y órdenes de las pruebas en el proyecto real.</div><span class="who">dev</span></li>
+        <li><span class="pill p-warn">alta</span><div><b>Capacitación y simulacro en recepción</b>: escaneo, cola offline, planilla en papel y cierre de caja. No borrar datos del navegador con ingresos pendientes.</div><span class="who">negocio</span></li>
+        <li><span class="pill p-info">recomendada</span><div><b>App Check</b> con reCAPTCHA Enterprise en modo obligatorio para Firestore.</div><span class="who">dev</span></li>
+        <li><span class="pill p-info">recomendada</span><div><b>Pruebas E2E de navegador</b> en CI (Playwright) sobre staging.</div><span class="who">dev</span></li>
+        <li><span class="pill p-info">recomendada</span><div><b>Paginar la lista de usuarios del admin</b> antes de pasar de unos miles de socios.</div><span class="who">dev</span></li>
+      </ul>
+    </section>
+
+    <footer>
+      FITMANIA · Barranquilla · Documento técnico generado a partir del código de la rama <code>fix/fase1-criticos</code> el 25-10-2026. Fuentes: <code>proxy.ts</code>, <code>app/api</code>, <code>lib/</code>, <code>firestore.rules</code>, <code>docs/schema.md</code>, <code>docs/runbook.md</code>. Las cifras de carga son estimaciones, no mediciones.
+    </footer>
+  </main>
+</div>
+</body>
+</html>

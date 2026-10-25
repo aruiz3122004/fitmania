@@ -45,7 +45,7 @@ Qué hacer cuando algo falla (F2-08). Mantener impreso en recepción y actualiza
 
 ## 7. Restaurar un backup de Firestore
 1. Consola GCP → Firestore → Backups (o PITR para los últimos 7 días).
-2. **Restaurar SIEMPRE primero en el proyecto de staging** y verificar.
+2. **Restaurar SIEMPRE primero en una base nueva** (nunca encima de `(default)`) y verificar. Comandos y simulacro: `docs/staging-y-respaldos.md`.
 3. Para recuperar solo una colección o documento: exportar del backup a GCS e importar selectivamente con `gcloud firestore import`.
 4. Registrar la hora de inicio y fin (RTO objetivo ≤ 4 h).
 
@@ -53,7 +53,7 @@ Qué hacer cuando algo falla (F2-08). Mantener impreso en recepción y actualiza
 | Credencial | Dónde se genera | Variable |
 |---|---|---|
 | Cuenta de servicio Firebase | GCP → IAM → Cuentas de servicio → Claves | `FIREBASE_PRIVATE_KEY_B64`, `FIREBASE_CLIENT_EMAIL` |
-| Pasarela de pagos | Panel de la pasarela | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (o los de la nueva pasarela) |
+| Mercado Pago | Tus integraciones → tu aplicación → Credenciales de producción / Webhooks | `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET` (los dos de la misma aplicación) |
 | Resend | resend.com → API Keys | `RESEND_API_KEY` |
 | Upstash | console.upstash.com | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` |
 | Cloudinary | cloudinary.com → API Keys | `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` |

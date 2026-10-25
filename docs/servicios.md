@@ -6,7 +6,7 @@ F2-27. Cada servicio debe estar **a nombre del negocio** (no del desarrollador),
 |---|---|---|---|---|---|---|
 | Vercel | Hosting, API, cron diario | [completar] | **Pro** (Hobby prohíbe uso comercial) | Funciones y ancho de banda por plan | todas las de la app | Runbook §1 |
 | Firebase / GCP | Auth, Firestore, Cloud Messaging, backups | [completar] | **Blaze** (backups y PITR) | Lecturas/escrituras Firestore; alertas de presupuesto en GCP | `FIREBASE_*`, `NEXT_PUBLIC_FIREBASE_*` | Runbook §2 |
-| Pasarela de pagos | Cobros (Stripe hoy; migrar a Wompi u otra local) | [completar] | Comisión por transacción | Webhook con `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.refunded` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLIC_KEY` | Runbook §5 |
+| Mercado Pago (Checkout Pro) | Cobros: tarjeta, PSE, Efecty (única pasarela) | [completar] | Comisión por transacción | Webhook `/api/payments/mercadopago/webhook`, evento *Pagos*, firma `x-signature` | `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET` | Runbook §5 |
 | Resend | Correos transaccionales | [completar] | [completar] | Requiere dominio verificado (SPF/DKIM/DMARC) | `RESEND_API_KEY`, `MAIL_FROM`, `ADMIN_COPY_EMAIL` | Los pagos siguen; revisar `email_events` |
 | Upstash Redis | Rate limiting | [completar] | Free/Pay-as-you-go | Comandos por día | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | La app sigue; paneles fail-closed |
 | Cloudinary | Imágenes del foro y avatares | [completar] | Free/Plus | Créditos de almacenamiento y transformación | `NEXT_PUBLIC_CLOUDINARY_*`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Imágenes rotas; el resto funciona |
