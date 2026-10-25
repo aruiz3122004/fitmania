@@ -7,6 +7,7 @@ import { useAuthStore, useUIStore } from '@/lib/store'
 import { LogOut, Settings, UserCircle, ShieldCheck, QrCode, Loader2, Receipt } from 'lucide-react'
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
 import { FitAvatar } from '@/components/ui/fit-avatar'
+import { PLAN_FRAMES, planTier } from '@/lib/plan-theme'
 import { auth } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
 import { saveMyProfile } from '@/lib/author-profiles'
@@ -115,6 +116,8 @@ export function UserDropdown() {
 
   const daysRemaining = getDaysRemaining()
   const isPremium = !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
+  const tier = planTier(user?.plan)
+  const frame = PLAN_FRAMES[tier]
 
   return (
     <div className="fixed inset-x-4 sm:absolute sm:inset-auto sm:right-0 top-[76px] sm:top-full mt-2 w-auto sm:w-[320px] max-w-[400px] z-50">
@@ -123,10 +126,10 @@ export function UserDropdown() {
         <div
           className="absolute inset-0 rounded-sm"
           style={{
-            background: 'linear-gradient(45deg, #ef4444, #ffffff, #3b82f6, #ef4444, #ffffff, #3b82f6)',
+            background: frame.gradient,
             backgroundSize: '400% 400%',
             animation: 'premium-gradient-spin 4s linear infinite',
-            boxShadow: '0 0 20px rgba(59,130,246,0.4), 0 0 40px rgba(220,38,38,0.2)',
+            boxShadow: frame.glow,
           }}
         />
       )}
@@ -134,7 +137,7 @@ export function UserDropdown() {
       <div
         className={`relative shadow-comic ${isPremium ? 'm-[4px]' : 'bg-white border-3 border-secondary'}`}
         style={isPremium ? {
-          background: 'linear-gradient(135deg, #abd4f0ff 0%, #ffffff 50%, #e97373ff 100%)',
+          background: frame.panel,
         } : {}}
       >
         <div className="p-5 border-b-2 border-gray-200">
@@ -147,6 +150,7 @@ export function UserDropdown() {
               borderColor="border-secondary"
               bgColor="bg-primary"
               isPremium={isPremium}
+              tier={tier}
               fallback={<UserCircle className="w-12 h-12 text-gray-400" />}
             />
             <div className="flex-1 min-w-0 pt-1">
@@ -157,10 +161,10 @@ export function UserDropdown() {
                 {user?.email}
               </p>
               {isPremium && daysRemaining !== null && (
-                <div className="bg-blue-100 border-2 border-blue-400 px-3 py-1.5 inline-flex items-center gap-2 rounded-lg shadow-[3px_3px_0_0_rgba(59,130,246,0.3)]">
-                  <span className="text-sm">⭐</span>
-                  <span className="font-label text-[10px] font-black text-blue-700 uppercase tracking-widest">
-                    <span className="sm:inline hidden">PREMIUM · </span>{daysRemaining} DIAS
+                <div className={`border-2 px-3 py-1.5 inline-flex items-center gap-2 rounded-lg ${frame.badge}`}>
+                  <span className="text-sm" aria-hidden="true">{frame.icon}</span>
+                  <span className="font-label text-[10px] font-black uppercase tracking-widest">
+                    <span className="sm:inline hidden">{frame.label} · </span>{daysRemaining} DIAS
                   </span>
                 </div>
               )}

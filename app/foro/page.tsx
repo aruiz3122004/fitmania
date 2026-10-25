@@ -9,6 +9,7 @@ import { EmailVerificationBanner } from '@/components/auth/email-verification-ba
 import { useAuthorAvatars } from '@/lib/author-profiles'
 import { useAuthStore } from '@/lib/store'
 import { FitAvatar } from '@/components/ui/fit-avatar'
+import { planTier, PLAN_TIERS, type PlanTier } from '@/lib/plan-theme'
 import { auth, db } from '@/lib/firebase'
 import {
   addDoc,
@@ -54,6 +55,7 @@ type ForumComment = {
   autor_username: string
   autor_avatar?: string
   autor_is_premium?: boolean
+  autor_plan_tier?: string | null
   contenido: string
   created_at: Date
   /** Comentario antiguo guardado en el array `comentarios` del post (antes de F1-07). */
@@ -66,6 +68,7 @@ type ForumPost = {
   autor_username: string
   autor_avatar: string
   autor_is_premium?: boolean
+  autor_plan_tier?: string | null
   contenido: string
   imagen_url: string | null
   tipo_recurso?: 'image' | 'video'
@@ -78,6 +81,13 @@ type Noticia = { id: string; imagen: string | null; titulo: string; descripcion:
 
 // F3-16: las noticias se administran desde el panel (colección `news`). Estas se
 // muestran solo si todavía no hay ninguna publicada.
+
+// Marco del autor en el foro: el guardado en el post o, para posts antiguos propios, el del plan actual.
+function authorTier(stored: unknown, ownPlan?: { planId?: string | null; nombre?: string | null } | null): PlanTier {
+  if (typeof stored === 'string' && (PLAN_TIERS as string[]).includes(stored)) return stored as PlanTier
+  return ownPlan ? planTier(ownPlan) : 'estandar'
+}
+
 const NOTICIAS_RESPALDO: Noticia[] = [
   {
     id: 'respaldo-1',
@@ -208,6 +218,7 @@ function PostCard({
           autor_username: c.autor_username,
           autor_avatar: c.autor_avatar || '',
           autor_is_premium: !!c.autor_is_premium,
+          autor_plan_tier: c.autor_plan_tier ?? null,
           contenido: c.contenido || '',
           created_at: c.created_at?.toDate ? c.created_at.toDate() : new Date(),
         }
@@ -315,6 +326,7 @@ function PostCard({
               borderColor="border-secondary"
               bgColor="bg-primary"
               isPremium={isPostPremium}
+              tier={authorTier(post.autor_plan_tier, user?.uid === post.autor_id ? user?.plan : null)}
               fallback={<UserCircle className="w-8 h-8 text-gray-400" />}
             />
           )
@@ -622,6 +634,7 @@ function PostCard({
                   borderColor="border-secondary"
                   bgColor="bg-primary"
                   isPremium={isCommentPremium}
+                  tier={authorTier(comment.autor_plan_tier, isCommentAuthor ? user?.plan : null)}
                   fallback={
                     <span className="font-label font-bold text-xs text-white">
                       {comment.autor_username?.charAt(0) || 'U'}
@@ -704,6 +717,7 @@ function PostCard({
                 borderColor="border-secondary"
                 bgColor="bg-primary"
                 isPremium={!!(user?.plan && new Date(user.plan.expira) > new Date())}
+                tier={planTier(user?.plan)}
                 fallback={
                   <span className="font-label font-bold text-xs text-white">
                     {user?.username?.charAt(0) || 'U'}
@@ -799,6 +813,7 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
             borderColor="border-secondary"
             bgColor="bg-primary"
             isPremium={!!(user?.plan && new Date(user.plan.expira) > new Date())}
+            tier={planTier(user?.plan)}
             fallback={<span className="font-display text-lg text-white">{user?.username?.charAt(0) || 'U'}</span>}
           />
         </div>
@@ -886,6 +901,7 @@ export default function ForoPage() {
       autor_username: raw.autor_username,
       autor_avatar: raw.autor_avatar || '',
       autor_is_premium: !!raw.autor_is_premium,
+      autor_plan_tier: raw.autor_plan_tier ?? null,
       contenido: raw.contenido || '',
       imagen_url: raw.imagen_url || null,
       tipo_recurso: raw.tipo_recurso || 'image',
@@ -984,6 +1000,7 @@ export default function ForoPage() {
       autor_username: user.username,
       autor_avatar: user.photoURL || '',
       autor_is_premium: isPremium,
+      autor_plan_tier: isPremium ? planTier(user.plan) : null,
       contenido: content,
       imagen_url: imageUrl,
       // F1-25: permite borrar el archivo en Cloudinary cuando se elimine el post.
@@ -1005,6 +1022,7 @@ export default function ForoPage() {
       autor_username: user.username,
       autor_avatar: user.photoURL || '',
       autor_is_premium: isPremium,
+      autor_plan_tier: isPremium ? planTier(user.plan) : null,
       contenido: content,
       created_at: serverTimestamp(),
     })

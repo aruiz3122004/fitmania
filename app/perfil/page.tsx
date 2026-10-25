@@ -16,6 +16,7 @@ import { saveMyProfile } from '@/lib/author-profiles'
 import Link from 'next/link'
 import { Save, UserCircle, Camera, Loader2, ShieldCheck, Clock, Calendar, QrCode, Users, Receipt } from 'lucide-react'
 import { FitAvatar } from '@/components/ui/fit-avatar'
+import { PLAN_FRAMES, planTier } from '@/lib/plan-theme'
 import { AccessPass } from '@/components/profile/access-pass'
 import { usePanelAccess, enterPanel } from '@/lib/panel-access'
 
@@ -193,6 +194,9 @@ export default function PerfilPage() {
   }
 
   const currentAvatar = avatarPreview || user?.photoURL
+  const planActive = !!(user?.plan && !user.plan.frozen && new Date(user.plan.expira) > new Date())
+  const tier = planTier(user?.plan)
+  const frame = PLAN_FRAMES[tier]
 
   return (
     <main>
@@ -214,6 +218,8 @@ export default function PerfilPage() {
                   borderColor="border-black"
                   bgColor="bg-gray-100"
                   circleClassName="shadow-[4px_4px_0_0_rgba(0,0,0,1)]"
+                  isPremium={planActive}
+                  tier={tier}
                   fallback={<UserCircle className="w-16 h-16 text-gray-400" />}
                 />
 
@@ -364,21 +370,30 @@ export default function PerfilPage() {
 
           {/* Sección de Membresía */}
           {user?.plan && (
-            <div className="mt-8 bg-zinc-900 border-3 border-black shadow-[8px_8px_0_0_rgba(220,38,38,1)] p-8 text-white animate-in slide-in-from-bottom-4 duration-500">
+            <div
+              className="mt-8 bg-zinc-900 border-3 border-black p-8 text-white animate-in slide-in-from-bottom-4 duration-500"
+              style={{ boxShadow: `8px 8px 0 0 ${frame.solid}` }}
+            >
                <div className="flex items-center gap-3 mb-6">
-                  <ShieldCheck className="text-primary w-8 h-8" />
+                  <ShieldCheck className="w-8 h-8" style={{ color: frame.solid }} />
                   <h3 className="font-display text-2xl tracking-[2px]">MI MEMBRESÍA</h3>
+                  <span className={`ml-auto border-2 px-3 py-1 rounded-lg font-label text-[10px] font-black uppercase tracking-widest ${frame.badge}`}>
+                    <span aria-hidden="true">{frame.icon}</span> {frame.label}
+                  </span>
                </div>
                
                <div className="grid md:grid-cols-2 gap-8">
                   <div className="space-y-4">
                      <div>
                         <p className="text-[10px] font-black uppercase text-zinc-500 tracking-[3px]">Plan Activo</p>
-                        <p className="text-2xl font-black italic text-primary uppercase">{user.plan.nombre}</p>
+                        <p className="text-2xl font-black italic uppercase" style={{ color: frame.solid }}>{user.plan.nombre}</p>
                      </div>
                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-                        <p className="text-xs font-bold uppercase tracking-widest text-green-500">Estado: Activo</p>
+                        {/* Antes decía "Activo" aunque el plan estuviera vencido o congelado. */}
+                        <div className={`w-3 h-3 rounded-full ${planActive ? 'bg-green-500 animate-pulse' : user.plan.frozen ? 'bg-blue-400' : 'bg-zinc-500'}`} />
+                        <p className={`text-xs font-bold uppercase tracking-widest ${planActive ? 'text-green-500' : user.plan.frozen ? 'text-blue-400' : 'text-zinc-400'}`}>
+                          Estado: {planActive ? 'Activo' : user.plan.frozen ? 'Congelado' : 'Vencido'}
+                        </p>
                      </div>
                   </div>
 

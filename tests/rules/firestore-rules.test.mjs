@@ -140,3 +140,15 @@ test('un tercero solo puede dar o quitar SU like', async () => {
   await assertFails(updateDoc(doc(as('beto'), 'posts/x'), { likes: ['beto', 'carla'] }));
   await assertFails(updateDoc(doc(as('beto'), 'posts/x'), { contenido: 'editado por otro' }));
 });
+
+test('marco del plan en el foro: solo el que corresponde al plan del autor', async () => {
+  await env.withSecurityRulesDisabled((ctx) =>
+    setDoc(doc(ctx.firestore(), 'users/dora'), { username: 'dora', plan: { nombre: 'Plan Dos en Uno', planId: 'dosenuno', expira: new Date(Date.now() + 86_400_000) } }));
+  const dora = (extra) => post({ autor_id: 'dora', autor_username: 'dora', autor_is_premium: true, ...extra });
+  await assertSucceeds(setDoc(doc(as('dora'), 'posts/t1'), dora({ autor_plan_tier: 'dosenuno' })));
+  await assertSucceeds(setDoc(doc(as('dora'), 'posts/t2'), dora({ autor_plan_tier: 'estandar' })));
+  await assertFails(setDoc(doc(as('dora'), 'posts/t3'), dora({ autor_plan_tier: 'parejas' })));
+  await assertFails(setDoc(doc(as('dora'), 'posts/t4'), dora({ autor_plan_tier: 'dosenuno', autor_is_premium: false })));
+  // ana tiene un plan genérico: no puede mostrar el marco dorado.
+  await assertFails(setDoc(doc(as('ana'), 'posts/t5'), post({ autor_is_premium: true, autor_plan_tier: 'dosenuno' })));
+});

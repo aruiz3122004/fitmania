@@ -84,6 +84,19 @@ service cloud.firestore {
             || (u.get('plan', null) != null && u.plan.expira > request.time));
     }
 
+    // Marco de color del autor (lib/plan-theme.ts): 'estandar' siempre; 'parejas' o
+    // 'dosenuno' solo si el post es premium y el plan del autor es de ese tipo
+    // (por planId o, si no tiene, por el nombre, igual que planTier()).
+    function planTierMatches() {
+      let t = request.resource.data.get('autor_plan_tier', null);
+      let p = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('plan', null);
+      let nombre = p == null ? '' : p.get('nombre', '').lower();
+      return t == null || t == 'estandar'
+        || (request.resource.data.get('autor_is_premium', false) == true && p != null
+            && ((t == 'parejas' && (p.get('planId', '') == 'parejas' || nombre.matches('.*pareja.*')))
+                || (t == 'dosenuno' && (p.get('planId', '') == 'dosenuno' || nombre.matches('.*(dos en uno|2 en 1).*')))));
+    }
+
     // Un like válido cambia la lista SOLO en el uid de quien lo hace (agrega o quita).
     function isOwnLikeToggle() {
       let before = resource.data.get('likes', []).toSet();
@@ -97,7 +110,8 @@ service cloud.firestore {
       allow create: if isVerified()
         && request.resource.data.autor_id == request.auth.uid
         && authorProfileMatches()
-        && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium',
+        && planTierMatches()
+        && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium', 'autor_plan_tier',
              'contenido', 'imagen_url', 'imagen_public_id', 'tipo_recurso', 'likes', 'comentarios', 'created_at'])
         && request.resource.data.contenido is string
         && request.resource.data.contenido.size() <= 2000
@@ -125,7 +139,8 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/posts/$(postId))
         && request.resource.data.autor_id == request.auth.uid
         && authorProfileMatches()
-        && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium',
+        && planTierMatches()
+        && request.resource.data.keys().hasOnly(['autor_id', 'autor_username', 'autor_avatar', 'autor_is_premium', 'autor_plan_tier',
              'contenido', 'created_at'])
         && safeImageUrl(request.resource.data.get('autor_avatar', null))
         && request.resource.data.contenido is string

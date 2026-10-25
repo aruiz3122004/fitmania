@@ -7,6 +7,7 @@ import { ShoppingCart, User, Menu, X } from 'lucide-react'
 import { useCartStore, useAuthStore, useUIStore } from '@/lib/store'
 import { UserDropdown } from './user-dropdown'
 import { FitAvatar } from '@/components/ui/fit-avatar'
+import { planTier } from '@/lib/plan-theme'
 
 const navLinks = [
   { href: '/', label: 'Inicio' },
@@ -145,6 +146,7 @@ export function Topbar() {
                       borderColor="border-white"
                       bgColor="bg-primary"
                       isPremium={isPremium}
+                      tier={planTier(user.plan)}
                     />
                   ) : (
                     <User className="w-7 h-7" strokeWidth={2.5} />

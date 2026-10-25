@@ -23,6 +23,8 @@ export interface User {
   altura?: number
   plan?: {
     nombre: string
+    planId?: string | null
+    frozen?: { remainingMs?: number } | null
     precio: number
     dias_total: number
     inicio: Date
