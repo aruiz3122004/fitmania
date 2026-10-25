@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
+import { isMfaSatisfied, mfaRequiredResponse } from '@/lib/mfa-server';
 import { deletePostCompletely } from '@/lib/forum-server';
 
 /**
@@ -17,6 +18,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ p
   } catch {
     return NextResponse.json({ error: 'Sesión inválida o expirada.' }, { status: 401 });
   }
+  if (!(await isMfaSatisfied(decoded))) return mfaRequiredResponse();
 
   const { postId } = await params;
   if (!postId || postId.includes('/')) return NextResponse.json({ error: 'Post inválido.' }, { status: 400 });

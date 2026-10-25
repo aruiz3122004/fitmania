@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
+import { isMfaSatisfied, mfaRequiredResponse } from '@/lib/mfa-server';
 
 /**
  * PATCH /api/me/companion — registra el acompañante del plan del usuario (F1-08).
@@ -19,7 +20,9 @@ export async function PATCH(request: Request) {
 
   let uid: string;
   try {
-    uid = (await getAdminAuth().verifyIdToken(idToken)).uid;
+    const decodedToken = await getAdminAuth().verifyIdToken(idToken);
+    if (!(await isMfaSatisfied(decodedToken))) return mfaRequiredResponse();
+    uid = decodedToken.uid;
   } catch {
     return NextResponse.json({ error: 'Sesión inválida o expirada.' }, { status: 401 });
   }

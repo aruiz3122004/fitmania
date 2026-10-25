@@ -4,6 +4,7 @@ import { isReceptionEmailAllowed } from '@/lib/auth-helpers';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { resetRateLimitFor } from '@/lib/rate-limit-server';
 import { GATE_COOKIE, createGateToken, gateCookieOptions, getGateSecret } from '@/lib/gate-token';
+import { isMfaSatisfied } from '@/lib/mfa-server';
 
 // F1-15: la recepción trabaja todo el día; la sesión cubre un turno completo.
 const SESSION_SECONDS = 12 * 60 * 60; // 12 horas
@@ -48,6 +49,15 @@ export async function POST(request: Request) {
         request: request,
       });
       return NextResponse.json({ error: 'Acceso denegado: tu cuenta no tiene el rol de recepción asignado.' }, { status: 403 });
+    }
+
+    // Verificación en dos pasos por correo (opcional): si está activa, esta sesión debe
+    // haberla completado antes de recibir la cookie del panel.
+    if (!(await isMfaSatisfied(decodedToken))) {
+      return NextResponse.json(
+        { error: 'Completa la verificación en dos pasos para entrar al panel.', code: 'mfa_required' },
+        { status: 401 }
+      );
     }
 
     // Crear session cookie de Firebase (revocable) en lugar del ID token crudo (T-15).

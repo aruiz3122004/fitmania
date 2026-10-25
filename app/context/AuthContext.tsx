@@ -7,6 +7,7 @@ import { auth, db } from '@/lib/firebase'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { getAvatarUrlById } from '@/lib/avatar-utils'
 import { useAuthStore } from '@/lib/store'
+import { MFA_VERIFIED_EVENT } from '@/lib/mfa-email-client'
 
 interface AuthContextType {
   user: User | null
@@ -22,6 +23,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const setEnrichedUser = useAuthStore((s) => s.setUser)
+  // Con la verificación en dos pasos activa, las reglas niegan el perfil hasta que la
+  // sesión ingresa el código: al completarla se vuelve a suscribir.
+  const [mfaEpoch, setMfaEpoch] = useState(0)
+
+  useEffect(() => {
+    const onVerified = () => setMfaEpoch((n) => n + 1)
+    window.addEventListener(MFA_VERIFIED_EVENT, onVerified)
+    return () => window.removeEventListener(MFA_VERIFIED_EVENT, onVerified)
+  }, [])
 
   useEffect(() => {
     let unsubProfile: (() => void) | null = null
@@ -84,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubProfile?.()
       unsub()
     }
-  }, [setEnrichedUser])
+  }, [setEnrichedUser, mfaEpoch])
 
   return (
     <AuthContext.Provider value={{ user, loading }}>

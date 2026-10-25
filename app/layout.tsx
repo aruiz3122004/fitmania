@@ -3,6 +3,7 @@ import { Bangers, Epilogue, Plus_Jakarta_Sans, Space_Grotesk } from 'next/font/g
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { AuthProvider } from './context/AuthContext'
+import { MfaGate } from '@/components/auth/mfa-gate'
 import { ServiceWorkerRegister } from '@/components/pwa/service-worker-register'
 import { SITE_NAME, SITE_URL } from '@/lib/site'
 
@@ -80,6 +81,7 @@ export default function RootLayout({
         {/*  AuthProvider envuelve toda la app  Para manejar el estado de autenticacion de Firebase */}
         <AuthProvider>
           {children}
+          <MfaGate />
           <Analytics />
         </AuthProvider>
         <ServiceWorkerRegister />

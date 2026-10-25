@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
+import { isMfaSatisfied, mfaRequiredResponse } from '@/lib/mfa-server';
 import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 import { priceCheckout, CheckoutError } from '@/lib/payments/pricing';
 import { createPreference, isMercadoPagoConfigured, type MpPreferenceInput } from '@/lib/payments/mercadopago';
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Sesión inválida o expirada. Vuelve a iniciar sesión.' }, { status: 401 });
   }
+  if (!(await isMfaSatisfied(decoded))) return mfaRequiredResponse();
   if (!decoded.email) return NextResponse.json({ error: 'Tu cuenta no tiene un correo asociado.' }, { status: 400 });
   // F1-06: los recibos van a ese correo. El ID token puede ser anterior a la
   // verificación (se renueva cada hora): ante un "no", se consulta el estado real.
@@ -38,7 +40,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // F1-10: mismo límite que el checkout de Stripe (10 intentos cada 10 minutos).
+  // F1-10: límite por usuario (10 intentos cada 10 minutos).
   const rl = await limitAction(`pay:${decoded.uid}`, 10, 600);
   if (!rl.ok) return tooManyRequests(rl.retryAfter, 'Demasiados intentos de pago. Espera unos minutos.');
 

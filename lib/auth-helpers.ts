@@ -1,4 +1,5 @@
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { isMfaSatisfied } from '@/lib/mfa-server';
 
 /** Parsea el header `Cookie` de un request a un objeto clave→valor. */
 function parseCookies(request: Request): Record<string, string> {
@@ -14,28 +15,16 @@ function parseCookies(request: Request): Record<string, string> {
 /**
  * Verifica la sesión de administrador en un request de API.
  *
- * - Header `Authorization: Bearer <idToken>` → `verifyIdToken` (compatibilidad).
- * - Cookie `fitmania_session` (session cookie de Firebase) → `verifySessionCookie(..., true)`,
- *   que además comprueba revocación (T-15, auditoría A-4).
+ * Solo acepta la cookie `fitmania_session` (session cookie de Firebase) con
+ * `verifySessionCookie(..., true)`, que comprueba revocación (T-15, auditoría A-4).
+ * Se quitó la vía `Authorization: Bearer <idToken>`: no revisaba revocación y
+ * saltaba la verificación en dos pasos que se exige al crear la sesión.
  *
  * @returns El token decodificado si es válido, o null si no.
  */
 export async function verifyAdminRequest(request: Request) {
   const adminAuth = getAdminAuth();
 
-  // 1. Bearer token (compatibilidad con llamadas existentes)
-  const authHeader = request.headers.get('authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    const idToken = authHeader.split('Bearer ')[1];
-    try {
-      const decoded = await adminAuth.verifyIdToken(idToken);
-      if (decoded.admin) return decoded;
-    } catch {
-      // Token de header inválido, intentar cookie
-    }
-  }
-
-  // 2. Cookie de sesión (verifySessionCookie + checkRevoked)
   const sessionToken = parseCookies(request)['fitmania_session'];
   if (sessionToken) {
     try {
@@ -95,13 +84,16 @@ export async function verifyReceptionRequest(request: Request) {
 /**
  * Verifica a un usuario final por `Authorization: Bearer <idToken>`.
  * Para endpoints del propio usuario (/api/me/*, registro, foro).
+ * Si la cuenta tiene la verificación en dos pasos activa, la sesión debe haberla
+ * completado (lib/mfa.ts); si no, se trata como no autorizada.
  */
 export async function verifyUserRequest(request: Request) {
   const authHeader = request.headers.get('authorization');
   const idToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!idToken) return null;
   try {
-    return await getAdminAuth().verifyIdToken(idToken);
+    const decoded = await getAdminAuth().verifyIdToken(idToken);
+    return (await isMfaSatisfied(decoded)) ? decoded : null;
   } catch {
     return null;
   }

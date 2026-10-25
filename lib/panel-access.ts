@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { onIdTokenChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
+import { ensureMfaVerified } from '@/lib/mfa-email-client'
 
 export type PanelRole = 'admin' | 'recepcion' | null
 
@@ -59,6 +60,7 @@ export async function enterPanel(role: Exclude<PanelRole, null>): Promise<void> 
     throw new Error('No hay una sesión activa. Inicia sesión de nuevo.')
   }
 
+  await ensureMfaVerified()
   const idToken = await user.getIdToken(true)
   const endpoint = role === 'admin' ? '/api/admin/login' : '/api/recepcion/login'
 

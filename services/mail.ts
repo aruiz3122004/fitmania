@@ -51,6 +51,8 @@ interface SendMailOptions {
   to: string
   subject: string
   html: string
+  /** `false` para correos con secretos (códigos de verificación): sin copia al admin. */
+  adminCopy?: boolean
 }
 
 /**
@@ -92,7 +94,7 @@ async function sendWithRetryInner(mail: SendMailOptions, maxAttempts: number) {
 
   // Copia al admin (BCC); se evita duplicar si el destinatario ya es el admin.
   const adminCopy =
-    ADMIN_COPY_EMAIL && ADMIN_COPY_EMAIL.trim().toLowerCase() !== to.toLowerCase()
+    mail.adminCopy !== false && ADMIN_COPY_EMAIL && ADMIN_COPY_EMAIL.trim().toLowerCase() !== to.toLowerCase()
       ? ADMIN_COPY_EMAIL.trim()
       : null
 
@@ -548,4 +550,57 @@ export async function sendPlanReminderEmail(data: PlanReminderData) {
     subject: urgent ? '⏰ Tu plan Fitmania vence mañana' : '🔔 Tu plan Fitmania está por vencer',
     html,
   })
+}
+
+interface MfaCodeData {
+  to: string
+  customerName: string
+  code: string
+  purpose: 'login' | 'enable' | 'disable'
+}
+
+const MFA_PURPOSE_TEXT: Record<MfaCodeData['purpose'], string> = {
+  login: 'iniciar sesión en tu cuenta',
+  enable: 'activar la verificación en dos pasos',
+  disable: 'desactivar la verificación en dos pasos',
+}
+
+/**
+ * Código de verificación en dos pasos. Sin copia al admin (el código es un secreto)
+ * y sin reintentos largos: el usuario puede pedir otro código.
+ */
+export async function sendMfaCodeEmail(data: MfaCodeData) {
+  const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8" /></head>
+    <body style="font-family:'Segoe UI',Arial,sans-serif;line-height:1.6;color:#333;">
+      <div style="max-width:600px;margin:0 auto;padding:20px;border:1px solid #e0e0e0;">
+        <div style="background:#1a1a2e;color:#fff;padding:20px;text-align:center;">
+          <h1 style="margin:0;color:#D32F2F;">FIT<span style="color:#f5c518;">MANIA</span></h1>
+          <p style="margin:5px 0 0;font-size:12px;opacity:0.8;">VERIFICACIÓN EN DOS PASOS</p>
+        </div>
+        <div style="padding:30px;">
+          <p>Hola <strong>${escapeHtml(data.customerName)}</strong>,</p>
+          <p>Usa este código para ${MFA_PURPOSE_TEXT[data.purpose]}:</p>
+          <p style="font-size:36px;font-weight:bold;letter-spacing:10px;text-align:center;background:#f5f5f5;padding:20px;border:2px dashed #1a1a2e;margin:24px 0;">${escapeHtml(data.code)}</p>
+          <p>El código vence en <strong>10 minutos</strong> y solo sirve una vez.</p>
+          <p style="color:#D32F2F;"><strong>Nadie de Fitmania te pedirá este código.</strong> Si no fuiste tú, cambia tu contraseña de inmediato.</p>
+        </div>
+        <div style="font-size:12px;color:#999;text-align:center;margin-top:30px;">
+          © 2026 Fitmania. Por favor no respondas a este correo.
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+
+  await sendWithRetry({
+    from: MAIL_FROM,
+    to: data.to,
+    // El asunto queda en `email_events`: nunca debe llevar el código.
+    subject: '🔐 Tu código de verificación - Fitmania',
+    html,
+    adminCopy: false,
+  }, 2)
 }

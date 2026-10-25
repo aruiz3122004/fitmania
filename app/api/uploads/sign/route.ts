@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
+import { isMfaSatisfied, mfaRequiredResponse } from '@/lib/mfa-server';
 import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 
 /**
@@ -31,7 +32,9 @@ export async function POST(request: Request) {
 
   let uid: string;
   try {
-    uid = (await getAdminAuth().verifyIdToken(idToken)).uid;
+    const decodedToken = await getAdminAuth().verifyIdToken(idToken);
+    if (!(await isMfaSatisfied(decodedToken))) return mfaRequiredResponse();
+    uid = decodedToken.uid;
   } catch {
     return NextResponse.json({ error: 'Sesión inválida o expirada.' }, { status: 401 });
   }

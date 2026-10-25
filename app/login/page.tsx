@@ -10,6 +10,7 @@ import { auth, db } from '@/lib/firebase'
 import { getAvatarUrlById } from '@/lib/avatar-utils'
 import { sendPasswordResetEmail } from 'firebase/auth'
 import { signInWithOptionalTotp, promptTotpCode } from '@/lib/mfa-client'
+import { ensureMfaVerified } from '@/lib/mfa-email-client'
 import { doc, getDoc } from 'firebase/firestore'
 import { 
   Mail, 
@@ -93,6 +94,8 @@ export default function LoginPage() {
 
       // F1-13: si la cuenta tiene verificación en dos pasos, se pide el código TOTP.
       const credentials = await signInWithOptionalTotp(email, password, promptTotpCode)
+      // Código por correo si la cuenta activó la verificación en dos pasos.
+      await ensureMfaVerified()
       let userData: any = null;
       
       try {
@@ -125,7 +128,9 @@ export default function LoginPage() {
       } else if (err?.code === 'auth/invalid-verification-code') {
         setError('El código de verificación no es correcto.')
       } else {
-        setError(err?.message?.startsWith('Se requiere') ? err.message : 'No se pudo iniciar sesión. Intenta de nuevo.')
+        setError(err?.message?.startsWith('Se requiere') || err?.message?.startsWith('Verificación en dos pasos')
+          ? err.message
+          : 'No se pudo iniciar sesión. Intenta de nuevo.')
       }
     } finally {
       setLoading(false)

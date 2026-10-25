@@ -3,6 +3,7 @@ import { getAdminAuth } from '@/lib/firebase-admin';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { resetRateLimitFor } from '@/lib/rate-limit-server';
 import { GATE_COOKIE, createGateToken, gateCookieOptions, getGateSecret } from '@/lib/gate-token';
+import { getMfaStatus } from '@/lib/mfa-server';
 
 // Duración de la sesión del panel admin.
 const SESSION_SECONDS = 60 * 60; // 1 hora
@@ -35,9 +36,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Acceso denegado: no tienes privilegios de administrador.' }, { status: 403 });
     }
 
-    // F1-13: con ADMIN_REQUIRE_MFA=true el token debe venir de un inicio de sesión con
-    // segundo factor (TOTP). Activarlo DESPUÉS de inscribir el TOTP del admin.
-    if (process.env.ADMIN_REQUIRE_MFA === 'true' && !(decodedToken.firebase as any)?.sign_in_second_factor) {
+    // Verificación en dos pasos por correo (opcional): si está activa, esta sesión debe
+    // haberla completado. Una sesión iniciada con TOTP de Firebase también cuenta.
+    const mfa = await getMfaStatus(decodedToken);
+    if (!mfa.verified) {
+      return NextResponse.json(
+        { error: 'Completa la verificación en dos pasos para entrar al panel.', code: 'mfa_required' },
+        { status: 401 }
+      );
+    }
+
+    // F1-13: con ADMIN_REQUIRE_MFA=true el admin debe tener un segundo factor: TOTP
+    // (Firebase) o código por correo. Activarlo DESPUÉS de configurar uno de los dos.
+    const hasTotp = !!(decodedToken.firebase as { sign_in_second_factor?: string } | undefined)?.sign_in_second_factor;
+    if (process.env.ADMIN_REQUIRE_MFA === 'true' && !hasTotp && !mfa.enabled) {
       await recordAuditLog({
         action: 'LOGIN_FAILED',
         category: 'AUTH_FAILURE',
@@ -48,7 +60,7 @@ export async function POST(request: Request) {
         request: request,
       });
       return NextResponse.json(
-        { error: 'El panel exige verificación en dos pasos. Configúrala e inicia sesión con tu código.', code: 'mfa_required' },
+        { error: 'El panel exige verificación en dos pasos. Actívala en tu perfil e inicia sesión de nuevo.', code: 'mfa_not_configured' },
         { status: 403 }
       );
     }
