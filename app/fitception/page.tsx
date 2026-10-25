@@ -9,7 +9,7 @@ import { signOut } from 'firebase/auth'
 import { useIdleLogout } from '@/lib/use-idle-logout'
 import { beep, daysLeft, useHidScanner } from '@/lib/scan-feedback'
 import { verifyPassOffline, ACCESS_TOKEN_PREFIX } from '@/lib/access-token-client'
-import { cacheMembers, cachedMembers, enqueueOfflineEntry, pendingOfflineEntries, syncOfflineEntries } from '@/lib/offline-entries'
+import { cacheMembers, cachedMembers, enqueueOfflineEntry, offlineEntriesCsv, pendingOfflineEntries, requestPersistentStorage, syncOfflineEntries } from '@/lib/offline-entries'
 import { ShieldCheck, LogOut, QrCode, Search, CheckCircle2, UserCircle, Users, ShoppingCart, History, CalendarDays, XCircle, ClipboardList, Package } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
@@ -76,6 +76,26 @@ export default function ReceptionPage() {
       clearInterval(timer)
     }
   }, [])
+
+  // La cola vive en este navegador: se pide que no se borre sola y se avisa antes de
+  // cerrar la pestaña con ingresos sin enviar.
+  useEffect(() => { requestPersistentStorage() }, [])
+  useEffect(() => {
+    if (pendingSync === 0) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [pendingSync])
+
+  const downloadPendingBackup = () => {
+    const blob = new Blob([String.fromCharCode(0xfeff) + offlineEntriesCsv()], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ingresos-pendientes-${new Date().toISOString().slice(0, 16).replace(':', '')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   useEffect(() => {
     // Verificar la sesión leyendo la cookie HttpOnly vía el servidor
@@ -265,6 +285,9 @@ export default function ReceptionPage() {
   }
 
   const handleLogout = async () => {
+    if (pendingSync > 0 && !window.confirm(
+      `Hay ${pendingSync} ingreso(s) sin enviar en este equipo. Se enviarán cuando vuelvas a entrar a recepción desde este mismo navegador. ¿Salir de todos modos?`
+    )) return
     // Cerrar SOLO la sesión del panel de recepción (cookie HttpOnly).
     // No usar auth.signOut(): cerraba la cuenta de Firebase y obligaba a
     // volver a iniciar sesión en el sitio. La cuenta debe permanecer activa.
@@ -343,6 +366,15 @@ export default function ReceptionPage() {
             <span className={`px-3 py-2 border-2 border-black rounded font-label text-[10px] uppercase font-black ${isOnline ? 'bg-yellow-300 text-black' : 'bg-red-600 text-white'}`}>
               {isOnline ? 'Sincronizando' : 'Sin conexión'}{pendingSync > 0 ? ` · ${pendingSync} pendiente(s)` : ''}
             </span>
+          )}
+          {pendingSync > 0 && (
+            <button
+              onClick={downloadPendingBackup}
+              title="Descarga los ingresos sin enviar por si se borran los datos de este navegador"
+              className="px-3 py-2 border-2 border-black rounded bg-white text-black font-label text-[10px] uppercase font-black hover:bg-yellow-100"
+            >
+              Respaldo CSV
+            </button>
           )}
           <button onClick={handleLogout} className="flex items-center gap-2 bg-black text-white px-4 py-2 border-2 border-white rounded font-label text-xs uppercase font-bold hover:bg-zinc-800 transition-colors">
             <LogOut className="w-4 h-4" /> Salir

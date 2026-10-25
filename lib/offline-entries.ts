@@ -73,6 +73,28 @@ export async function syncOfflineEntries(): Promise<{ synced: number; remaining:
   return { synced, remaining: read().length }
 }
 
+/**
+ * Pide al navegador que no borre este almacenamiento por falta de espacio. No protege
+ * contra "Borrar datos de navegación", pero sí contra la limpieza automática.
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false
+    return (await navigator.storage.persisted()) || (await navigator.storage.persist())
+  } catch {
+    return false
+  }
+}
+
+/** Respaldo en CSV de los ingresos sin enviar, para digitarlos a mano si se pierde la cola. */
+export function offlineEntriesCsv(entries: OfflineEntry[] = read()): string {
+  const cell = (v: string) => `"${v.replace(/"/g, '""')}"`
+  const rows = entries.map((e) =>
+    [cell(new Date(e.occurredAt).toLocaleString('es-CO', { timeZone: 'America/Bogota' })), cell(e.userName), cell(e.userId), cell(e.clientId)].join(',')
+  )
+  return ['Fecha y hora,Socio,UID,ID del ingreso', ...rows].join('\n')
+}
+
 /** Directorio guardado para buscar socios manualmente sin conexión. */
 export function cacheMembers(members: unknown[]) {
   try {
