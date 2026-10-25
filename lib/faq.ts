@@ -255,6 +255,8 @@ export const FAQ: FaqCategory[] = [
         q: '¿Por qué no puedo publicar en el foro?',
         a: [
           'Para publicar necesitas tener el correo verificado. Las publicaciones salen con tu nombre de usuario real: no se puede firmar como otra persona.',
+          'Para que el foro no se llene, puedes hacer hasta 3 publicaciones seguidas; después hay una pausa de 5 minutos desde la última. El botón muestra cuánto falta, y durante la pausa puedes seguir comentando y dando likes.',
+          'El foro muestra 10 publicaciones por página, de los últimos 30 días. Usa "Anterior" y "Siguiente" al final para moverte entre páginas.',
           'Puedes reportar publicaciones que incumplan las normas y la administración las revisa.',
         ],
       },

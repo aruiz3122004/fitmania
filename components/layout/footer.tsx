@@ -1,6 +1,6 @@
-import { Instagram, Facebook, MessageCircle } from 'lucide-react'
+import { Instagram, Facebook, MessageCircle, Info, Sparkles } from 'lucide-react'
 import Link from 'next/link'
-import { LEGAL_ENTITY, OPENING_HOURS, PROJECT_NOTICE } from '@/lib/legal'
+import { IS_FICTIONAL, LEGAL_ENTITY, OPENING_HOURS, PROJECT_NOTICE } from '@/lib/legal'
 
 export function Footer() {
   return (
@@ -105,9 +105,34 @@ export function Footer() {
         <p className="font-label text-[0.8rem] text-white/80 tracking-[1px]">
           &copy; 2026 FITMANIA. Todos los derechos reservados. Tu Pasion. Tu Fuerza.
         </p>
-        <p className="max-w-[760px] mx-auto mt-3 font-body text-[0.72rem] text-white/75 leading-relaxed">
-          {PROJECT_NOTICE.fictional} {PROJECT_NOTICE.ai}
-        </p>
+        {/* Aviso del proyecto como recuadro de cómic: legible sin competir con el resto del pie. */}
+        <aside aria-label="Aviso del proyecto" className="relative max-w-[820px] mx-auto mt-7 bg-secondary border-[3px] border-white/90 shadow-[5px_5px_0_rgba(0,0,0,0.35)] px-4 sm:px-6 pt-6 pb-4 text-left">
+          <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 -rotate-2 bg-accent text-secondary font-display text-sm tracking-[2px] px-3 py-0.5 border-2 border-secondary shadow-[2px_2px_0_var(--navy)] whitespace-nowrap">
+            ¡OJO, ES UNA DEMO!
+          </span>
+          <div className={`grid gap-4 ${IS_FICTIONAL ? 'sm:grid-cols-2 sm:divide-x sm:divide-white/15' : ''}`}>
+            {IS_FICTIONAL && (
+              <div className="flex gap-3">
+                <span className="shrink-0 w-8 h-8 grid place-items-center bg-primary border-2 border-white/80 rounded-full" aria-hidden>
+                  <Info className="w-4 h-4" />
+                </span>
+                <div>
+                  <p className="font-display text-[0.95rem] tracking-[1.5px] text-accent leading-none mb-1">PROYECTO DE PORTAFOLIO</p>
+                  <p className="font-body text-[0.72rem] text-white/80 leading-relaxed">{PROJECT_NOTICE.fictional}</p>
+                </div>
+              </div>
+            )}
+            <div className={`flex gap-3 ${IS_FICTIONAL ? 'sm:pl-4' : ''}`}>
+              <span className="shrink-0 w-8 h-8 grid place-items-center bg-accent text-secondary border-2 border-white/80 rounded-full" aria-hidden>
+                <Sparkles className="w-4 h-4" />
+              </span>
+              <div>
+                <p className="font-display text-[0.95rem] tracking-[1.5px] text-accent leading-none mb-1">HECHO CON AYUDA DE IA</p>
+                <p className="font-body text-[0.72rem] text-white/80 leading-relaxed">{PROJECT_NOTICE.ai}</p>
+              </div>
+            </div>
+          </div>
+        </aside>
       </div>
     </footer>
   )

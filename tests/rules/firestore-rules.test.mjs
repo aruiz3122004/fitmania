@@ -7,7 +7,7 @@
 import { test, before, after, beforeEach } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, collection, addDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, writeBatch, serverTimestamp, Timestamp } from 'firebase/firestore';
 
 const AUTH_TIME = 1_760_000_000;
 let env;
@@ -122,16 +122,47 @@ const post = (extra = {}) => ({
   likes: [], comentarios: [], created_at: new Date(), ...extra,
 });
 
+// Como el cliente: el post y el contador antispam van en el mismo lote.
+const publish = async (db, uid, id, data, count) => {
+  const rateRef = doc(db, `forum_rate/${uid}`);
+  if (count === undefined) {
+    const snap = await getDoc(rateRef);
+    count = snap.exists() ? snap.data().count + 1 : 1;
+  }
+  const batch = writeBatch(db);
+  batch.set(doc(db, `posts/${id}`), data);
+  batch.set(rateRef, { count, last: serverTimestamp() });
+  return batch.commit();
+};
+
 test('publicar exige correo verificado y el nombre real del perfil', async () => {
-  await assertSucceeds(setDoc(doc(as('ana'), 'posts/a1'), post()));
-  await assertFails(setDoc(doc(as('ana', { email_verified: false }), 'posts/a2'), post()));
-  await assertFails(setDoc(doc(as('ana'), 'posts/a3'), post({ autor_username: 'admin' })));
-  await assertFails(setDoc(doc(as('ana'), 'posts/a4'), post({ autor_id: 'beto' })));
+  await assertSucceeds(publish(as('ana'), 'ana', 'a1', post()));
+  await assertFails(publish(as('ana', { email_verified: false }), 'ana', 'a2', post()));
+  await assertFails(publish(as('ana'), 'ana', 'a3', post({ autor_username: 'admin' })));
+  await assertFails(publish(as('ana'), 'ana', 'a4', post({ autor_id: 'beto' })));
+});
+
+test('antispam: 3 publicaciones seguidas y luego 5 minutos de pausa', async () => {
+  await assertSucceeds(publish(as('ana'), 'ana', 'r1', post()));
+  await assertSucceeds(publish(as('ana'), 'ana', 'r2', post()));
+  await assertSucceeds(publish(as('ana'), 'ana', 'r3', post()));
+  await assertFails(publish(as('ana'), 'ana', 'r4', post()));
+  // Ni reiniciando el contador ni borrándolo.
+  await assertFails(publish(as('ana'), 'ana', 'r5', post(), 1));
+  await assertFails(deleteDoc(doc(as('ana'), 'forum_rate/ana')));
+  // Sin registrar el contador en el mismo lote tampoco se publica.
+  await assertFails(setDoc(doc(as('ana'), 'posts/r6'), post()));
+  // Pasados 5 minutos desde la última vuelve a empezar.
+  await env.withSecurityRulesDisabled((ctx) =>
+    setDoc(doc(ctx.firestore(), 'forum_rate/ana'), { count: 3, last: Timestamp.fromMillis(Date.now() - 6 * 60_000) }));
+  await assertSucceeds(publish(as('ana'), 'ana', 'r7', post(), 1));
+  // Nadie toca el contador de otro.
+  await assertFails(getDoc(doc(as('beto'), 'forum_rate/ana')));
 });
 
 test('insignia premium solo con plan vigente', async () => {
-  await assertSucceeds(setDoc(doc(as('ana'), 'posts/p1'), post({ autor_is_premium: true })));
-  await assertFails(setDoc(doc(as('beto'), 'posts/p2'), post({ autor_id: 'beto', autor_username: 'beto', autor_is_premium: true })));
+  await assertSucceeds(publish(as('ana'), 'ana', 'p1', post({ autor_is_premium: true })));
+  await assertFails(publish(as('beto'), 'beto', 'p2', post({ autor_id: 'beto', autor_username: 'beto', autor_is_premium: true })));
 });
 
 test('un tercero solo puede dar o quitar SU like', async () => {
@@ -145,10 +176,10 @@ test('marco del plan en el foro: solo el que corresponde al plan del autor', asy
   await env.withSecurityRulesDisabled((ctx) =>
     setDoc(doc(ctx.firestore(), 'users/dora'), { username: 'dora', plan: { nombre: 'Plan Dos en Uno', planId: 'dosenuno', expira: new Date(Date.now() + 86_400_000) } }));
   const dora = (extra) => post({ autor_id: 'dora', autor_username: 'dora', autor_is_premium: true, ...extra });
-  await assertSucceeds(setDoc(doc(as('dora'), 'posts/t1'), dora({ autor_plan_tier: 'dosenuno' })));
-  await assertSucceeds(setDoc(doc(as('dora'), 'posts/t2'), dora({ autor_plan_tier: 'estandar' })));
-  await assertFails(setDoc(doc(as('dora'), 'posts/t3'), dora({ autor_plan_tier: 'parejas' })));
-  await assertFails(setDoc(doc(as('dora'), 'posts/t4'), dora({ autor_plan_tier: 'dosenuno', autor_is_premium: false })));
+  await assertSucceeds(publish(as('dora'), 'dora', 't1', dora({ autor_plan_tier: 'dosenuno' })));
+  await assertSucceeds(publish(as('dora'), 'dora', 't2', dora({ autor_plan_tier: 'estandar' })));
+  await assertFails(publish(as('dora'), 'dora', 't3', dora({ autor_plan_tier: 'parejas' })));
+  await assertFails(publish(as('dora'), 'dora', 't4', dora({ autor_plan_tier: 'dosenuno', autor_is_premium: false })));
   // ana tiene un plan genérico: no puede mostrar el marco dorado.
-  await assertFails(setDoc(doc(as('ana'), 'posts/t5'), post({ autor_is_premium: true, autor_plan_tier: 'dosenuno' })));
+  await assertFails(publish(as('ana'), 'ana', 't5', post({ autor_is_premium: true, autor_plan_tier: 'dosenuno' })));
 });

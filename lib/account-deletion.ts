@@ -69,6 +69,8 @@ export async function deleteMemberAccount(db: Firestore, auth: Auth, uid: string
   // Verificación en dos pasos (estado, códigos de recuperación y código pendiente).
   writer.delete(db.collection('mfa_state').doc(uid));
   writer.delete(db.collection('mfa_challenges').doc(uid));
+  // Contador antispam del foro.
+  writer.delete(db.collection('forum_rate').doc(uid));
 
   await writer.close();
 

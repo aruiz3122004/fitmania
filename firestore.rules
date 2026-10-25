@@ -119,7 +119,9 @@ service cloud.firestore {
         && safeImageUrl(request.resource.data.get('autor_avatar', null))
         && request.resource.data.get('tipo_recurso', 'image') in ['image', 'video']
         && request.resource.data.get('likes', []).size() == 0
-        && request.resource.data.get('comentarios', []).size() == 0;
+        && request.resource.data.get('comentarios', []).size() == 0
+        // Antispam: el mismo lote debe registrar la publicación en forum_rate (máx. 3 y pausa de 5 min).
+        && getAfter(/databases/$(database)/documents/forum_rate/$(request.auth.uid)).data.last == request.time;
       // Autor: edita su contenido y modera su post. Terceros: solo su like (los comentarios van en la subcolección).
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.autor_id == request.auth.uid
@@ -155,6 +157,23 @@ service cloud.firestore {
       allow delete: if isAdmin()
         || (isSignedIn() && (resource.data.autor_id == request.auth.uid
             || get(/databases/$(database)/documents/posts/$(postId)).data.autor_id == request.auth.uid));
+    }
+
+    // Límite de publicaciones del foro: hasta 3 seguidas; la cuarta espera 5 minutos
+    // desde la última. Se escribe en el mismo lote que el post (ver lib/forum-rate.ts).
+    // No se puede borrar ni reiniciar antes de tiempo.
+    match /forum_rate/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create: if isVerified() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['count', 'last'])
+        && request.resource.data.last == request.time
+        && request.resource.data.count == 1;
+      allow update: if isVerified() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['count', 'last'])
+        && request.resource.data.last == request.time
+        && ((request.time > resource.data.last + duration.value(5, 'm') && request.resource.data.count == 1)
+            || (resource.data.count < 3 && request.resource.data.count == resource.data.count + 1));
+      allow delete: if false;
     }
 
     match /pqrs/{pqrsId} {

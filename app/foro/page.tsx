@@ -11,6 +11,7 @@ import { useAuthStore } from '@/lib/store'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { PostSkeleton } from '@/components/ui/comic-skeleton'
 import { planTier, PLAN_TIERS, type PlanTier } from '@/lib/plan-theme'
+import { checkForumRate, formatCountdown, remainingForumPosts, FORUM_BURST, type ForumRate } from '@/lib/forum-rate'
 import { auth, db } from '@/lib/firebase'
 import {
   addDoc,
@@ -26,6 +27,7 @@ import {
   deleteDoc,
   where,
   limit,
+  writeBatch,
   getCountFromServer,
   getDocs,
   startAfter,
@@ -48,6 +50,7 @@ import {
   Pencil,
   Check,
   X,
+  Clock,
 } from 'lucide-react'
 
 type ForumComment = {
@@ -750,13 +753,24 @@ function PostCard({
   )
 }
 
-function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File | null) => Promise<void> }) {
+function CreatePostForm({ onPublish, rate }: { onPublish: (content: string, file: File | null) => Promise<void>; rate: ForumRate | null }) {
   const { user, isAuthenticated } = useAuthStore()
   const [content, setContent] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [filePreview, setFilePreview] = useState<string | null>(null)
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishError, setPublishError] = useState('')
+  const [now, setNow] = useState(() => Date.now())
+  const rateCheck = checkForumRate(rate, new Date(now))
+  const cooldownMs = rateCheck.allowed ? 0 : rateCheck.retryAt.getTime() - now
+  const remaining = remainingForumPosts(rate, new Date(now))
+
+  // Cuenta regresiva: solo late mientras dura la pausa.
+  useEffect(() => {
+    if (rateCheck.allowed) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [rateCheck.allowed])
 
   // Cleanup object URL when component unmounts or file changes
   useEffect(() => {
@@ -771,7 +785,7 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
 
   const handlePublish = async () => {
     const text = content.trim()
-    if (!text || isPublishing) return
+    if (!text || isPublishing || cooldownMs > 0) return
     setIsPublishing(true)
     setPublishError('')
     try {
@@ -780,14 +794,19 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
       setSelectedFile(null)
       setFilePreview(null)
     } catch (err: any) {
-      // Las reglas exigen correo verificado y máx. 2000 caracteres (F1-06 / F1-07).
+      // Las reglas exigen correo verificado, máx. 2000 caracteres (F1-06 / F1-07) y la
+      // pausa antispam. Si el reloj del equipo va adelantado, la pausa puede no haber
+      // terminado aún en el servidor.
       setPublishError(
         err?.code === 'permission-denied'
-          ? 'No se pudo publicar. Verifica tu correo (revisa tu bandeja o reenvía el enlace desde tu perfil).'
+          ? remaining <= 1
+            ? 'No se pudo publicar. Si acabas de cumplir la pausa, espera unos segundos y vuelve a intentarlo; si no, verifica tu correo.'
+            : 'No se pudo publicar. Verifica tu correo (revisa tu bandeja o reenvía el enlace desde tu perfil).'
           : err?.message || 'No se pudo publicar. Intenta de nuevo.'
       )
     } finally {
       setIsPublishing(false)
+      setNow(Date.now())
     }
   }
 
@@ -827,8 +846,21 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
             rows={3}
             maxLength={2000}
           />
-          {publishError && (
+          {publishError && cooldownMs <= 0 && (
             <p role="alert" className="mt-2 font-label text-xs font-bold text-primary">{publishError}</p>
+          )}
+          {cooldownMs > 0 ? (
+            <div role="status" className="mt-2 flex items-start gap-2 bg-accent/20 border-2 border-secondary px-3 py-2">
+              <Clock className="w-4 h-4 mt-0.5 shrink-0 text-secondary" aria-hidden />
+              <p className="font-body text-xs text-secondary leading-snug">
+                <span className="font-bold">¡Pausa de {formatCountdown(cooldownMs)}!</span> Publicaste {FORUM_BURST} veces seguidas.
+                Así el foro se mantiene tranquilo para todos; puedes seguir comentando y reaccionando.
+              </p>
+            </div>
+          ) : remaining < FORUM_BURST && (
+            <p className="mt-1 font-body text-[0.7rem] text-gray-500">
+              Te {remaining === 1 ? 'queda 1 publicación' : `quedan ${remaining} publicaciones`} antes de una pausa de 5 minutos.
+            </p>
           )}
           
           {filePreview && (
@@ -868,10 +900,10 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
             </label>
             <button
               onClick={handlePublish}
-              disabled={!content.trim() || isPublishing}
+              disabled={!content.trim() || isPublishing || cooldownMs > 0}
               className="font-label font-bold text-sm text-white bg-primary px-6 py-3 sm:py-2 border-2 border-secondary shadow-comic-sm transition-all hover:bg-red-dark hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[5px_5px_0_var(--navy)] disabled:opacity-50"
             >
-              {isPublishing ? 'PUBLICANDO...' : 'PUBLICAR'}
+              {isPublishing ? 'PUBLICANDO...' : cooldownMs > 0 ? `ESPERA ${formatCountdown(cooldownMs)}` : 'PUBLICAR'}
             </button>
           </div>
         </div>
@@ -882,19 +914,20 @@ function CreatePostForm({ onPublish }: { onPublish: (content: string, file: File
 
 export default function ForoPage() {
   const { user } = useAuthStore()
-  // F2-22: la primera página se escucha en tiempo real y las siguientes se piden con
-  // cursor (`startAfter`). Antes "cargar más" subía el `limit` del listener y volvía a
-  // leer todas las publicaciones cada vez.
-  const PAGE_SIZE = 5
-  const MAX_POSTS = 50
+  // F2-22: la primera página se escucha en tiempo real; las demás se piden con cursor
+  // (`startAfter`) al navegar. Páginas de 10 para no saturar la vista ni las lecturas.
+  const PAGE_SIZE = 10
+  const [page, setPage] = useState(0)
   const [livePosts, setLivePosts] = useState<ForumPost[]>([])
-  const [olderPosts, setOlderPosts] = useState<ForumPost[]>([])
-  const [cursor, setCursor] = useState<QueryDocumentSnapshot<DocumentData> | null>(null)
-  const [hasMore, setHasMore] = useState(false)
-  const [loadingMore, setLoadingMore] = useState(false)
+  const [liveHasMore, setLiveHasMore] = useState(false)
+  const [pagePosts, setPagePosts] = useState<ForumPost[]>([])
+  const [pageHasMore, setPageHasMore] = useState(false)
+  const [loadingPage, setLoadingPage] = useState(false)
   const [postsLoaded, setPostsLoaded] = useState(false)
-  const olderLoadedRef = useRef(0)
-
+  // Último documento de cada página: cursores[i] abre la página i + 1.
+  const cursorsRef = useRef<QueryDocumentSnapshot<DocumentData>[]>([])
+  const listTopRef = useRef<HTMLDivElement>(null)
+  const [rate, setRate] = useState<ForumRate | null>(null)
   const toForumPost = (docItem: QueryDocumentSnapshot<DocumentData>): ForumPost => {
     const raw = docItem.data() as any
     return {
@@ -936,35 +969,46 @@ export default function ForoPage() {
     const unsubscribe = onSnapshot(query(ref, ...constraints, limit(PAGE_SIZE + 1)), (snapshot) => {
       const docs = snapshot.docs.slice(0, PAGE_SIZE)
       setLivePosts(docs.map(toForumPost))
+      setLiveHasMore(snapshot.docs.length > PAGE_SIZE)
+      if (docs.length) cursorsRef.current[0] = docs[docs.length - 1]
       setPostsLoaded(true)
-      // El cursor de la primera página solo aplica si aún no se cargaron páginas antiguas.
-      if (olderLoadedRef.current === 0) {
-        setHasMore(snapshot.docs.length > PAGE_SIZE)
-        setCursor(docs[docs.length - 1] ?? null)
-      }
     })
     return () => unsubscribe()
   }, [])
 
-  const posts: ForumPost[] = [
-    ...livePosts,
-    ...olderPosts.filter((p) => !livePosts.some((l) => l.id === p.id)),
-  ]
+  // Contador antispam propio (lo validan las reglas; aquí solo se muestra).
+  useEffect(() => {
+    if (!user?.uid) { setRate(null); return }
+    return onSnapshot(doc(db, 'forum_rate', user.uid), (snap) => {
+      const data = snap.data({ serverTimestamps: 'estimate' })
+      setRate(data ? { count: Number(data.count) || 0, last: data.last?.toDate ? data.last.toDate() : null } : null)
+    }, () => setRate(null))
+  }, [user?.uid])
 
-  const handleLoadMore = async () => {
-    if (!cursor || loadingMore || posts.length >= MAX_POSTS) return
-    setLoadingMore(true)
-    try {
-      const [ref, ...constraints] = baseQuery()
-      const snap = await getDocs(query(ref, ...constraints, startAfter(cursor), limit(PAGE_SIZE + 1)))
-      const docs = snap.docs.slice(0, PAGE_SIZE)
-      olderLoadedRef.current += docs.length
-      setOlderPosts((prev) => [...prev, ...docs.map(toForumPost)])
-      setCursor(docs[docs.length - 1] ?? cursor)
-      setHasMore(snap.docs.length > PAGE_SIZE)
-    } finally {
-      setLoadingMore(false)
+  const posts = page === 0 ? livePosts : pagePosts
+  const hasNextPage = page === 0 ? liveHasMore : pageHasMore
+
+  const goToPage = async (target: number) => {
+    if (target < 0 || loadingPage) return
+    if (target === 0) {
+      setPage(0)
+    } else {
+      const cursor = cursorsRef.current[target - 1]
+      if (!cursor) return
+      setLoadingPage(true)
+      try {
+        const [ref, ...constraints] = baseQuery()
+        const snap = await getDocs(query(ref, ...constraints, startAfter(cursor), limit(PAGE_SIZE + 1)))
+        const docs = snap.docs.slice(0, PAGE_SIZE)
+        if (docs.length) cursorsRef.current[target] = docs[docs.length - 1]
+        setPagePosts(docs.map(toForumPost))
+        setPageHasMore(snap.docs.length > PAGE_SIZE)
+        setPage(target)
+      } finally {
+        setLoadingPage(false)
+      }
     }
+    listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const handleLike = async (postId: string) => {
@@ -977,7 +1021,7 @@ export default function ForoPage() {
     await updateDoc(postRef, {
       likes: hasLiked ? arrayRemove(user.uid) : arrayUnion(user.uid),
     })
-    setOlderPosts((prev) => prev.map((p) => p.id !== postId ? p : {
+    setPagePosts((prev) => prev.map((p) => p.id !== postId ? p : {
       ...p,
       likes: hasLiked ? p.likes.filter((id) => id !== user.uid) : [...p.likes, user.uid],
     }))
@@ -985,6 +1029,11 @@ export default function ForoPage() {
 
   const handlePublish = async (content: string, file: File | null) => {
     if (!user?.uid) return
+    // Antes de subir el archivo: si está en pausa no tiene sentido gastar la subida.
+    const check = checkForumRate(rate)
+    if (!check.allowed) {
+      throw new Error(`Ya publicaste ${FORUM_BURST} veces seguidas. Podrás volver a publicar en ${formatCountdown(check.retryAt.getTime() - Date.now())}.`)
+    }
 
     let imageUrl: string | null = null
     let imagePublicId: string | null = null
@@ -998,7 +1047,9 @@ export default function ForoPage() {
 
     const isPremium = !!(user?.plan && new Date(user.plan.expira) > new Date())
 
-    await addDoc(collection(db, 'posts'), {
+    // El post y el contador van en el mismo lote: las reglas rechazan uno sin el otro.
+    const batch = writeBatch(db)
+    batch.set(doc(collection(db, 'posts')), {
       autor_id: user.uid,
       autor_username: user.username,
       autor_avatar: user.photoURL || '',
@@ -1013,6 +1064,8 @@ export default function ForoPage() {
       comentarios: [],
       created_at: serverTimestamp(),
     })
+    batch.set(doc(db, 'forum_rate', user.uid), { count: check.nextCount, last: serverTimestamp() })
+    await batch.commit()
   }
 
   const handleAddComment = async (postId: string, content: string) => {
@@ -1048,7 +1101,8 @@ export default function ForoPage() {
           <SectionHeader label="COMUNIDAD FITMANIA" title="NUESTRO" titleAccent="FORO" />
           <EmailVerificationBanner />
           <NewsSlider />
-          <CreatePostForm onPublish={handlePublish} />
+          <CreatePostForm onPublish={handlePublish} rate={rate} />
+          <div ref={listTopRef} className="scroll-mt-24" />
           {!postsLoaded && (
             <div aria-busy="true">
               <span role="status" className="sr-only">Cargando publicaciones</span>
@@ -1107,22 +1161,33 @@ export default function ForoPage() {
               }}
             />
           ))}
-          {hasMore && posts.length < MAX_POSTS && (
-            <div className="flex justify-center mt-10">
-              <button 
-                onClick={handleLoadMore}
-                className="bg-transparent text-primary border-3 border-primary font-label font-bold px-10 py-3 uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-comic-sm hover:-translate-y-1"
+          {postsLoaded && (page > 0 || hasNextPage) && (
+            <nav aria-label="Páginas del foro" className="flex items-center justify-center gap-3 mt-10">
+              <button
+                type="button"
+                onClick={() => goToPage(page - 1)}
+                disabled={page === 0 || loadingPage}
+                className="inline-flex items-center gap-1 font-label font-bold text-xs uppercase tracking-widest text-secondary bg-white border-2 border-secondary px-4 py-2 shadow-comic-sm transition-all hover:-translate-y-0.5 hover:text-primary disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:text-secondary"
               >
-                {loadingMore ? 'Cargando…' : 'Cargar Más Publicaciones'}
+                <ChevronLeft className="w-4 h-4" aria-hidden /> Anterior
               </button>
-            </div>
+              <span aria-live="polite" className="font-display text-xl text-secondary tracking-wider min-w-[110px] text-center">
+                {loadingPage ? 'CARGANDO…' : `PÁGINA ${page + 1}`}
+              </span>
+              <button
+                type="button"
+                onClick={() => goToPage(page + 1)}
+                disabled={!hasNextPage || loadingPage}
+                className="inline-flex items-center gap-1 font-label font-bold text-xs uppercase tracking-widest text-white bg-primary border-2 border-secondary px-4 py-2 shadow-comic-sm transition-all hover:-translate-y-0.5 hover:bg-red-dark disabled:opacity-40 disabled:hover:translate-y-0"
+              >
+                Siguiente <ChevronRight className="w-4 h-4" aria-hidden />
+              </button>
+            </nav>
           )}
-          {posts.length >= MAX_POSTS && hasMore && (
-            <div className="flex justify-center mt-10 p-6 bg-white border-3 border-secondary shadow-comic-sm text-center">
-              <p className="font-label font-bold text-sm text-secondary uppercase tracking-widest">
-                Has alcanzado el límite (10 páginas).<br/> <a href="/foro" className="text-primary underline mt-2 inline-block">Refrescar Publicaciones Nuevas</a>
-              </p>
-            </div>
+          {page > 0 && (
+            <p className="mt-3 text-center font-body text-xs text-gray-500">
+              Las publicaciones nuevas aparecen en la <button type="button" onClick={() => goToPage(0)} className="text-primary font-bold underline">página 1</button>.
+            </p>
           )}
         </div>
       </section>
