@@ -8,12 +8,11 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p .",
-    "test": "node --test \"tests/*.test.mts\""
+    "test": "node --test \"tests/*.test.mts\"",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-fitmania-rules \"node --test tests/rules/firestore-rules.test.mjs\""
   },
   "dependencies": {
     "@radix-ui/react-dialog": "1.1.15",
-    "@stripe/react-stripe-js": "^6.0.0",
-    "@stripe/stripe-js": "^9.0.0",
     "@upstash/redis": "^1.37.0",
     "@vercel/analytics": "1.6.1",
     "@yudiel/react-qr-scanner": "^2.5.1",
@@ -29,15 +28,17 @@
     "react-dom": "19.2.4",
     "react-qr-code": "^2.0.18",
     "sonner": "^1.7.1",
-    "stripe": "^21.0.1",
     "tailwind-merge": "^3.3.1",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/node": "^22",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.3",
     "firebase-tools": "^15.12.0",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
