@@ -34,7 +34,7 @@ jobs:
 
       # Reglas de Firestore contra el emulador (proyecto `demo-`, nunca el real).
       # El emulador es un .jar: necesita Java 21.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
