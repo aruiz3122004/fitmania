@@ -5,6 +5,7 @@ import './globals.css'
 import { AuthProvider } from './context/AuthContext'
 import { MfaGate } from '@/components/auth/mfa-gate'
 import { ServiceWorkerRegister } from '@/components/pwa/service-worker-register'
+import { SandboxBar } from '@/components/sandbox/sandbox-bar'
 import { SITE_NAME, SITE_URL } from '@/lib/site'
 
 // T-17: la CSP usa nonces por request (middleware). Los nonces exigen renderizado
@@ -82,6 +83,7 @@ export default function RootLayout({
         <AuthProvider>
           {children}
           <MfaGate />
+          <SandboxBar />
           <Analytics />
         </AuthProvider>
         <ServiceWorkerRegister />

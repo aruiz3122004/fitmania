@@ -567,9 +567,10 @@ Todo se puede probar en local (`npm run dev` → `http://localhost:3000`). Mant�
 
 | Comando | Qué cubre | Requisitos |
 |---|---|---|
-| `npm test` | 80 pruebas de lógica pura: transiciones de pago, planes, pase QR, verificación en dos pasos, marco por plan, cola sin conexión | Ninguno |
-| `npm run test:rules` | 17 pruebas de `firestore.rules` en el emulador (proyecto `demo-`, nunca el real) | Java 21 |
+| `npm test` | 90 pruebas de lógica pura: transiciones de pago, planes, pase QR, verificación en dos pasos, marco por plan, cola sin conexión, límite del foro, datos del sandbox | Ninguno |
+| `npm run test:rules` | 19 pruebas de `firestore.rules` en el emulador (proyecto `demo-`, nunca el real) | Java 21 |
 | `npm run test:e2e` | 9 pruebas de navegador en escritorio y móvil: preguntas frecuentes, avisos legales, paneles ocultos, CSP | `npm run build` antes; en local `PW_CHANNEL=msedge` usa el Edge instalado |
+| `npm run test:e2e:sandbox` | 4 pruebas del modo sandbox de punta a punta (entrar, comprar con la pasarela simulada, abrir los paneles, salir y borrar) contra los emuladores de Firebase | Java 21; compila aparte en `.next-sandbox` |
 | `npm run lint` · `npm run typecheck` | Estilo y tipos | Ninguno |
 
 ### Acceso directo por rol (botón, sin llave)
@@ -593,6 +594,11 @@ Todo se puede probar en local (`npm run dev` → `http://localhost:3000`). Mant�
 2. Compra en `/pago` con el **comprador de prueba** (sin la sesión del vendedor abierta).
 3. Verifica: `[mp-webhook] … approved` en la terminal, orden y stock en Firestore, `[mail] Enviado...` y el pago en la pestaña **Pagos** del admin.
 4. Para inspeccionar Firestore: `node scripts/check-orders.mjs` (últimas órdenes y stock).
+
+---
+
+### Modo sandbox
+Copia del sitio para que cualquiera pruebe todo (socio, recepción y administración) con datos de ejemplo, sin tocar la aplicación real. Es otro despliegue del mismo código conectado a otro proyecto de Firebase; cada visitante recibe una cuenta temporal de 2 horas que se borra al salir. Configuración paso a paso en [`docs/sandbox.md`](docs/sandbox.md).
 
 ---
 

@@ -1,0 +1,32 @@
+// Variables del sandbox para las pruebas E2E locales y de CI (emuladores de Firebase).
+// Las vacías anulan las de .env.local: Next no pisa una variable que ya existe, así
+// estas pruebas nunca usan Upstash, Cloudinary, Resend ni Mercado Pago reales.
+export const SANDBOX_E2E_ENV = {
+  NEXT_DIST_DIR: '.next-sandbox',
+  NEXT_TELEMETRY_DISABLED: '1',
+  NEXT_PUBLIC_SANDBOX_MODE: 'true',
+  NEXT_PUBLIC_FIREBASE_EMULATORS: 'true',
+  NEXT_PUBLIC_FIREBASE_API_KEY: 'demo-key',
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: 'localhost',
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID: 'demo-fitmania-sandbox',
+  NEXT_PUBLIC_FIREBASE_APP_ID: 'demo-app',
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '',
+  NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: '',
+  NEXT_PUBLIC_FIREBASE_VAPID_KEY: '',
+  NEXT_PUBLIC_RECAPTCHA_ENTERPRISE_SITE_KEY: '',
+  NEXT_PUBLIC_MAIN_SITE_URL: '',
+  NEXT_PUBLIC_SANDBOX_URL: '',
+  NEXT_PUBLIC_SENTRY_DSN: '',
+  FIREBASE_PROJECT_ID: 'demo-fitmania-sandbox',
+  FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
+  FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
+  UPSTASH_REDIS_REST_URL: '',
+  UPSTASH_REDIS_REST_TOKEN: '',
+  CLOUDINARY_API_KEY: '',
+  CLOUDINARY_API_SECRET: '',
+  RESEND_API_KEY: '',
+  MERCADOPAGO_ACCESS_TOKEN: '',
+  SENTRY_DSN: '',
+  ADMIN_AUTHORIZED_EMAIL: '',
+  RECEPTION_AUTHORIZED_EMAIL: '',
+}

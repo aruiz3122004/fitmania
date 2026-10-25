@@ -119,7 +119,9 @@ export async function searchPaymentsByReference(reference: string): Promise<MpPa
 }
 
 /** Reembolso parcial (o total si se omite `amount`). */
-export function refundPayment(paymentId: string | number, amount: number | undefined, idempotencyKey: string) {
+export async function refundPayment(paymentId: string | number, amount: number | undefined, idempotencyKey: string) {
+  // Sandbox: no hay cobro real que devolver; el reembolso se simula.
+  if (process.env.NEXT_PUBLIC_SANDBOX_MODE === 'true') return { id: Date.now(), amount: amount ?? 0 };
   return mpFetch<{ id: number; amount: number }>(`/v1/payments/${encodeURIComponent(String(paymentId))}/refunds`, {
     method: 'POST',
     body: JSON.stringify(amount === undefined ? {} : { amount }),

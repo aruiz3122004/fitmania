@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
 import { isMfaSatisfied, mfaRequiredResponse } from '@/lib/mfa-server';
 import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
+import { IS_SANDBOX, SANDBOX_UPLOAD_ROOT } from '@/lib/sandbox';
 
 /**
  * POST /api/uploads/sign — firma una subida a Cloudinary (F1-24).
@@ -50,7 +51,8 @@ export async function POST(request: Request) {
   const timestamp = Math.floor(Date.now() / 1000);
   const params: Record<string, string | number> = {
     allowed_formats: resourceType === 'video' ? VIDEO_FORMATS : IMAGE_FORMATS,
-    folder: `fitmania/${purpose}/${uid}`,
+    // El sandbox sube a su propia carpeta: el reinicio la vacía completa.
+    folder: `${IS_SANDBOX ? SANDBOX_UPLOAD_ROOT : 'fitmania'}/${purpose}/${uid}`,
     timestamp,
   };
 

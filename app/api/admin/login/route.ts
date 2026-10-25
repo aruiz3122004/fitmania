@@ -4,6 +4,7 @@ import { recordAuditLog } from '@/lib/audit-logger';
 import { resetRateLimitFor } from '@/lib/rate-limit-server';
 import { GATE_COOKIE, createGateToken, gateCookieOptions, getGateSecret } from '@/lib/gate-token';
 import { getMfaStatus } from '@/lib/mfa-server';
+import { IS_SANDBOX } from '@/lib/sandbox';
 
 // Duración de la sesión del panel admin.
 const SESSION_SECONDS = 60 * 60; // 1 hora
@@ -22,7 +23,8 @@ export async function POST(request: Request) {
     const decodedToken = await adminAuth.verifyIdToken(idToken);
 
     // Verificar que el usuario tiene el custom claim de administrador
-    const authorizedAdminEmail = process.env.ADMIN_AUTHORIZED_EMAIL;
+    // En el sandbox cada visitante es admin de su cuenta temporal (proyecto aparte).
+    const authorizedAdminEmail = IS_SANDBOX ? undefined : process.env.ADMIN_AUTHORIZED_EMAIL;
     if (!decodedToken.admin || (authorizedAdminEmail && decodedToken.email?.toLowerCase() !== authorizedAdminEmail.toLowerCase())) {
       await recordAuditLog({
         action: 'LOGIN_FAILED',
@@ -49,7 +51,7 @@ export async function POST(request: Request) {
     // F1-13: con ADMIN_REQUIRE_MFA=true el admin debe tener un segundo factor: TOTP
     // (Firebase) o código por correo. Activarlo DESPUÉS de configurar uno de los dos.
     const hasTotp = !!(decodedToken.firebase as { sign_in_second_factor?: string } | undefined)?.sign_in_second_factor;
-    if (process.env.ADMIN_REQUIRE_MFA === 'true' && !hasTotp && !mfa.enabled) {
+    if (!IS_SANDBOX && process.env.ADMIN_REQUIRE_MFA === 'true' && !hasTotp && !mfa.enabled) {
       await recordAuditLog({
         action: 'LOGIN_FAILED',
         category: 'AUTH_FAILURE',

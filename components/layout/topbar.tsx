@@ -3,11 +3,12 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
-import { ShoppingCart, User, Menu, X } from 'lucide-react'
+import { ShoppingCart, User, Menu, X, FlaskConical } from 'lucide-react'
 import { useCartStore, useAuthStore, useUIStore } from '@/lib/store'
 import { UserDropdown } from './user-dropdown'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { planTier } from '@/lib/plan-theme'
+import { IS_SANDBOX, sandboxEntryHref } from '@/lib/sandbox'
 
 const navLinks = [
   { href: '/', label: 'Inicio' },
@@ -17,6 +18,9 @@ const navLinks = [
   { href: '/entrenadores', label: 'Entrenadores' },
   { href: '/pqrs', label: 'PQRS' },
 ]
+
+/** Botón "Modo Sandbox": en el sitio real lleva al despliegue de pruebas (lib/sandbox.ts). */
+const SANDBOX_HREF = sandboxEntryHref()
 
 export function Topbar() {
   const pathname = usePathname()
@@ -119,6 +123,15 @@ export function Topbar() {
 
             {/* Actions */}
             <div className="flex items-center gap-3">
+              {SANDBOX_HREF && !IS_SANDBOX && (
+                <a
+                  href={SANDBOX_HREF}
+                  title="Prueba toda la app con datos de ejemplo"
+                  className="hidden sm:inline-flex items-center gap-1.5 bg-lime-300 text-secondary font-label font-black text-[0.7rem] uppercase tracking-wider px-3 py-1.5 border-2 border-secondary shadow-[2px_2px_0_var(--navy)] transition-transform hover:-translate-y-0.5"
+                >
+                  <FlaskConical className="w-4 h-4" aria-hidden /> <span className="hidden xl:inline">Modo</span> Sandbox
+                </a>
+              )}
               <Link
                 href="/carrito"
                 className="relative text-white p-2 transition-transform hover:scale-115 hover:-rotate-5"
@@ -145,8 +158,8 @@ export function Topbar() {
                       size={28}
                       borderColor="border-white"
                       bgColor="bg-primary"
-                      isPremium={isPremium}
-                      tier={planTier(user.plan)}
+                      isPremium={isPremium || IS_SANDBOX}
+                      tier={IS_SANDBOX ? 'sandbox' : planTier(user.plan)}
                     />
                   ) : (
                     <User className="w-7 h-7" strokeWidth={2.5} />
@@ -202,6 +215,17 @@ export function Topbar() {
                 </Link>
               ))}
 
+              {SANDBOX_HREF && !IS_SANDBOX && (
+                <a
+                  href={SANDBOX_HREF}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="mt-6 flex items-center justify-center gap-3 bg-lime-300 text-secondary p-4 border-4 border-black shadow-comic-sm font-display text-2xl tracking-wider"
+                >
+                  <FlaskConical className="w-6 h-6" aria-hidden /> MODO SANDBOX
+                  <span className="font-label text-[0.65rem] font-bold uppercase tracking-widest bg-secondary text-lime-300 px-2 py-0.5">Pruébalo</span>
+                </a>
+              )}
+
               <div className="mt-8 flex-1 flex flex-col justify-end">
                 <span className="font-label text-xs text-white/50 uppercase tracking-widest mb-4 block">Cuenta</span>
                 {!isAuthenticated ? (
@@ -223,7 +247,8 @@ export function Topbar() {
                           borderWidth="border-3"
                           borderColor="border-black"
                           bgColor="bg-primary"
-                          isPremium={isPremium}
+                          isPremium={isPremium || IS_SANDBOX}
+                          tier={IS_SANDBOX ? 'sandbox' : planTier(user.plan)}
                         />
                       ) : (
                         <div className="w-12 h-12 bg-primary rounded-full border-3 border-black flex items-center justify-center text-white">

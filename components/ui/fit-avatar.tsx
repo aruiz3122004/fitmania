@@ -2,7 +2,7 @@
 
 import { isDefaultAvatarUrl } from '@/lib/avatar-utils'
 import { UserCircle } from 'lucide-react'
-import { PLAN_FRAMES, type PlanTier } from '@/lib/plan-theme'
+import { PLAN_FRAMES, type FrameKey } from '@/lib/plan-theme'
 
 interface FitAvatarProps {
   src?: string | null
@@ -17,7 +17,7 @@ interface FitAvatarProps {
   className?: string
   isPremium?: boolean
   /** Color del marco premium según el plan (por defecto, el clásico). */
-  tier?: PlanTier
+  tier?: FrameKey
 }
 
 /**

@@ -36,9 +36,14 @@ export interface EnvReport {
   missingRecommended: { name: string; feature: string }[];
 }
 
+// El sandbox (lib/sandbox.ts) usa una pasarela simulada y exige confirmar su proyecto.
+const SANDBOX_NOT_NEEDED = new Set(['MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET']);
+
 export function checkEnv(): EnvReport {
   const has = (name: string) => !!process.env[name]?.trim();
-  const missingCritical: string[] = CRITICAL.filter((n) => !has(n));
+  const sandbox = process.env.NEXT_PUBLIC_SANDBOX_MODE === 'true';
+  const missingCritical: string[] = CRITICAL.filter((n) => !has(n) && !(sandbox && SANDBOX_NOT_NEEDED.has(n)));
+  if (sandbox && !has('SANDBOX_FIREBASE_PROJECT_ID')) missingCritical.push('SANDBOX_FIREBASE_PROJECT_ID');
   // La clave privada de Firebase admite dos formatos.
   if (!has('FIREBASE_PRIVATE_KEY_B64') && !has('FIREBASE_PRIVATE_KEY')) missingCritical.push('FIREBASE_PRIVATE_KEY_B64');
   const missingRecommended = Object.entries(RECOMMENDED)

@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
+import { getAuth, connectAuthEmulator } from 'firebase/auth'
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -33,3 +33,10 @@ if (typeof window !== 'undefined' && APP_CHECK_SITE_KEY) {
 
 export const auth = getAuth(app)
 export const db = getFirestore(app)
+
+// Solo pruebas locales (E2E del sandbox): emuladores de Firebase en lugar de un proyecto real.
+if (process.env.NEXT_PUBLIC_FIREBASE_EMULATORS === 'true' && !(globalThis as any).__fmEmulators) {
+  ;(globalThis as any).__fmEmulators = true
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
+  connectFirestoreEmulator(db, '127.0.0.1', 8080)
+}

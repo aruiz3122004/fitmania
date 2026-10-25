@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "node --test \"tests/*.test.mts\"",
     "test:rules": "firebase emulators:exec --only firestore --project demo-fitmania-rules \"node --test tests/rules/firestore-rules.test.mjs\"",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:sandbox": "node scripts/e2e-sandbox.mjs",
+    "sandbox:local": "node scripts/sandbox-local.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "1.1.15",

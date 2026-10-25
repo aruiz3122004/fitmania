@@ -110,6 +110,17 @@ test('noticias: el público solo ve las publicadas', async () => {
   await assertFails(getDoc(doc(anon(), 'news/n2')));
 });
 
+test('buzón del sandbox: cada visitante lee solo sus correos y nadie escribe', async () => {
+  await env.withSecurityRulesDisabled((ctx) =>
+    setDoc(doc(ctx.firestore(), 'sandbox_mail/m1'), { to: 'explorador-1@sandbox.fitmania.test', subject: 'Recibo' }));
+  const visitor = (uid, email, sandbox = true) => env.authenticatedContext(uid, { email, email_verified: true, auth_time: AUTH_TIME, sandbox }).firestore();
+  await assertSucceeds(getDoc(doc(visitor('v1', 'explorador-1@sandbox.fitmania.test'), 'sandbox_mail/m1')));
+  await assertFails(getDoc(doc(visitor('v2', 'explorador-2@sandbox.fitmania.test'), 'sandbox_mail/m1')));
+  // Sin la marca de sandbox en el token (una cuenta normal) tampoco.
+  await assertFails(getDoc(doc(visitor('v1', 'explorador-1@sandbox.fitmania.test', false), 'sandbox_mail/m1')));
+  await assertFails(setDoc(doc(visitor('v1', 'explorador-1@sandbox.fitmania.test'), 'sandbox_mail/m2'), { to: 'x' }));
+});
+
 test('logs de auditoría e ingresos: solo el servidor escribe', async () => {
   await assertFails(addDoc(collection(as('jefe', { admin: true }), 'audit_logs'), { action: 'x' }));
   await assertFails(addDoc(collection(as('ana'), 'entry_logs'), { userId: 'ana' }));

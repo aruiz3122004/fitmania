@@ -10,6 +10,7 @@
 // correo dueño de la cuenta (modo pruebas).
 
 import { getAdminFirestore } from '@/lib/firebase-admin'
+import { IS_SANDBOX } from '@/lib/sandbox'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 
@@ -72,6 +73,18 @@ async function logEmailEvent(event: { to: string; subject: string; status: 'sent
 }
 
 async function sendWithRetry(mail: SendMailOptions, maxAttempts = 3) {
+  // Sandbox: ningún correo sale. Se guarda en el buzón simulado y el visitante lo lee
+  // desde la barra del sandbox (así ve recibos y códigos sin un correo real).
+  if (IS_SANDBOX) {
+    const ref = await getAdminFirestore().collection('sandbox_mail').add({
+      to: (mail.to || '').trim().toLowerCase(),
+      subject: mail.subject,
+      html: mail.html,
+      createdAt: new Date(),
+    })
+    await logEmailEvent({ to: mail.to, subject: mail.subject, status: 'sent', attempts: 1, providerId: `sandbox_${ref.id}` })
+    return { id: ref.id }
+  }
   try {
     const data = await sendWithRetryInner(mail, maxAttempts)
     await logEmailEvent({ to: mail.to, subject: mail.subject, status: 'sent', attempts: data?.__attempt || 1, providerId: data?.id })

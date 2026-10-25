@@ -342,6 +342,15 @@ export const FAQ: FaqCategory[] = [
         q: '¿Usan inteligencia artificial?',
         a: [PROJECT_NOTICE.ai, 'Ningún contenido del sitio reemplaza la asesoría médica, nutricional ni profesional.'],
       },
+      {
+        id: 'sandbox',
+        q: '¿Qué es el Modo Sandbox?',
+        a: [
+          'Una copia del sitio para probarlo todo sin registrarte: entras con una cuenta temporal que tiene los roles de socio, recepción y administración, y recorres el sistema con datos de ejemplo.',
+          'Los pagos pasan por una pasarela simulada y los correos llegan a un buzón dentro del sandbox: no se cobra ni se envía nada. Nada de lo que hagas afecta al sitio real.',
+          'Tu cuenta y todo lo que hiciste se borran al pulsar "Salir y borrar mis datos" o, como máximo, a las 2 horas.',
+        ],
+      },
     ],
   },
 ]

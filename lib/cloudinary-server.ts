@@ -22,3 +22,29 @@ export async function deleteCloudinaryAsset(publicId: string | null | undefined,
     return false;
   }
 }
+
+/**
+ * Borra todos los archivos bajo una carpeta (solo lo usa el reinicio del sandbox).
+ * Admin API de Cloudinary: hasta 1000 por llamada, suficiente para el sandbox.
+ */
+export async function deleteCloudinaryPrefix(prefix: string): Promise<boolean> {
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  if (!prefix || !apiKey || !apiSecret || !cloudName) return false;
+  const authHeader = `Basic ${Buffer.from(`${apiKey}:${apiSecret}`).toString('base64')}`;
+  let ok = true;
+  for (const type of ['image', 'video'] as const) {
+    try {
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/resources/${type}/upload?prefix=${encodeURIComponent(prefix)}`,
+        { method: 'DELETE', headers: { Authorization: authHeader } }
+      );
+      ok = ok && res.ok;
+    } catch (error) {
+      console.error('[cloudinary] No se pudo vaciar la carpeta:', prefix, error);
+      ok = false;
+    }
+  }
+  return ok;
+}

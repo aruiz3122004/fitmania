@@ -1,5 +1,6 @@
 import { getAdminAuth } from '@/lib/firebase-admin';
 import { isMfaSatisfied } from '@/lib/mfa-server';
+import { IS_SANDBOX } from '@/lib/sandbox';
 
 /** Parsea el header `Cookie` de un request a un objeto clave→valor. */
 function parseCookies(request: Request): Record<string, string> {
@@ -48,7 +49,7 @@ export async function verifyAdminRequest(request: Request) {
  */
 export function isReceptionEmailAllowed(email: string | undefined): boolean {
   const raw = process.env.RECEPTION_AUTHORIZED_EMAIL;
-  if (!raw || !raw.trim()) return true;
+  if (IS_SANDBOX || !raw || !raw.trim()) return true;
   if (!email) return false;
   const allowed = raw.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
   return allowed.includes(email.toLowerCase());

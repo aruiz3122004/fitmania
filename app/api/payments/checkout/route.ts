@@ -6,6 +6,7 @@ import { limitAction, tooManyRequests } from '@/lib/rate-limit-server';
 import { priceCheckout, CheckoutError } from '@/lib/payments/pricing';
 import { createPreference, isMercadoPagoConfigured, type MpPreferenceInput } from '@/lib/payments/mercadopago';
 import { SITE_URL } from '@/lib/site';
+import { IS_SANDBOX } from '@/lib/sandbox';
 
 /**
  * POST /api/payments/checkout — inicia un pago con Mercado Pago (F1-18).
@@ -15,7 +16,7 @@ import { SITE_URL } from '@/lib/site';
  * con la foto del checkout y se devuelve la URL de Checkout Pro (tarjeta, PSE, Efecty).
  */
 export async function POST(req: NextRequest) {
-  if (!isMercadoPagoConfigured()) {
+  if (!IS_SANDBOX && !isMercadoPagoConfigured()) {
     return NextResponse.json({ error: 'El pago con Mercado Pago no está disponible por ahora.' }, { status: 503 });
   }
 
@@ -89,6 +90,23 @@ export async function POST(req: NextRequest) {
 
     // El pago queda registrado ANTES de enviar al cliente a Mercado Pago.
     const paymentRef = db.collection('payments').doc(ref);
+
+    // Sandbox: pasarela simulada. El pago se aprueba o rechaza en /pago/sandbox y se
+    // aplica con la MISMA lógica que un pago real (lib/payments/fulfillment.ts).
+    if (IS_SANDBOX) {
+      await paymentRef.set({
+        gateway: 'sandbox',
+        status: 'pending',
+        uid: decoded.uid,
+        customerEmail: decoded.email,
+        customerName,
+        ...snapshot,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      return NextResponse.json({ url: `/pago/sandbox?ref=${ref}`, ref });
+    }
+
     await paymentRef.set({
       gateway: 'mercadopago',
       status: 'pending',

@@ -176,6 +176,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Buzón simulado del sandbox (lib/sandbox.ts): los correos no salen y cada visitante
+    // lee solo los suyos. En el proyecto real esta colección no existe.
+    match /sandbox_mail/{mailId} {
+      allow read: if isSignedIn() && request.auth.token.sandbox == true
+        && resource.data.to == request.auth.token.email;
+      allow write: if false;
+    }
+
     match /pqrs/{pqrsId} {
       allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
       // Se radican vía /api/pqrs (servidor: datos del token y límite anti-spam).

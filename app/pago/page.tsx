@@ -11,6 +11,7 @@ import { useAuthStore, useCartStore } from '@/lib/store'
 import { auth, db } from '@/lib/firebase'
 import { ShieldCheck, Loader2, AlertTriangle } from 'lucide-react'
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner'
+import { IS_SANDBOX } from '@/lib/sandbox'
 
 /**
  * F1-18: pago con Mercado Pago (Checkout Pro: tarjeta, PSE, Efecty). El servidor
@@ -64,11 +65,11 @@ function MercadoPagoCheckout({ planId, cartItems }: { planId?: string; cartItems
       >
         {loading
           ? <><Loader2 className="w-8 h-8 animate-spin" />REDIRIGIENDO...</>
-          : <><ShieldCheck className="w-8 h-8" />PAGAR CON MERCADO PAGO</>
+          : <><ShieldCheck className="w-8 h-8" />{IS_SANDBOX ? 'PAGAR (PASARELA SIMULADA)' : 'PAGAR CON MERCADO PAGO'}</>
         }
       </button>
       <p className="font-label text-[10px] text-gray-400 mt-3 font-bold uppercase tracking-widest text-center">
-        Tarjeta débito o crédito · PSE · Efecty
+        {IS_SANDBOX ? 'Modo sandbox: no se cobra nada' : 'Tarjeta débito o crédito · PSE · Efecty'}
       </p>
     </div>
   )

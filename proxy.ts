@@ -11,6 +11,7 @@ import {
   timingSafeEqualStrings,
   verifyGateToken,
 } from '@/lib/gate-token';
+import { IS_SANDBOX, SANDBOX_URL } from '@/lib/sandbox';
 
 // Inicializar Upstash Redis de forma directa para control granular
 let redis: Redis | null = null;
@@ -75,6 +76,11 @@ function buildCsp(nonce: string): string {
     ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' https://*.firebaseapp.com https://apis.google.com https://www.google.com https://www.gstatic.com https://va.vercel-scripts.com`
     : `'self' 'nonce-${nonce}' 'unsafe-eval' 'unsafe-inline' https://*.firebaseapp.com https://apis.google.com https://va.vercel-scripts.com`;
 
+  // Pruebas E2E locales del sandbox con los emuladores de Firebase (nunca en un despliegue).
+  const emulators = process.env.NEXT_PUBLIC_FIREBASE_EMULATORS === 'true'
+    ? ' http://127.0.0.1:9099 http://127.0.0.1:8080'
+    : '';
+
   // style-src conserva 'unsafe-inline': la app usa atributos `style=` de React y
   // un <style> inline; en CSP3 un nonce en style-src haría ignorar 'unsafe-inline'.
   return `
@@ -82,7 +88,7 @@ function buildCsp(nonce: string): string {
     script-src ${scriptSrc};
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     img-src 'self' blob: data: https://res.cloudinary.com https://*.googleusercontent.com https://*.firebaseapp.com;
-    connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://api.cloudinary.com https://res.cloudinary.com https://va.vercel-scripts.com;
+    connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://api.cloudinary.com https://res.cloudinary.com https://va.vercel-scripts.com${emulators};
     frame-src 'self' https://*.firebaseapp.com https://www.google.com https://recaptcha.google.com;
     font-src 'self' data: https://fonts.gstatic.com;
     media-src 'self' blob: https://res.cloudinary.com;
@@ -91,7 +97,7 @@ function buildCsp(nonce: string): string {
     base-uri 'self';
     frame-ancestors 'none';
     form-action 'self';
-    upgrade-insecure-requests;
+    ${emulators ? '' : 'upgrade-insecure-requests;'}
   `.replace(/\s{2,}/g, ' ').trim();
 }
 
@@ -106,6 +112,9 @@ function applySecurityHeaders(response: NextResponse, csp: string) {
   // F1-16: la cámara solo la usa el escáner QR de recepción (mismo origen).
   headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=(self)');
   headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+
+  // El sandbox no debe aparecer en buscadores (contenido de prueba que cambia sin parar).
+  if (IS_SANDBOX) headers.set('X-Robots-Tag', 'noindex, nofollow');
 
   if (isProd) {
     headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
@@ -336,6 +345,16 @@ export default async function proxy(request: NextRequest) {
 
   // Normalizar el pathname para que la comparación sea robusta (sin slash final)
   const normalizedPath = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+
+  // Sitio real: /sandbox lleva al despliegue de pruebas (lib/sandbox.ts).
+  if (!IS_SANDBOX && SANDBOX_URL && normalizedPath === '/sandbox') {
+    return applySecurityHeaders(NextResponse.redirect(`${SANDBOX_URL}/sandbox`, 307), csp);
+  }
+
+  // Sandbox: no hay registro ni login con contraseña; las cuentas temporales se crean en /sandbox.
+  if (IS_SANDBOX && (normalizedPath === '/login' || normalizedPath === '/registro')) {
+    return applySecurityHeaders(NextResponse.redirect(new URL('/sandbox', request.url), 307), csp);
+  }
 
   if (normalizedPath === '/fitministration') {
     return handlePanelGate(request, 'admin', !!adminSession, nonce, csp);

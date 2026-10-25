@@ -61,4 +61,7 @@ scratch/
 # Playwright
 /test-results/
 /playwright-report/
+/playwright-report-sandbox/
+/.next-sandbox/
+/.next-sandbox-dev/
 /blob-report/

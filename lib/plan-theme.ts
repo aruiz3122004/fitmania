@@ -35,7 +35,10 @@ export interface PlanFrame {
   solid: string
 }
 
-export const PLAN_FRAMES: Record<PlanTier, PlanFrame> = {
+/** Marcos disponibles: los de cada plan más el del visitante del modo sandbox. */
+export type FrameKey = PlanTier | 'sandbox'
+
+export const PLAN_FRAMES: Record<FrameKey, PlanFrame> = {
   estandar: {
     label: 'Premium',
     gradient: 'linear-gradient(45deg, #ef4444, #ffffff, #3b82f6, #ef4444, #ffffff, #3b82f6)',
@@ -62,5 +65,15 @@ export const PLAN_FRAMES: Record<PlanTier, PlanFrame> = {
     badge: 'bg-amber-100 border-amber-500 text-amber-800 shadow-[3px_3px_0_0_rgba(217,119,6,0.35)]',
     icon: '👑',
     solid: '#f59e0b',
+  },
+  // Insignia del modo sandbox: verde "laboratorio" con franjas de advertencia.
+  sandbox: {
+    label: 'Explorador',
+    gradient: 'linear-gradient(45deg, #84cc16, #1e293b, #facc15, #22c55e, #1e293b, #a3e635)',
+    glow: '0 0 14px rgba(132,204,22,0.6), 0 0 28px rgba(250,204,21,0.35)',
+    panel: 'linear-gradient(135deg, #d9f99d 0%, #ffffff 50%, #fef08a 100%)',
+    badge: 'bg-lime-100 border-lime-600 text-lime-900 shadow-[3px_3px_0_0_rgba(77,124,15,0.35)]',
+    icon: '🧪',
+    solid: '#65a30d',
   },
 }

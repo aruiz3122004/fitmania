@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { ChangeEvent, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore, useUIStore } from '@/lib/store'
-import { LogOut, Settings, UserCircle, ShieldCheck, QrCode, Loader2, Receipt } from 'lucide-react'
+import { LogOut, Settings, UserCircle, ShieldCheck, QrCode, Loader2, Receipt, FlaskConical } from 'lucide-react'
 import { avatarOptions, getAvatarUrlById } from '@/lib/avatar-utils'
 import { FitAvatar } from '@/components/ui/fit-avatar'
 import { PLAN_FRAMES, planTier } from '@/lib/plan-theme'
@@ -13,6 +13,8 @@ import { signOut } from 'firebase/auth'
 import { saveMyProfile } from '@/lib/author-profiles'
 import { uploadToCloudinary } from '@/services/cloudinary'
 import { usePanelAccess, enterPanel } from '@/lib/panel-access'
+import { IS_SANDBOX, sandboxEntryHref } from '@/lib/sandbox'
+import { exitSandbox } from '@/lib/sandbox-client'
 
 export function UserDropdown() {
   const router = useRouter()
@@ -94,6 +96,15 @@ export function UserDropdown() {
             Inicia sesion para acceder a todas las funciones
           </p>
           <div className="flex flex-col gap-2">
+            {IS_SANDBOX ? (
+              <Link
+                href="/sandbox"
+                onClick={handleClose}
+                className="inline-flex items-center justify-center gap-2 font-label font-bold text-sm text-secondary bg-lime-300 text-center py-2 px-4 border-2 border-secondary shadow-comic-sm"
+              >
+                <FlaskConical className="w-4 h-4" aria-hidden /> ENTRAR AL SANDBOX
+              </Link>
+            ) : (<>
             <Link
               href="/login"
               onClick={handleClose}
@@ -108,6 +119,15 @@ export function UserDropdown() {
             >
               REGISTRARSE
             </Link>
+            {sandboxEntryHref() && (
+              <a
+                href={sandboxEntryHref()!}
+                className="inline-flex items-center justify-center gap-2 font-label font-bold text-sm text-secondary bg-lime-300 text-center py-2 px-4 border-2 border-secondary shadow-comic-sm transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[5px_5px_0_var(--navy)]"
+              >
+                <FlaskConical className="w-4 h-4" aria-hidden /> MODO SANDBOX
+              </a>
+            )}
+            </>)}
           </div>
         </div>
       </div>
@@ -115,8 +135,9 @@ export function UserDropdown() {
   }
 
   const daysRemaining = getDaysRemaining()
-  const isPremium = !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
-  const tier = planTier(user?.plan)
+  // En el sandbox el visitante lleva siempre el marco de "Explorador".
+  const isPremium = IS_SANDBOX || !!(user?.plan && daysRemaining !== null && daysRemaining > 0)
+  const tier = IS_SANDBOX ? 'sandbox' : planTier(user?.plan)
   const frame = PLAN_FRAMES[tier]
 
   return (
@@ -160,7 +181,15 @@ export function UserDropdown() {
               <p className="font-label text-xs sm:text-sm text-gray-400 truncate mb-2">
                 {user?.email}
               </p>
-              {isPremium && daysRemaining !== null && (
+              {IS_SANDBOX && (
+                <div className={`border-2 px-3 py-1.5 inline-flex items-center gap-2 rounded-lg ${frame.badge}`}>
+                  <span className="text-sm" aria-hidden="true">{frame.icon}</span>
+                  <span className="font-label text-[10px] font-black uppercase tracking-widest">
+                    {frame.label} · Sandbox{daysRemaining ? ` · ${daysRemaining} días` : ''}
+                  </span>
+                </div>
+              )}
+              {!IS_SANDBOX && isPremium && daysRemaining !== null && (
                 <div className={`border-2 px-3 py-1.5 inline-flex items-center gap-2 rounded-lg ${frame.badge}`}>
                   <span className="text-sm" aria-hidden="true">{frame.icon}</span>
                   <span className="font-label text-[10px] font-black uppercase tracking-widest">
@@ -269,6 +298,11 @@ export function UserDropdown() {
           </Link>
           <button
             onClick={async () => {
+              // Sandbox: cerrar sesión es salir del laboratorio y borrar la cuenta temporal.
+              if (IS_SANDBOX) {
+                if (window.confirm('¿Salir del sandbox? Se borran tu cuenta temporal y todo lo que hiciste.')) await exitSandbox()
+                return
+              }
               await signOut(auth)
               logout()
               handleClose()
@@ -277,7 +311,7 @@ export function UserDropdown() {
             className="flex-1 flex items-center justify-center sm:justify-start gap-3 px-3 py-3 sm:py-2 bg-red-50 sm:bg-transparent border-2 sm:border-0 border-primary sm:rounded rounded-xl hover:bg-red-light transition-all active:translate-y-1"
           >
             <LogOut className="w-5 h-5 text-primary" />
-            <span className="hidden sm:inline font-label text-sm text-primary">Cerrar Sesion</span>
+            <span className="hidden sm:inline font-label text-sm text-primary">{IS_SANDBOX ? 'Salir del sandbox' : 'Cerrar Sesion'}</span>
           </button>
         </div>
       </div>

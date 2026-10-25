@@ -7,6 +7,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   // No anunciar el framework en las cabeceras (X-Powered-By).
   poweredByHeader: false,
+  // Las pruebas E2E del sandbox compilan aparte (otras variables públicas) sin pisar `.next`.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   // Solo desarrollo: permite navegar el servidor local a través de un túnel https
   // (pruebas de Mercado Pago con retorno automático y webhook).
   allowedDevOrigins: ['*.trycloudflare.com'],

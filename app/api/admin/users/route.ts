@@ -4,6 +4,7 @@ import { verifyAdminRequest } from '@/lib/auth-helpers';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { listAllAuthUsers } from '@/lib/admin-users';
 import { deleteMemberAccount } from '@/lib/account-deletion';
+import { protectOtherExplorer } from '@/lib/sandbox/server';
 
 export async function GET(request: Request) {
   const isAdmin = await verifyAdminRequest(request);
@@ -58,6 +59,8 @@ export async function PATCH(request: Request) {
     if ((setAdmin !== undefined && typeof setAdmin !== 'boolean') || (setReceptionist !== undefined && typeof setReceptionist !== 'boolean')) {
       return NextResponse.json({ error: 'Los roles deben ser verdadero o falso.' }, { status: 400 });
     }
+    const blocked = await protectOtherExplorer(uid, isAdmin.uid);
+    if (blocked) return blocked;
     // Evita que el admin se quite su propio rol por error y quede sin acceso al panel.
     if (setAdmin === false && uid === isAdmin.uid) {
       return NextResponse.json({ error: 'No puedes retirarte tu propio rol de administrador.' }, { status: 400 });
@@ -164,6 +167,8 @@ export async function DELETE(request: Request) {
     if (uid === isAdmin.uid) {
       return NextResponse.json({ error: 'No puedes eliminar tu propia cuenta de administrador.' }, { status: 400 });
     }
+    const blocked = await protectOtherExplorer(uid, isAdmin.uid);
+    if (blocked) return blocked;
     // F2-26: supresión completa (posts, comentarios y likes borrados; ingresos, PQRS y
     // reportes anonimizados; órdenes conservadas por obligación contable).
     const summary = await deleteMemberAccount(db, auth, uid);

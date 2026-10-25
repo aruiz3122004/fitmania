@@ -1,6 +1,7 @@
 import type { Firestore } from 'firebase-admin/firestore';
 import { getPayment, searchPaymentsByReference, isMercadoPagoConfigured } from '@/lib/payments/mercadopago';
 import { syncMercadoPagoPayment, type SyncResult } from '@/lib/payments/fulfillment';
+import { IS_SANDBOX } from '@/lib/sandbox';
 
 /**
  * Conciliación de pagos con Mercado Pago (F1-22): si un webhook se pierde, el pago
@@ -9,6 +10,8 @@ import { syncMercadoPagoPayment, type SyncResult } from '@/lib/payments/fulfillm
 
 /** Consulta a Mercado Pago los pagos de una referencia y aplica su estado. */
 export async function reconcileReference(db: Firestore, ref: string, paymentId?: string): Promise<SyncResult[]> {
+  // En el sandbox no hay Mercado Pago: la pasarela simulada aplica el pago al momento.
+  if (IS_SANDBOX) return [];
   if (paymentId && /^\d+$/.test(paymentId)) {
     const payment = await getPayment(paymentId);
     // El id llega en la URL de retorno: solo cuenta si es de esta referencia.
@@ -34,7 +37,7 @@ const TIME_BUDGET_MS = 25_000;
 /** Cron: pagos `pending` con más de 1 h. Devuelve un resumen para `system/cron`. */
 export async function reconcilePendingPayments(db: Firestore, limit = 200) {
   const summary = { checked: 0, approved: 0, rejected: 0, expired: 0, errors: 0, deferred: 0 };
-  if (!isMercadoPagoConfigured()) return summary;
+  if (IS_SANDBOX || !isMercadoPagoConfigured()) return summary;
 
   const now = Date.now();
   // Filtro de un solo campo (sin índice compuesto): los pendientes son pocos y la
