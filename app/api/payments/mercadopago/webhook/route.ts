@@ -47,15 +47,7 @@ export async function POST(req: NextRequest) {
       secret,
     });
     if (!valid) {
-      // TEMPORAL: datos públicos del aviso (sin la clave) para diagnosticar la firma.
-      console.warn('[mp-webhook] Firma inválida', {
-        type,
-        dataId,
-        query: url.search,
-        xSignature: req.headers.get('x-signature'),
-        upstreamRequestId: req.headers.get('x-upstream-request-id'),
-        requestId: req.headers.get('x-request-id'),
-      });
+      console.warn('[mp-webhook] Firma inválida', { type, dataId });
       return NextResponse.json({ error: 'Firma inválida' }, { status: 401 });
     }
   }
