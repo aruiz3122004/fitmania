@@ -83,8 +83,12 @@ export async function POST(req: NextRequest) {
       statement_descriptor: 'FITMANIA',
       metadata: { uid: decoded.uid, type: snapshot.type },
     };
-    if (isHttps) {
-      preference.auto_return = 'approved';
+    if (isHttps) preference.auto_return = 'approved';
+    // En producción los avisos llegan al webhook configurado en el panel de Mercado
+    // Pago, que los firma con MERCADOPAGO_WEBHOOK_SECRET. Los que se piden con
+    // `notification_url` llegan con una firma que esa clave no valida, así que solo
+    // se usa con el túnel de desarrollo, donde el panel no apunta.
+    if (isHttps && process.env.MERCADOPAGO_PUBLIC_URL?.trim()) {
       preference.notification_url = `${baseUrl}/api/payments/mercadopago/webhook`;
     }
 
